@@ -8,10 +8,6 @@ export const CSV_COLUMNS = [
   "prenom",
   "nom",
   "mineur",
-  "rep_prenom",
-  "rep_nom",
-  "rep_telephone",
-  "rep_email",
   "telephone",
   "email",
   "adr_numero",
@@ -28,25 +24,35 @@ export const CSV_COLUMNS = [
   "mode_paiement",
   "eligible_credit_impot",
   "date_debut",
-  "foyer",
+  "payeur_prenom",
+  "payeur_nom",
+  "payeur_telephone",
+  "payeur_email",
   "notes",
 ];
 
 export function templateCSV() {
   const rows = [
     CSV_COLUMNS,
-    ["Lea", "Martin", "oui", "Sophie", "Martin", "0611223344", "sophie.martin@example.com",
-      "", "", "12", "rue des Lilas", "", "69100", "Villeurbanne",
-      "domicile", "mardi", "17:00", "45", "oui", "25", "cheque", "oui", "2024-09-10", "", "Debutante"],
-    ["Paul", "Durand", "non", "", "", "", "",
-      "0678901234", "paul.durand@example.com", "3", "avenue Jean Jaures", "Bat. B", "69003", "Lyon",
-      "chez_prof", "mercredi", "18:30", "60", "oui", "30", "virement", "non", "", "", ""],
-    ["Claire", "Petit", "non", "", "", "", "",
-      "0700000000", "", "5", "chemin du Piano", "", "69005", "Lyon",
-      "domicile", "samedi", "10:00", "60", "oui", "", "cheque", "oui", "", "Famille Petit", ""],
-    ["Tom", "Petit", "oui", "Claire", "Petit", "0700000000", "",
-      "", "", "5", "chemin du Piano", "", "69005", "Lyon",
-      "domicile", "samedi", "10:45", "30", "oui", "", "cheque", "oui", "", "Famille Petit", ""],
+    // Enfant mineur, cours a domicile, paye par un parent (=> attestation credit d'impot au nom du parent)
+    ["Lea", "Martin", "oui", "", "",
+      "12", "rue des Lilas", "", "69100", "Villeurbanne",
+      "domicile", "mardi", "17:00", "45", "oui", "25", "cheque", "oui", "2024-09-10",
+      "Sophie", "Martin", "0611223344", "sophie.martin@example.com", "Debutante"],
+    // Adulte qui se paie lui-meme : colonnes payeur_* laissees vides
+    ["Paul", "Durand", "non", "0678901234", "paul.durand@example.com",
+      "3", "avenue Jean Jaures", "Bat. B", "69003", "Lyon",
+      "chez_prof", "mercredi", "18:30", "60", "oui", "30", "virement", "non", "",
+      "", "", "", "", ""],
+    // Fratrie : meme payeur_prenom + payeur_nom sur les deux lignes => un seul foyer
+    ["Claire", "Petit", "non", "", "",
+      "5", "chemin du Piano", "", "69005", "Lyon",
+      "domicile", "samedi", "10:00", "60", "oui", "22", "cheque", "oui", "",
+      "Marie", "Petit", "0700000000", "marie.petit@example.com", ""],
+    ["Tom", "Petit", "oui", "", "",
+      "5", "chemin du Piano", "", "69005", "Lyon",
+      "domicile", "samedi", "10:45", "30", "oui", "18", "cheque", "oui", "",
+      "Marie", "Petit", "0700000000", "marie.petit@example.com", ""],
   ];
   const body = rows.map((r) => r.map(csvCell).join(";")).join("\r\n");
   return "﻿" + body + "\r\n";
@@ -150,14 +156,21 @@ const HEADER_ALIASES = {
   duree: "duree_min", duree_min: "duree_min", duree_minutes: "duree_min",
   tarif: "tarif_habituel", tarif_habituel: "tarif_habituel", prix: "tarif_habituel",
   mode_paiement: "mode_paiement", paiement: "mode_paiement", reglement: "mode_paiement",
-  foyer: "foyer", famille: "foyer",
   notes: "notes", note: "notes", commentaire: "notes",
   mineur: "mineur",
   eligible_credit_impot: "eligible_credit_impot", credit_impot: "eligible_credit_impot",
+  credit_d_impot: "eligible_credit_impot",
   date_debut: "date_debut", debut: "date_debut",
   creneau_recurrent: "creneau_recurrent", recurrent: "creneau_recurrent",
-  rep_prenom: "rep_prenom", rep_nom: "rep_nom",
-  rep_telephone: "rep_telephone", rep_tel: "rep_telephone", rep_email: "rep_email",
+  payeur_prenom: "payeur_prenom", payeur_nom: "payeur_nom",
+  payeur_telephone: "payeur_telephone", payeur_tel: "payeur_telephone",
+  payeur_email: "payeur_email",
+  // libelle de foyer / representant : rattrapes vers le payeur
+  foyer: "payeur_nom", famille: "payeur_nom",
+  payeur: "payeur_nom", paye_par: "payeur_nom",
+  rep_prenom: "payeur_prenom", rep_nom: "payeur_nom",
+  representant_prenom: "payeur_prenom", representant_nom: "payeur_nom",
+  rep_telephone: "payeur_telephone", rep_tel: "payeur_telephone", rep_email: "payeur_email",
 };
 
 export function mapHeaders(headerRow) {
@@ -217,6 +230,14 @@ function normDate(v) {
 
 /**
  * Transforme les lignes CSV en eleves + payeurs prets a enregistrer.
+ *
+ * Payeur (pour le credit d'impot) :
+ *   - payeur_prenom / payeur_nom vides  -> l'eleve est son propre payeur.
+ *   - renseignes                        -> payeur commun ; les lignes portant le meme
+ *                                          couple prenom+nom sont regroupees sous un
+ *                                          seul foyer. L'adresse du payeur reprend celle
+ *                                          de l'eleve (modifiable ensuite dans l'appli).
+ *
  * @returns {{ eleves:Array, payeurs:Array, lignes:Array }}
  */
 export function csvToEleves(rows) {
@@ -224,7 +245,7 @@ export function csvToEleves(rows) {
   const headerCols = mapHeaders(rows[0]);
   const dataRows = rows.slice(1);
 
-  const foyerToPayeur = new Map();
+  const payeurParCle = new Map();
   const payeurs = [];
   const lignes = [];
   const eleves = [];
@@ -232,7 +253,7 @@ export function csvToEleves(rows) {
   dataRows.forEach((cells, i) => {
     const rec = {};
     headerCols.forEach((col, idx) => {
-      if (col) rec[col] = (cells[idx] ?? "").trim();
+      if (col && rec[col] == null) rec[col] = (cells[idx] ?? "").trim();
     });
 
     const erreurs = [];
@@ -253,15 +274,6 @@ export function csvToEleves(rows) {
       cp: rec.adr_cp || "",
       ville: rec.adr_ville || "",
     };
-
-    if (e.mineur || rec.rep_prenom || rec.rep_nom || rec.rep_telephone || rec.rep_email) {
-      e.representantLegal = {
-        prenom: rec.rep_prenom || "",
-        nom: rec.rep_nom || "",
-        telephone: rec.rep_telephone || "",
-        email: rec.rep_email || "",
-      };
-    }
 
     if (rec.lieu) {
       const l = normLieu(rec.lieu);
@@ -298,34 +310,49 @@ export function csvToEleves(rows) {
     if (rec.date_debut && !e.dateDebut) avertissements.push(`Date de debut « ${rec.date_debut} » ignoree`);
     e.notes = rec.notes || "";
 
-    const foyer = (rec.foyer || "").trim();
-    if (foyer) {
-      let p = foyerToPayeur.get(foyer.toLowerCase());
+    /* ----- Payeur (credit d'impot) ----- */
+    let pPrenom = (rec.payeur_prenom || "").trim();
+    let pNom = (rec.payeur_nom || "").trim();
+    // "payeur_nom" a pu recevoir un libelle complet via l'alias "foyer"/"payeur"
+    if (!pPrenom && pNom && /\s/.test(pNom)) {
+      const label = pNom.replace(/^famille\s+/i, "").trim();
+      const parts = label.split(/\s+/);
+      pPrenom = parts.length > 1 ? parts[0] : "";
+      pNom = parts.length > 1 ? parts.slice(1).join(" ") : parts[0];
+    }
+    let payeurNom = "";
+    if (pPrenom || pNom) {
+      const cle = `${pPrenom}${pNom}`.toLowerCase();
+      let p = payeurParCle.get(cle);
       if (!p) {
         p = nouveauPayeur();
         p.id = uid();
-        const label = foyer.replace(/^famille\s+/i, "").trim();
-        const parts = label.split(/\s+/);
-        p.prenom = parts.length > 1 ? parts[0] : "";
-        p.nom = parts.length > 1 ? parts.slice(1).join(" ") : parts[0] || foyer;
-        if (e.representantLegal && (e.representantLegal.prenom || e.representantLegal.nom)) {
-          p.prenom = e.representantLegal.prenom || p.prenom;
-          p.nom = e.representantLegal.nom || p.nom;
-          p.telephone = e.representantLegal.telephone || "";
-          p.email = e.representantLegal.email || "";
-        }
+        p.prenom = pPrenom;
+        p.nom = pNom;
+        p.telephone = rec.payeur_telephone || "";
+        p.email = rec.payeur_email || "";
         p.adresse = { ...e.adresse };
         p.modePaiementHabituel = e.modePaiementHabituel;
         p.eligibleCreditImpot = e.eligibleCreditImpot;
-        p._foyerLabel = foyer;
-        foyerToPayeur.set(foyer.toLowerCase(), p);
+        payeurParCle.set(cle, p);
         payeurs.push(p);
+      } else {
+        if (!p.telephone && rec.payeur_telephone) p.telephone = rec.payeur_telephone.trim();
+        if (!p.email && rec.payeur_email) p.email = rec.payeur_email.trim();
+        if (e.eligibleCreditImpot) p.eligibleCreditImpot = true;
       }
       e.payeurId = p.id;
+      payeurNom = [p.prenom, p.nom].filter(Boolean).join(" ");
+      if (e.mineur && !e.representantLegal) {
+        e.representantLegal = {
+          prenom: p.prenom, nom: p.nom,
+          telephone: p.telephone, email: p.email,
+        };
+      }
     }
 
     eleves.push(e);
-    lignes.push({ ligne: i + 2, eleve: e, foyer, erreurs, avertissements });
+    lignes.push({ ligne: i + 2, eleve: e, payeur: payeurNom, erreurs, avertissements });
   });
 
   return { eleves, payeurs, lignes };

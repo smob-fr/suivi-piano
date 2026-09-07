@@ -36,7 +36,9 @@ export async function parametresScreen() {
     formSection("Import CSV des élèves", [
       el("p.field__hint",
         "Charge tous tes élèves d'un coup. Télécharge le modèle, remplis-le, puis importe-le. " +
-        "La colonne « foyer » regroupe les élèves d'une même famille sous un payeur commun."
+        "Les colonnes payeur_prenom / payeur_nom servent au crédit d'impôt : laisse-les vides " +
+        "si l'élève se paie lui-même ; renseigne-les (mêmes valeurs sur plusieurs lignes) pour " +
+        "regrouper une famille sous un même payeur."
       ),
       el("div.btn-row", [
         btn("Télécharger le modèle CSV", { onClick: dlTemplate, variant: "ghost" }),
@@ -110,7 +112,7 @@ export async function parametresScreen() {
 
     const table = el("table.preview", [
       el("thead", el("tr", [
-        el("th", "Ligne"), el("th", "Élève"), el("th", "Créneau"), el("th", "Foyer"), el("th", "État"),
+        el("th", "Ligne"), el("th", "Élève"), el("th", "Créneau"), el("th", "Payeur"), el("th", "État"),
       ])),
       el("tbody", lignes.map((l) => {
         const c = l.eleve.creneaux[0];
@@ -118,7 +120,7 @@ export async function parametresScreen() {
           el("td", String(l.ligne)),
           el("td", personneNom(l.eleve) || "—"),
           el("td", c ? `${c.jour} ${c.heure} (${c.dureeMin}′)` : "—"),
-          el("td", l.foyer || "—"),
+          el("td", l.payeur || "lui-même"),
           el("td", l.erreurs.length
             ? l.erreurs.join(" ; ")
             : l.avertissements.length ? l.avertissements.join(" ; ") : "OK"),

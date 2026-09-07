@@ -289,10 +289,17 @@ Les données ne vivent que sur l'appareil.
 - **Import CSV des élèves** : chargement en masse depuis un fichier CSV (l'utilisateur a
   beaucoup d'élèves ; la saisie une à une serait trop longue).
   - Un **modèle CSV** est téléchargeable depuis l'appli (en-têtes + exemples).
-  - Colonnes : champs de la fiche élève + une colonne **`foyer`** optionnelle (libellé
-    libre) — les lignes partageant le même libellé sont rattachées à un **payeur commun** ;
-    `foyer` vide → l'élève est son propre payeur.
-  - Import avec **aperçu** et signalement des lignes en erreur avant validation.
+  - Colonnes : champs de la fiche élève + un bloc **payeur** :
+    `payeur_prenom`, `payeur_nom`, `payeur_telephone`, `payeur_email`.
+    - `payeur_prenom` / `payeur_nom` **vides** → l'élève est son propre payeur.
+    - **renseignés** → payeur commun ; les lignes portant le **même couple
+      prénom + nom** sont regroupées sous un seul foyer (c'est ce payeur qui figure sur
+      l'attestation crédit d'impôt). L'adresse du payeur reprend celle de l'élève
+      (modifiable ensuite dans l'appli).
+  - Les en-têtes sont reconnus souplement (`foyer`, `payeur`, `rep_nom`… sont rattachés
+    au bloc payeur).
+  - Import avec **aperçu** ligne par ligne et signalement des erreurs / avertissements
+    avant validation.
   - Séparateur `;` ou `,` détecté automatiquement ; encodage UTF-8.
 - Plus tard éventuellement : export vers un fichier partagé (Drive), à la main de
   l'utilisateur.
