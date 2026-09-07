@@ -1,6 +1,9 @@
 // Suivi Piano — service worker
-// Incrémente VERSION à chaque mise en ligne pour forcer le rafraîchissement du cache.
-const VERSION = "v0.4.1";
+//
+// Stratégie « réseau d'abord » : en ligne, l'appli récupère toujours la dernière
+// version ; le cache ne sert que de repli hors ligne.
+// Incrémente VERSION à chaque mise en ligne.
+const VERSION = "v0.4.2";
 const CACHE = `suivi-piano-${VERSION}`;
 
 const ASSETS = [
@@ -50,19 +53,23 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((response) => {
-          if (response && response.status === 200 && response.type === "basic") {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(request)
+      .then((response) => {
+        if (response && response.status === 200 && response.type === "basic") {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      })
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        if (request.mode === "navigate") return caches.match("./index.html");
+        throw new Error("hors ligne et non mis en cache");
+      })
   );
 });

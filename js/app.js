@@ -16,7 +16,7 @@ import { payeursListScreen, payeurFormScreen } from "./screens/payeurs.js";
 import { parametresScreen } from "./screens/parametres.js";
 import { placeholderScreen } from "./screens/placeholder.js";
 
-window.SUIVI_BUILD = "v0.4.1 · 2026-09-07";
+window.SUIVI_BUILD = "v0.4.2 · 2026-09-07";
 
 /* ---------- Structure de la page ---------- */
 const app = document.getElementById("app");
@@ -86,6 +86,12 @@ highlightNav(currentPath());
 /* ---------- Service worker ---------- */
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
+  let recharge = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (recharge) return;
+    recharge = true;
+    location.reload();
+  });
 }
 
 /* ---------- Génération des séances + rappel de sauvegarde ---------- */
