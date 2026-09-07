@@ -356,6 +356,41 @@ html, body {
 }
 .qv__fiche { align-self: center; font-size: 0.85rem; }
 
+/* ---------- Chiffres du mois (accueil) ---------- */
+.chiffres {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 18px;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 8px;
+  text-align: center;
+}
+.stat__val { font-weight: 700; font-size: 1rem; }
+.stat__lbl { color: var(--ink-soft); font-size: 0.72rem; margin-top: 2px; }
+
+/* ---------- Bouton flottant ---------- */
+.fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px);
+  z-index: 20;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
 @media (min-width: 560px) {
   .form-section__grid { grid-template-columns: 1fr 1fr; }
   .form-section__grid > .field--check,

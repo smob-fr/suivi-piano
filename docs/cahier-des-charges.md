@@ -218,22 +218,21 @@ Contrainte : l'API de notification programmée à heure fixe (Notification Trigg
 **abandonnée**. Une PWA seule ne peut pas garantir une notification quotidienne à une
 heure précise.
 
-**Décision — v1 : a) + b) ; c) en réserve.**
+**Décision — v1 : a) + b) ; c) en réserve.** _Fait._
 
-- **a) Via le calendrier du téléphone** _(mécanisme principal)_ : au premier lancement,
-  l'appli propose un bouton **« Créer le rappel quotidien dans mon calendrier »**. Il crée
-  un évènement récurrent quotidien à l'heure choisie (« Suivi Piano — vérifier les cours
-  de demain »). 100 % fiable, natif, aucun serveur. L'utilisateur ouvre l'appli et voit
-  le tableau de bord pour le détail.
-- **b) Notifications best-effort** _(appoint)_ : via Periodic Background Sync — le
-  navigateur réveille l'appli ~1 fois par jour, **sans garantie d'heure ni de jour**.
-  Peut afficher un résumé quand elle se déclenche.
+- **a) Via le calendrier du téléphone** _(mécanisme principal)_ : Paramètres → bouton
+  **« Ajouter le rappel au calendrier »** → télécharge un fichier **.ics** (évènement
+  quotidien récurrent `RRULE:FREQ=DAILY` + alarme, à l'heure choisie). L'utilisateur
+  l'ouvre pour l'importer dans l'agenda du téléphone. 100 % fiable, aucun serveur. Si
+  l'heure change, re-télécharger.
+- **b) Notifications best-effort** _(appoint)_ : bouton **« Activer les notifications »**
+  (demande la permission + enregistre un Periodic Background Sync). Le service worker
+  affiche alors une **notification générique** quand le navigateur le réveille — **sans
+  garantie d'heure ni de jour**.
 - **c) Push à heure fixe** _(en réserve, non développé)_ : mini-serveur gratuit
-  (cron + web-push) envoyant un rappel générique quotidien. À ajouter seulement si a) ne
-  suffit pas à l'usage.
+  (cron + web-push). À ajouter seulement si a) ne suffit pas.
 
-**Paramètre :** heure du rappel quotidien, réglable — **défaut 19 h**. Modifier l'heure
-mettra à jour l'évènement de calendrier (option a).
+**Paramètre :** heure du rappel quotidien, réglable — **défaut 19 h**.
 
 ### Ajouter un cours au calendrier — _optionnel, à valider à l'usage_
 Bouton sur une séance : crée l'évènement dans l'agenda du téléphone (rappel à l'heure
@@ -257,9 +256,9 @@ Ordre d'affichage, de haut en bas :
      bouton **Modifier** (durée / montant dans la popin), bouton **Absent / annulé**,
      lien « Ouvrir la fiche complète ». Pour une visite de foyer : montant unique +
      élèves présents à cocher. Les séances déjà `Effectuée` / `Annulée` ouvrent la fiche.
-4. **Chiffres du mois** — en bas, information discrète : cours effectués, montant,
-   **reste à facturer**.
-5. **Bouton « + séance ponctuelle »** (flottant).
+4. **Chiffres du mois** — en bas : cours effectués, montant du mois, **reste à facturer**
+   (= séances `Effectuées` non `facturées`). _Fait._
+5. **Bouton « + séance ponctuelle »** — bouton flottant en bas à droite. _Fait._
 
 **Navigation principale** — barre en bas, 5 entrées :
 `Accueil` · `Agenda` · `Élèves` · `Séances` · `Synthèse` — Paramètres via l'en-tête.
@@ -344,8 +343,9 @@ Ordre prévu, chaque étape étant testable sur le téléphone :
    le montant est porté par une séance présente pour l'attestation ; les autres passent à
    0 et sont rattachées), rattrapage lié depuis une séance annulée, onglet Séances
    (historique + filtres statut / facturée / élève / mois + total).
-5. **Accueil & Rappels** : tableau de bord complet, rappel calendrier, notifications
-   best-effort.
+5. ✅ **Accueil & Rappels** : chiffres du mois, nudge début-de-mois, bouton flottant ;
+   rappel calendrier (.ics récurrent) + notifications best-effort (permission + Periodic
+   Background Sync + notification générique du service worker).
 6. **Synthèse & Crédit d'impôt** : synthèse mensuelle par foyer + marquage `facturée`,
    liste des cours pour l'attestation (année civile, par foyer, totaux € + heures).
 7. **Finitions** : paramètres, rappel de sauvegarde, ajustements d'ergonomie.

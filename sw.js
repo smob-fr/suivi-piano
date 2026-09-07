@@ -3,7 +3,7 @@
 // Stratégie « réseau d'abord » : en ligne, l'appli récupère toujours la dernière
 // version ; le cache ne sert que de repli hors ligne.
 // Incrémente VERSION à chaque mise en ligne.
-const VERSION = "v0.4.2";
+const VERSION = "v0.5.0";
 const CACHE = `suivi-piano-${VERSION}`;
 
 const ASSETS = [
@@ -24,6 +24,7 @@ const ASSETS = [
   "./js/planning.js",
   "./js/seanceOps.js",
   "./js/quickValider.js",
+  "./js/rappels.js",
   "./js/screens/accueil.js",
   "./js/screens/agenda.js",
   "./js/screens/seance.js",
@@ -71,5 +72,33 @@ self.addEventListener("fetch", (event) => {
         if (request.mode === "navigate") return caches.match("./index.html");
         throw new Error("hors ligne et non mis en cache");
       })
+  );
+});
+
+/* ---------- Rappel quotidien (best-effort) ---------- */
+
+async function rappelGenerique() {
+  await self.registration.showNotification("Suivi Piano", {
+    body: "Pense à saisir tes cours et à préparer demain.",
+    icon: "./icons/icon-192.png",
+    badge: "./icons/icon-192.png",
+    tag: "rappel-quotidien",
+    renotify: true,
+  });
+}
+
+self.addEventListener("periodicsync", (event) => {
+  if (event.tag === "verif-quotidienne") event.waitUntil(rappelGenerique());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (c.url.includes("/suivi-piano") && "focus" in c) return c.focus();
+      }
+      return clients.openWindow("./");
+    })
   );
 });

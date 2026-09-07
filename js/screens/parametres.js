@@ -9,14 +9,24 @@ import {
 } from "../backup.js";
 import { templateCSV, parseCSV, csvToEleves } from "../csv.js";
 import { genererHorizon, creneauxSeChevauchent } from "../planning.js";
+import { telechargerRappelICS, activerNotifications, etatNotifications } from "../rappels.js";
 import { render, navigate } from "../router.js";
 
 export async function parametresScreen() {
   const jours = await joursDepuisSauvegarde();
   const lastBackup = await getParam("derniereSauvegarde", null);
   const heureRappel = await getParam("heureRappel", "19:00");
+  const state = { heure: heureRappel };
 
   const importResultBox = el("div");
+
+  function notifHint() {
+    const e = etatNotifications();
+    if (e === "unsupported") return "Notifications non supportées sur cet appareil.";
+    if (e === "denied") return "Notifications bloquées — à réautoriser dans les réglages du navigateur.";
+    if (e === "granted") return "Notifications autorisées. Le rappel « appli fermée » reste approximatif (dépend du navigateur) ; l'évènement de calendrier ci-dessus est le rappel fiable.";
+    return "En complément du calendrier : une notification générique, quand le navigateur réveille l'appli (approximatif).";
+  }
 
   const body = [
     /* ---- Sauvegarde complète ---- */
@@ -51,10 +61,33 @@ export async function parametresScreen() {
     /* ---- Rappel quotidien ---- */
     formSection("Rappel quotidien", [
       fieldText("Heure du rappel", heureRappel, async (v) => {
-        await setParam("heureRappel", v || "19:00");
+        state.heure = v || "19:00";
+        await setParam("heureRappel", state.heure);
         toast("Heure enregistrée.", "ok");
       }, { type: "time" }),
-      el("p.field__hint", "Le bouton « créer le rappel dans le calendrier » arrivera à l'étape 5."),
+      el("p.field__hint",
+        "Ajoute un évènement récurrent dans l'agenda de ton téléphone (mécanisme le plus fiable). " +
+        "Si tu changes l'heure, re-télécharge le fichier."
+      ),
+      el("div.btn-row", [
+        btn("Ajouter le rappel au calendrier", { onClick: () => { telechargerRappelICS(state.heure); toast("Fichier téléchargé — ouvre-le pour l'ajouter au calendrier.", "ok"); } }),
+      ]),
+      el("p.field__hint", notifHint()),
+      el("div.btn-row", [
+        btn(etatNotifications() === "granted" ? "Notifications activées ✓" : "Activer les notifications", {
+          onClick: async () => {
+            const r = await activerNotifications();
+            toast(
+              r === "granted" ? "Notifications activées." :
+              r === "denied" ? "Notifications refusées dans les réglages du navigateur." :
+              r === "unsupported" ? "Non supporté sur cet appareil." : "Non activées.",
+              r === "granted" ? "ok" : "warn"
+            );
+            render();
+          },
+          variant: etatNotifications() === "granted" ? "ghost" : "primary",
+        }),
+      ]),
     ]),
 
     /* ---- Zone dangereuse ---- */
