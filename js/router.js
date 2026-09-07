@@ -36,7 +36,12 @@ export function navigate(path) {
 }
 
 export function currentPath() {
-  return location.hash.slice(1) || "/";
+  return (location.hash.slice(1) || "/").split("?")[0];
+}
+
+export function currentQuery() {
+  const i = location.hash.indexOf("?");
+  return new URLSearchParams(i === -1 ? "" : location.hash.slice(i + 1));
 }
 
 export async function render() {

@@ -431,3 +431,16 @@ html, body {
 .info-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 0.88rem; }
 .info-row__label { color: var(--ink-soft); }
 .info-row__val { font-weight: 600; text-align: right; }
+
+/* ---------- Filtres (onglet Séances) ---------- */
+.filtres {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.filtres .field__input { padding: 8px 10px; font-size: 0.85rem; }
+@media (min-width: 560px) { .filtres { grid-template-columns: repeat(4, 1fr); } }
+.list-item.seance--prevue { border-left: 4px solid var(--accent); }
+.list-item.seance--effectuee { border-left: 4px solid var(--ok); }
+.list-item.seance--annulee { border-left: 4px solid var(--danger); opacity: 0.75; }

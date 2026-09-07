@@ -90,3 +90,17 @@ export function montantParDefaut({ eleve, payeur, groupe }) {
 
 export const CRITERES_CREDIT_IMPOT =
   "Cours retenu si : statut Effectuée, lieu « Domicile de l'élève », mode de paiement ≠ Liquide, foyer éligible.";
+
+/**
+ * Séances qui composent la même « visite » : même foyer (payeur), même date.
+ * Renvoie [seance] si la séance est individuelle ou seule ce jour-là.
+ * Triées par heure ; la première est la « porteuse » du montant.
+ */
+export function membresVisite(seance, toutes) {
+  if (!seance || seance.payeurType !== "payeur") return [seance].filter(Boolean);
+  const groupe = toutes.filter(
+    (s) => s.payeurType === "payeur" && s.payeurId === seance.payeurId && s.date === seance.date
+  );
+  if (groupe.length <= 1) return [seance];
+  return groupe.slice().sort((a, b) => String(a.heure).localeCompare(String(b.heure)));
+}

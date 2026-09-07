@@ -166,11 +166,20 @@ l'attestation.
 
 ### Rattrapage
 - Depuis une séance `Annulée` : action **« Programmer un rattrapage »** → crée une séance
-  ponctuelle à la date/heure choisie, **liée** à la séance annulée (mention « remplace le
-  cours du JJ/MM », purement informative).
+  ponctuelle (même élève, même durée, date pré-remplie à +7 jours), **liée** à la séance
+  annulée (`rattrapageDe`). Les deux fiches affichent le lien ; le bouton disparaît une
+  fois le rattrapage créé.
 - Le rattrapage est une séance normale, **facturée au tarif habituel** (la séance annulée
   ne l'ayant pas été).
 - Sinon : **supprimer** la séance annulée, sans rattrapage.
+
+### Visite de foyer
+- Quand plusieurs séances concernent le **même payeur le même jour**, l'écran séance
+  affiche un bloc **« Visite du foyer »** : un seul statut, un seul montant (pré-rempli
+  depuis le forfait du payeur), des cases **présent** par élève.
+- À l'enregistrement : la séance qui **porte le montant** est le premier membre présent
+  (pour que l'attestation crédit d'impôt la retienne) ; les autres passent à **0 €** et
+  sont **rattachées** (`rattacheeA`). Un membre décoché passe en `Annulée`.
 
 ### Modification
 - Toute séance, même passée, reste **ouvrable et modifiable sans limite de délai**
@@ -326,8 +335,10 @@ Ordre prévu, chaque étape étant testable sur le téléphone :
    vues Semaine / Jour / Liste, regroupement foyer (visuel), périodes sans cours, jours
    fériés signalés. Accueil et écran Séance en version simple (statut, montant,
    commentaire, suppression, séance ponctuelle).
-4. **Séances (compléments)** : présents multi-élèves, rattrapage lié, fusion foyer à la
-   confirmation, onglet Séances (historique + filtres).
+4. ✅ **Séances (compléments)** : visite de foyer (un seul montant, élèves présents cochés,
+   le montant est porté par une séance présente pour l'attestation ; les autres passent à
+   0 et sont rattachées), rattrapage lié depuis une séance annulée, onglet Séances
+   (historique + filtres statut / facturée / élève / mois + total).
 5. **Accueil & Rappels** : tableau de bord complet, rappel calendrier, notifications
    best-effort.
 6. **Synthèse & Crédit d'impôt** : synthèse mensuelle par foyer + marquage `facturée`,
