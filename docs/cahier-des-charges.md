@@ -229,11 +229,46 @@ mettra à jour l'évènement de calendrier (option a).
 Bouton sur une séance : crée l'évènement dans l'agenda du téléphone (rappel à l'heure
 pile avant le cours).
 
-## 11. Tableau de bord — _À définir (point 6)_
+## 11. Tableau de bord (écran d'accueil)
 
-Ce que le professeur voit à l'ouverture de l'application.
+Ordre d'affichage, de haut en bas :
 
-## 12. Agenda / planning — _À définir_
+1. **En-tête** : date du jour ; icône **Paramètres** en haut à droite.
+2. **Carte « À faire »** — compacte, **un seul bloc affichant le nombre d'actions en
+   attente** (l'agenda doit rester visible sans scroller). Au tap, ouverture du détail :
+   - séances passées encore en `Prévue` (« à saisir ») ;
+   - rattrapages à programmer (séances `Annulée` sans suite) — persistant ;
+   - en début de mois : « faire la synthèse de {mois précédent} ».
+   - 0 action → carte discrète « rien à faire ».
+3. **Agenda du jour** — bien visible : cours d'aujourd'hui (heure · foyer/élève · lieu ·
+   statut · bouton « saisir ») puis **aperçu « Demain »**.
+4. **Chiffres du mois** — en bas, information discrète : cours effectués, montant,
+   **reste à facturer**.
+5. **Bouton « + séance ponctuelle »** (flottant).
 
-Génération de la semaine à partir des créneaux récurrents, regroupement visuel des
-séances d'un même foyer à la même adresse, séances ponctuelles.
+**Navigation principale** — barre en bas, 5 entrées :
+`Accueil` · `Agenda` · `Élèves` · `Séances` · `Synthèse` — Paramètres via l'en-tête.
+
+> _À trancher :_ garder un onglet **Séances** séparé (historique cherchable, tous élèves
+> confondus, filtres statut / facturée / période), **ou** en faire un mode « Liste » dans
+> l'Agenda (barre ramenée à 4 entrées). L'utilisateur a validé l'idée d'un accès
+> historique ; la forme reste ouverte.
+
+## 12. Agenda / planning — _À définir (point 7)_
+
+Proposition à valider :
+
+- **Vue Semaine** par défaut : les 7 jours, séances positionnées à l'heure, **couleur
+  selon le statut** (`Prévue` / `Effectuée` / `Annulée`). Navigation semaine ± ; bouton
+  « aujourd'hui ». Vue Jour et vue Liste également.
+- **Génération automatique** : à partir des créneaux récurrents des élèves `Actifs`,
+  l'appli crée les séances `Prévue` à l'avance sur un horizon **à définir** (2 semaines ?
+  le mois courant + le suivant ?).
+- **Regroupement foyer** : séances consécutives au même lieu affichées groupées
+  (« Famille Untel — 14 h → 16 h · 3 élèves »).
+- **Séances ponctuelles** : ajout direct sur un créneau libre.
+- **Périodes sans cours** (vacances scolaires, absences du professeur) : possibilité de
+  **bloquer une plage de dates** → pas de génération, séances non créées.
+- **Jours fériés** : exclusion automatique ou ajustement manuel — à trancher.
+- **Changement d'un créneau récurrent** : les séances déjà générées et non encore
+  `Effectuée` sont mises à jour ; les séances passées ne bougent pas.
