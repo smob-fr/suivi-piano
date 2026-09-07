@@ -331,3 +331,103 @@ html, body {
   .form-section__grid > .field--check,
   .form-section__grid > .field:only-child { grid-column: 1 / -1; }
 }
+
+/* ---------- Agenda ---------- */
+.agenda__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg__btn {
+  border: 0;
+  background: var(--surface);
+  color: var(--ink-soft);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.seg__btn--on { background: var(--accent); color: var(--accent-ink); }
+.agenda__nav { display: flex; gap: 4px; }
+.agenda__titre-wrap { margin: 4px 0 12px; }
+.agenda__titre { font-weight: 650; color: var(--ink-soft); font-size: 0.9rem; }
+
+.semaine, .liste { display: grid; gap: 14px; }
+.jour { display: grid; gap: 6px; }
+.jour__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+}
+.jour__head--today .jour__label { color: var(--accent); font-weight: 700; }
+.jour__label { font-weight: 600; font-size: 0.9rem; text-transform: capitalize; }
+.jour__list { display: grid; gap: 6px; }
+.jour__vide { color: var(--ink-soft); font-size: 0.82rem; margin: 2px 0 0; }
+.j-mini { font-size: 0.72rem; color: var(--ink-soft); text-transform: capitalize; }
+
+.seance {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--ink-soft);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 9px 11px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.seance--prevue { border-left-color: var(--accent); }
+.seance--effectuee { border-left-color: var(--ok); }
+.seance--annulee { border-left-color: var(--danger); opacity: 0.72; }
+.seance__time { font-variant-numeric: tabular-nums; font-size: 0.8rem; color: var(--ink-soft); white-space: nowrap; padding-top: 1px; }
+.seance__body { display: grid; gap: 1px; min-width: 0; }
+.seance__title { font-weight: 600; display: flex; gap: 5px; align-items: center; }
+.seance__ic { font-size: 0.9rem; }
+.seance__sub { font-size: 0.8rem; color: var(--ink-soft); }
+.seance__foyer { font-size: 0.72rem; color: var(--accent); }
+
+/* ---------- Accueil ---------- */
+.todo-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 14px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  margin-bottom: 14px;
+}
+.todo-card__n {
+  min-width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.todo-card__txt { font-weight: 600; text-align: left; }
+.todo-detail { display: grid; gap: 6px; margin: -6px 0 16px; }
+.bloc { margin-bottom: 16px; display: grid; gap: 6px; }
+.bloc-titre { margin: 6px 0 2px; font-size: 0.92rem; }
+
+/* ---------- Lignes info (récapitulatif séance) ---------- */
+.info-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 0.88rem; }
+.info-row__label { color: var(--ink-soft); }
+.info-row__val { font-weight: 600; text-align: right; }

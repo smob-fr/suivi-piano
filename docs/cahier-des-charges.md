@@ -312,14 +312,17 @@ Les données ne vivent que sur l'appareil.
 
 Ordre prévu, chaque étape étant testable sur le téléphone :
 
-1. **Fondations** : modèle de données IndexedDB (Élève, Payeur/Foyer, Créneau, Séance,
-   Périodes sans cours, Paramètres) + export / import JSON.
-2. **Élèves & Foyers** : liste (actifs / archivés), fiche élève complète, payeurs.
-3. **Créneaux & Agenda** : saisie des créneaux, génération des séances `Prévue`
-   (2 semaines), vue Semaine + Jour, regroupement foyer, périodes sans cours, jours fériés.
-4. **Séances** : écran séance (confirmer / éditer), séance ponctuelle, rattrapage,
-   onglet Séances (historique + filtres).
-5. **Accueil & Rappels** : tableau de bord, rappel calendrier, notifications best-effort.
+1. ✅ **Fondations** : modèle de données IndexedDB + export / import JSON.
+2. ✅ **Élèves & Foyers** : liste (actifs / archivés), fiche élève complète, payeurs,
+   import CSV.
+3. ✅ **Créneaux & Agenda** : génération des séances `Prévue` (2 semaines glissantes),
+   vues Semaine / Jour / Liste, regroupement foyer (visuel), périodes sans cours, jours
+   fériés signalés. Accueil et écran Séance en version simple (statut, montant,
+   commentaire, suppression, séance ponctuelle).
+4. **Séances (compléments)** : présents multi-élèves, rattrapage lié, fusion foyer à la
+   confirmation, onglet Séances (historique + filtres).
+5. **Accueil & Rappels** : tableau de bord complet, rappel calendrier, notifications
+   best-effort.
 6. **Synthèse & Crédit d'impôt** : synthèse mensuelle par foyer + marquage `facturée`,
    liste des cours pour l'attestation (année civile, par foyer, totaux € + heures).
 7. **Finitions** : paramètres, rappel de sauvegarde, ajustements d'ergonomie.

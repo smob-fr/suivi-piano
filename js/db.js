@@ -165,6 +165,13 @@ export const payeurs = {
   remove: (id) => remove("payeurs", id),
 };
 
+export const seances = {
+  all: () => getAll("seances"),
+  get: (id) => get("seances", id),
+  save: (s) => put("seances", s),
+  remove: (id) => remove("seances", id),
+};
+
 /** Nombre d'élèves rattachés à un payeur donné. */
 export async function elevesDuPayeur(payeurId) {
   const list = await getAll("eleves");

@@ -1,16 +1,21 @@
 // Suivi Piano — point d'entrée
 
-import { el } from "./util.js";
+import { el, toast } from "./util.js";
 import { initRouter, route, setNotFound, render, navigate, currentPath } from "./router.js";
 import { verifierRappelSauvegarde } from "./backup.js";
+import { genererHorizon } from "./planning.js";
 
+import { accueilScreen } from "./screens/accueil.js";
+import { agendaScreen } from "./screens/agenda.js";
+import { seanceScreen } from "./screens/seance.js";
+import { periodesScreen } from "./screens/periodes.js";
 import { elevesListScreen } from "./screens/eleves.js";
 import { eleveFormScreen } from "./screens/eleveForm.js";
 import { payeursListScreen, payeurFormScreen } from "./screens/payeurs.js";
 import { parametresScreen } from "./screens/parametres.js";
 import { placeholderScreen } from "./screens/placeholder.js";
 
-window.SUIVI_BUILD = "v0.2.2 · 2026-09-07";
+window.SUIVI_BUILD = "v0.3.0 · 2026-09-07";
 
 /* ---------- Structure de la page ---------- */
 const app = document.getElementById("app");
@@ -46,9 +51,11 @@ app.append(header, main, nav);
 
 /* ---------- Routes ---------- */
 route("/", () => { navigate("/accueil"); return el("div"); });
-route("/accueil", () => placeholderScreen("Accueil", 5));
-route("/agenda", () => placeholderScreen("Agenda", 3));
-route("/seances", () => placeholderScreen("Séances", 4));
+route("/accueil", accueilScreen);
+route("/agenda", agendaScreen);
+route("/seances", () => { navigate("/agenda"); return el("div"); });
+route("/seances/:id", seanceScreen);
+route("/periodes", periodesScreen);
 route("/synthese", () => placeholderScreen("Synthèse", 6));
 
 route("/eleves", elevesListScreen);
@@ -62,8 +69,10 @@ setNotFound(() => placeholderScreen("Page introuvable", 0));
 /* ---------- Surlignage de l'onglet actif ---------- */
 function highlightNav(path) {
   const root = "/" + (path.split("/")[1] || "accueil");
+  const map = { "/seances": "/agenda", "/periodes": "/agenda", "/payeurs": "/eleves" };
+  const active = map[root] || root;
   [...nav.children].forEach((item) => {
-    item.classList.toggle("app-nav__item--on", item.dataset.path === root);
+    item.classList.toggle("app-nav__item--on", item.dataset.path === active);
   });
 }
 
@@ -78,5 +87,13 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
-/* ---------- Rappel de sauvegarde (léger, au démarrage) ---------- */
-setTimeout(() => { verifierRappelSauvegarde().catch(() => {}); }, 1500);
+/* ---------- Génération des séances + rappel de sauvegarde ---------- */
+setTimeout(async () => {
+  try {
+    const r = await genererHorizon();
+    if (r.crees) render();
+  } catch (e) {
+    console.error("génération séances", e);
+  }
+  verifierRappelSauvegarde().catch(() => {});
+}, 400);

@@ -1,6 +1,6 @@
 // Suivi Piano — service worker
 // Incrémente VERSION à chaque mise en ligne pour forcer le rafraîchissement du cache.
-const VERSION = "v0.2.2";
+const VERSION = "v0.3.0";
 const CACHE = `suivi-piano-${VERSION}`;
 
 const ASSETS = [
@@ -18,6 +18,11 @@ const ASSETS = [
   "./js/model.js",
   "./js/csv.js",
   "./js/backup.js",
+  "./js/planning.js",
+  "./js/screens/accueil.js",
+  "./js/screens/agenda.js",
+  "./js/screens/seance.js",
+  "./js/screens/periodes.js",
   "./js/screens/eleves.js",
   "./js/screens/eleveForm.js",
   "./js/screens/payeurs.js",

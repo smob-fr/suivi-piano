@@ -18,7 +18,7 @@ export function el(spec, props, children) {
     if (token[0] === "#") node.id = token.slice(1);
     else if (token[0] === ".") node.classList.add(token.slice(1));
   }
-  if (props && (Array.isArray(props) || typeof props !== "object")) {
+  if (props && (Array.isArray(props) || props instanceof Node || typeof props !== "object")) {
     children = props;
     props = null;
   }
