@@ -118,15 +118,58 @@ total payé + nombre d'heures. Conforme à une attestation de services à la per
 Répartition par élève (parts égales) possible **uniquement** pour des statistiques de
 revenu internes, jamais au moment de la saisie.
 
-## 8. Séance / saisie d'un cours — _À définir (point 3)_
+## 8. Séance / saisie d'un cours
 
-Points à traiter : statut présent / absent / annulé, cours de rattrapage, commentaire
-sur le travail fait / à faire, séance hors créneau habituel, modification a posteriori.
+### Cycle de vie
+- **`Prévue`** : générée automatiquement à partir des créneaux récurrents, pour la semaine
+  à venir. Apparaît dans l'agenda et dans les rappels « séances à saisir ».
+- **`Effectuée`** : le cours a eu lieu. **Seul statut facturé.**
+- **`Annulée`** : le cours n'a pas eu lieu. **Jamais facturé** (montant 0), quelle qu'en
+  soit la raison (élève, professeur, absence non prévenue — aucune distinction).
+- Une séance peut aussi être **supprimée purement et simplement**, sans aucune
+  conséquence financière.
+
+### Création
+- **Automatique** : l'appli pré-remplit la semaine depuis les créneaux récurrents
+  (statut `Prévue`).
+- **Manuelle** : bouton **« + séance ponctuelle »** — cours d'essai, rattrapage, cours
+  supplémentaire, stage de vacances.
+
+### Champs
+| Champ | Pré-rempli depuis | Note |
+|---|---|---|
+| Date + heure | le créneau | modifiable |
+| Élève **ou** Payeur / Foyer | — | élève seul : direct |
+| Élèves présents | tous cochés | on décoche les absents |
+| Statut | `Prévue` puis `Effectuée` | ou `Annulée` |
+| Durée | fiche élève / forfait | pas de 15 min |
+| Lieu | fiche élève | Domicile / Visio / Chez le professeur |
+| Montant | tarif habituel / forfait | **0** si `Annulée` (reste modifiable) |
+| Mode de paiement | fiche élève / payeur | |
+| Payé ? | non | voir §9 |
+| Commentaire | vide | **un seul champ libre** (travail fait / à faire) ; pour une famille, l'utilisateur y précise le prénom concerné |
+
+### Rattrapage
+- Depuis une séance `Annulée` : action **« Programmer un rattrapage »** → crée une séance
+  ponctuelle à la date/heure choisie, **liée** à la séance annulée (mention « remplace le
+  cours du JJ/MM », purement informative).
+- Le rattrapage est une séance normale, **facturée au tarif habituel** (la séance annulée
+  ne l'ayant pas été).
+- Sinon : **supprimer** la séance annulée, sans rattrapage.
+
+### Modification
+- Toute séance, même passée, reste **ouvrable et modifiable sans limite de délai**
+  (montant, présents, statut, payé, commentaire).
 
 ## 9. Suivi des paiements — _À définir (point 4)_
 
-Granularité (par séance, par mois, par forfait), état payé / dû, rapprochement des
-règlements, modes de paiement à distinguer.
+Acquis : le règlement est **découplé de la séance**. L'élève peut payer juste après le
+cours, quelques jours plus tard, ou en une fois pour tout le mois. Il faut donc pouvoir
+**marquer plusieurs séances payées en une seule opération** (un chèque pour le mois).
+
+À traiter : état payé / dû par élève et par période, saisie d'un règlement (date,
+montant, mode) couvrant une ou plusieurs séances, relevé mensuel à remettre à la
+famille, modes de paiement à distinguer.
 
 ## 10. Rappels — _À définir (point 5)_
 
