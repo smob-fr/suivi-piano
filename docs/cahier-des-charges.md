@@ -206,19 +206,24 @@ Toujours fiable, c'est la base. Éléments :
 ### Rappel quotidien à heure fixe (appli fermée)
 Contrainte : l'API de notification programmée à heure fixe (Notification Triggers) est
 **abandonnée**. Une PWA seule ne peut pas garantir une notification quotidienne à une
-heure précise. Trois approches (décision en cours) :
+heure précise.
 
-- **a) Via le calendrier du téléphone** _(recommandé pour démarrer)_ : l'appli crée un
-  évènement récurrent quotidien à l'heure choisie (« Suivi Piano — vérifier les cours de
-  demain »). 100 % fiable, natif, aucun serveur. Pas de détail dans l'évènement :
-  l'utilisateur ouvre l'appli et voit le tableau de bord.
-- **b) Notifications best-effort** _(sans serveur, en complément)_ : via Periodic
-  Background Sync — le navigateur réveille l'appli ~1 fois par jour, **sans garantie
-  d'heure ni de jour**. En appoint, pas en principal.
-- **c) Push à heure fixe** _(en réserve)_ : mini-serveur gratuit (cron + web-push) qui
-  envoie chaque jour un rappel générique (« Ouvre Suivi Piano »). Fiable. Les données
-  restant sur le téléphone, le serveur n'envoie qu'un rappel générique. À mettre en place
-  seulement si a) ne suffit pas à l'usage.
+**Décision — v1 : a) + b) ; c) en réserve.**
+
+- **a) Via le calendrier du téléphone** _(mécanisme principal)_ : au premier lancement,
+  l'appli propose un bouton **« Créer le rappel quotidien dans mon calendrier »**. Il crée
+  un évènement récurrent quotidien à l'heure choisie (« Suivi Piano — vérifier les cours
+  de demain »). 100 % fiable, natif, aucun serveur. L'utilisateur ouvre l'appli et voit
+  le tableau de bord pour le détail.
+- **b) Notifications best-effort** _(appoint)_ : via Periodic Background Sync — le
+  navigateur réveille l'appli ~1 fois par jour, **sans garantie d'heure ni de jour**.
+  Peut afficher un résumé quand elle se déclenche.
+- **c) Push à heure fixe** _(en réserve, non développé)_ : mini-serveur gratuit
+  (cron + web-push) envoyant un rappel générique quotidien. À ajouter seulement si a) ne
+  suffit pas à l'usage.
+
+**Paramètre :** heure du rappel quotidien, réglable — **défaut 19 h**. Modifier l'heure
+mettra à jour l'évènement de calendrier (option a).
 
 ### Ajouter un cours au calendrier — _optionnel, à valider à l'usage_
 Bouton sur une séance : crée l'évènement dans l'agenda du téléphone (rappel à l'heure
