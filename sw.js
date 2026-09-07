@@ -1,16 +1,28 @@
 // Suivi Piano — service worker
 // Incrémente VERSION à chaque mise en ligne pour forcer le rafraîchissement du cache.
-const VERSION = "v0.1.0";
+const VERSION = "v0.2.0";
 const CACHE = `suivi-piano-${VERSION}`;
 
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
-  "./app.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./js/app.js",
+  "./js/router.js",
+  "./js/util.js",
+  "./js/ui.js",
+  "./js/db.js",
+  "./js/model.js",
+  "./js/csv.js",
+  "./js/backup.js",
+  "./js/screens/eleves.js",
+  "./js/screens/eleveForm.js",
+  "./js/screens/payeurs.js",
+  "./js/screens/parametres.js",
+  "./js/screens/placeholder.js",
 ];
 
 self.addEventListener("install", (event) => {

@@ -279,14 +279,22 @@ confondus, avec filtres (statut, facturée / non, période, élève).
 - **Sauvegarde / export** des données (voir §14).
 - Divers : à compléter au fil du développement.
 
-## 14. Sauvegarde et données — _à préciser_
+## 14. Sauvegarde et données
 
-Les données ne vivent que sur l'appareil. Il faut :
+Les données ne vivent que sur l'appareil.
 
-- un **export manuel** (fichier JSON) et un **ré-import** — filet de sécurité, à faire
-  dès la v1 ;
-- un **rappel périodique** « pense à sauvegarder » ;
-- plus tard éventuellement : export vers un fichier partagé (Drive) à la main de
+- **Sauvegarde complète** : export d'un fichier **JSON** (toutes les entités) et
+  ré-import. Filet de sécurité, présent dès la v1.
+- **Rappel périodique** « pense à sauvegarder ».
+- **Import CSV des élèves** : chargement en masse depuis un fichier CSV (l'utilisateur a
+  beaucoup d'élèves ; la saisie une à une serait trop longue).
+  - Un **modèle CSV** est téléchargeable depuis l'appli (en-têtes + exemples).
+  - Colonnes : champs de la fiche élève + une colonne **`foyer`** optionnelle (libellé
+    libre) — les lignes partageant le même libellé sont rattachées à un **payeur commun** ;
+    `foyer` vide → l'élève est son propre payeur.
+  - Import avec **aperçu** et signalement des lignes en erreur avant validation.
+  - Séparateur `;` ou `,` détecté automatiquement ; encodage UTF-8.
+- Plus tard éventuellement : export vers un fichier partagé (Drive), à la main de
   l'utilisateur.
 
 ## 15. Plan de construction v1

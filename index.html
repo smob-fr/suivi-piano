@@ -11,31 +11,9 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="app-header">
-    <h1>Suivi&nbsp;Piano</h1>
-    <span id="net" class="badge badge--wait">…</span>
-  </header>
-
-  <main class="app-main">
-    <section class="card">
-      <h2>Version&nbsp;0 &mdash; squelette</h2>
-      <p>L'ossature technique est en place. Les &eacute;crans (&eacute;l&egrave;ves, cours, paiements)
-         arriveront apr&egrave;s le cahier des charges.</p>
-      <ul class="checks">
-        <li id="chk-sw" class="check check--wait">Service worker</li>
-        <li id="chk-db" class="check check--wait">Base locale (IndexedDB)</li>
-        <li id="chk-install" class="check check--wait">Mode install&eacute;</li>
-      </ul>
-      <p class="version">build <span id="build">&mdash;</span></p>
-    </section>
-
-    <nav class="tiles" aria-label="Sections &agrave; venir">
-      <div class="tile" aria-disabled="true">&Eacute;l&egrave;ves</div>
-      <div class="tile" aria-disabled="true">Cours</div>
-      <div class="tile" aria-disabled="true">Paiements</div>
-    </nav>
-  </main>
-
-  <script src="app.js"></script>
+  <div id="app">
+    <p style="padding:24px;font:16px system-ui">Chargement…</p>
+  </div>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

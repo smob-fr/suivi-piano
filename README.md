@@ -9,11 +9,26 @@ Application web installable (PWA) pour le suivi des cours de piano :
 
 ## État
 
-Version 0 — squelette technique. Les écrans métier seront ajoutés après le cahier des charges.
+Étapes 1 et 2 du plan (voir `docs/cahier-des-charges.md` §15) :
+
+- couche de données IndexedDB + sauvegarde / restauration JSON ;
+- gestion des élèves (liste, fiche complète, archivage, suppression) ;
+- gestion des payeurs / foyers ;
+- import CSV des élèves (modèle téléchargeable, aperçu avant import).
+
+Les autres écrans (Accueil, Agenda, Séances, Synthèse) sont des espaces réservés.
+
+## Architecture
+
+Site statique, sans étape de build. Modules ES natifs sous `js/` :
+
+- `db.js` — IndexedDB + export/import
+- `model.js` — fabriques et règles métier
+- `csv.js` — analyse et import CSV
+- `router.js` — routeur `#/`
+- `screens/` — un module par écran
 
 ## Développement
-
-Site statique, sans étape de build. Pour tester en local :
 
 ```bash
 python -m http.server 8000
@@ -21,4 +36,5 @@ python -m http.server 8000
 
 puis ouvrir http://localhost:8000
 
-À chaque mise en ligne, incrémenter `VERSION` dans `sw.js` et `BUILD` dans `app.js`.
+À chaque mise en ligne : incrémenter `VERSION` dans `sw.js` et `SUIVI_BUILD` dans
+`js/app.js`.
