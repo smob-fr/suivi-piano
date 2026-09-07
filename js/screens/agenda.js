@@ -8,7 +8,8 @@ import {
   today, addDays, lundiDeLaSemaine, libelleJour,
   finHeure, ferieNom, enPeriode, periodes as periodesDB,
 } from "../planning.js";
-import { navigate } from "../router.js";
+import { navigate, render } from "../router.js";
+import { ouvrirQuickValider } from "../quickValider.js";
 
 const state = { ancre: today(), vue: "semaine" };
 
@@ -62,7 +63,9 @@ export async function agendaScreen() {
       s.montant != null ? fmtEUR(s.montant) : null,
       s.facturee ? "facturée" : null,
     ].filter(Boolean).join(" · ");
-    return el("button.seance", { class: `seance--${s.statut}`, onclick: () => navigate(`/seances/${s.id}`) }, [
+    const ouvrir = () =>
+      s.statut === "prevue" ? ouvrirQuickValider(s.id, () => render()) : navigate(`/seances/${s.id}`);
+    return el("button.seance", { class: `seance--${s.statut}`, onclick: ouvrir }, [
       el("span.seance__time", `${s.heure}–${finHeure(s.heure, s.dureeMin)}`),
       el("span.seance__body", [
         el("span.seance__title", [

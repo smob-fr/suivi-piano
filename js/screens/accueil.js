@@ -5,7 +5,8 @@ import { screen, btn, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB } from "../db.js";
 import { libelleEleve } from "../model.js";
 import { today, addDays, libelleJour, finHeure } from "../planning.js";
-import { navigate } from "../router.js";
+import { navigate, render } from "../router.js";
+import { ouvrirQuickValider } from "../quickValider.js";
 
 export async function accueilScreen() {
   const [seances, elevesAll] = await Promise.all([seancesDB.all(), elevesDB.all()]);
@@ -18,8 +19,13 @@ export async function accueilScreen() {
   );
   const rattrapages = seances.filter((s) => s.statut === "annulee" && !seances.some((x) => x.rattrapageDe === s.id));
 
+  const ouvrir = (s) =>
+    s.statut === "prevue"
+      ? ouvrirQuickValider(s.id, () => render())
+      : navigate(`/seances/${s.id}`);
+
   const ligneSeance = (s) =>
-    el("button.seance", { class: `seance--${s.statut}`, onclick: () => navigate(`/seances/${s.id}`) }, [
+    el("button.seance", { class: `seance--${s.statut}`, onclick: () => ouvrir(s) }, [
       el("span.seance__time", `${s.heure}–${finHeure(s.heure, s.dureeMin)}`),
       el("span.seance__body", [
         el("span.seance__title", libelleEleve(eleveById.get(s.eleveId) || {})),

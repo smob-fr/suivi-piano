@@ -30,6 +30,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
@@ -325,6 +326,35 @@ html, body {
 }
 .modal__msg { margin: 0; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---------- Popin de validation rapide ---------- */
+.qv { gap: 12px; }
+.qv__head { display: grid; gap: 2px; }
+.qv__titre { font-size: 1.05rem; }
+.qv__sous { color: var(--ink-soft); font-size: 0.85rem; text-transform: capitalize; }
+.qv__resume { margin: 0; font-weight: 600; font-size: 1rem; }
+.qv__oui { width: 100%; padding: 14px; font-size: 1.05rem; }
+.qv__row { display: flex; gap: 8px; }
+.qv__row .btn { flex: 1; }
+.qv__edit { display: grid; gap: 10px; padding-top: 4px; }
+.qv__presents { display: flex; flex-wrap: wrap; gap: 6px; }
+.qv__chip {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: line-through;
+}
+.qv__chip--on {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  border-color: var(--ok);
+  color: var(--ink);
+  text-decoration: none;
+}
+.qv__fiche { align-self: center; font-size: 0.85rem; }
 
 @media (min-width: 560px) {
   .form-section__grid { grid-template-columns: 1fr 1fr; }

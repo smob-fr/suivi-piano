@@ -251,7 +251,12 @@ Ordre d'affichage, de haut en bas :
    - en début de mois : « faire la synthèse de {mois précédent} ».
    - 0 action → carte discrète « rien à faire ».
 3. **Agenda du jour** — bien visible : cours d'aujourd'hui (heure · foyer/élève · lieu ·
-   statut · bouton « saisir ») puis **aperçu « Demain »**.
+   statut) puis **aperçu « Demain »**.
+   - **Validation rapide** : un tap sur une séance `Prévue` (accueil ou agenda) ouvre une
+     **popin** : « Valider ce cours (1 h — 45 €) » + bouton **OUI** (2 taps = fait),
+     bouton **Modifier** (durée / montant dans la popin), bouton **Absent / annulé**,
+     lien « Ouvrir la fiche complète ». Pour une visite de foyer : montant unique +
+     élèves présents à cocher. Les séances déjà `Effectuée` / `Annulée` ouvrent la fiche.
 4. **Chiffres du mois** — en bas, information discrète : cours effectués, montant,
    **reste à facturer**.
 5. **Bouton « + séance ponctuelle »** (flottant).
