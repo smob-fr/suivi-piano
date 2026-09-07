@@ -2,13 +2,13 @@
 
 import { el, toast, confirmDialog, fmtDateFR, personneNom } from "../util.js";
 import { screen, btn, formSection, fieldText } from "../ui.js";
-import { getParam, setParam, STORES, clearStore } from "../db.js";
+import { getParam, setParam, STORES, clearStore, getAll } from "../db.js";
 import {
   exporterSauvegarde, importerSauvegarde, pickFile, readFileText,
   downloadFile, joursDepuisSauvegarde, enregistrerImportCsv,
 } from "../backup.js";
 import { templateCSV, parseCSV, csvToEleves } from "../csv.js";
-import { genererHorizon } from "../planning.js";
+import { genererHorizon, creneauxSeChevauchent } from "../planning.js";
 import { render, navigate } from "../router.js";
 
 export async function parametresScreen() {
@@ -104,7 +104,20 @@ export async function parametresScreen() {
     }
     if (rows.length < 2) return toast("Le fichier ne contient aucune ligne de données.", "warn");
     const parsed = csvToEleves(rows);
+    await marquerConflitsCreneaux(parsed.lignes);
     afficherApercu(parsed);
+  }
+
+  async function marquerConflitsCreneaux(lignes) {
+    const existants = (await getAll("eleves")).filter((e) => e.statut === "actif");
+    const dejaVus = existants.map((e) => ({ nom: personneNom(e), creneaux: e.creneaux || [] }));
+    for (const l of lignes) {
+      for (const c of l.eleve.creneaux) {
+        const clash = dejaVus.find((d) => d.creneaux.some((ac) => creneauxSeChevauchent(c, ac)));
+        if (clash) l.avertissements.push(`Créneau ${c.jour} ${c.heure} en conflit avec ${clash.nom}`);
+      }
+      dejaVus.push({ nom: personneNom(l.eleve) || `ligne ${l.ligne}`, creneaux: l.eleve.creneaux });
+    }
   }
 
   function afficherApercu({ eleves, payeurs, lignes }) {

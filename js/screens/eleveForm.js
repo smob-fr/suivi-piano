@@ -10,7 +10,7 @@ import {
 } from "../ui.js";
 import { eleves as elevesDB, payeurs as payeursDB } from "../db.js";
 import { nouvelEleve, representantVide, libelleEleve, libellePayeur } from "../model.js";
-import { genererHorizon } from "../planning.js";
+import { genererHorizon, conflitInterne, chercherConflitCreneaux } from "../planning.js";
 import { navigate } from "../router.js";
 
 export async function eleveFormScreen({ id }) {
@@ -146,6 +146,19 @@ export async function eleveFormScreen({ id }) {
     if (!e.prenom.trim()) return toast("Le prénom est obligatoire.", "warn");
     for (const c of e.creneaux) {
       if (!/^\d{2}:\d{2}$/.test(c.heure)) return toast("Heure de créneau invalide (format HH:MM).", "warn");
+    }
+    if (e.statut === "actif" && e.creneaux.length) {
+      const interne = conflitInterne(e.creneaux);
+      if (interne) return toast("Les deux créneaux de cet élève se chevauchent.", "warn");
+      const conflit = await chercherConflitCreneaux(e.creneaux, e.id);
+      if (conflit) {
+        const c = conflit.creneau;
+        return toast(
+          `Créneau ${cap(c.jour)} ${c.heure} déjà occupé par ${personneNom(conflit.eleve)} ` +
+          `(${conflit.autreCreneau.heure}, ${conflit.autreCreneau.dureeMin} min).`,
+          "warn"
+        );
+      }
     }
     if (e.mineur && e.representantLegal && !personneNom(e.representantLegal)) {
       e.representantLegal = null;

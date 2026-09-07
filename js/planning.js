@@ -131,6 +131,50 @@ export const periodes = {
   remove: (id) => remove("periodes", id),
 };
 
+/* ---------- Conflits de créneaux ---------- */
+
+function heureEnMinutes(h) {
+  const [hh, mm] = String(h || "0:0").split(":").map(Number);
+  return (hh || 0) * 60 + (mm || 0);
+}
+
+/** Deux créneaux se chevauchent-ils (même jour, plages horaires qui se recouvrent) ? */
+export function creneauxSeChevauchent(a, b) {
+  if (!a || !b || a.jour !== b.jour) return false;
+  const aDeb = heureEnMinutes(a.heure);
+  const aFin = aDeb + (a.dureeMin || 0);
+  const bDeb = heureEnMinutes(b.heure);
+  const bFin = bDeb + (b.dureeMin || 0);
+  return aDeb < bFin && bDeb < aFin;
+}
+
+/** Chevauchement entre deux créneaux d'un même élève. */
+export function conflitInterne(creneaux) {
+  for (let i = 0; i < creneaux.length; i += 1) {
+    for (let j = i + 1; j < creneaux.length; j += 1) {
+      if (creneauxSeChevauchent(creneaux[i], creneaux[j])) return [creneaux[i], creneaux[j]];
+    }
+  }
+  return null;
+}
+
+/**
+ * Cherche un chevauchement entre les créneaux fournis et ceux des autres élèves actifs.
+ * @returns {{ creneau, eleve, autreCreneau } | null}
+ */
+export async function chercherConflitCreneaux(creneaux, selfId) {
+  const elevesAll = await getAll("eleves");
+  for (const autre of elevesAll) {
+    if (autre.id === selfId || autre.statut !== "actif" || !Array.isArray(autre.creneaux)) continue;
+    for (const c of creneaux) {
+      for (const ac of autre.creneaux) {
+        if (creneauxSeChevauchent(c, ac)) return { creneau: c, eleve: autre, autreCreneau: ac };
+      }
+    }
+  }
+  return null;
+}
+
 /* ---------- Génération des séances prévues ---------- */
 
 function seanceAuto(eleve, creneau, date, key) {

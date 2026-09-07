@@ -265,6 +265,11 @@ confondus, avec filtres (statut, facturée / non, période, élève).
 - **Regroupement foyer** : séances consécutives au même lieu affichées groupées
   (« Famille Untel — 14 h → 16 h · 3 élèves »).
 - **Séances ponctuelles** : ajout direct sur un créneau libre.
+- **Pas de chevauchement** : deux élèves actifs ne peuvent pas avoir des créneaux qui se
+  recouvrent (même jour, plages horaires qui se croisent). L'enregistrement d'une fiche
+  est refusé avec un message nommant l'élève déjà positionné ; l'import CSV le signale en
+  avertissement. Les créneaux qui se suivent sans se recouvrir (visite d'un foyer) restent
+  autorisés.
 - **Périodes sans cours** (vacances scolaires, absences du professeur) : blocage d'une
   **plage de dates** → aucune séance générée dessus. Sort des séances `Prévue` déjà
   créées sur la plage : _à préciser au développement_ (suppression ou passage `Annulée`).
