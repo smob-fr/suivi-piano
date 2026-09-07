@@ -5,12 +5,15 @@
 
 ## 1. Contexte et objectif
 
-Application pour un professeur de piano : suivre ses élèves, son planning, les cours
-effectués (date, durée, montant) et les paiements, avec des rappels.
+Application pour un professeur de piano : suivre ses élèves, son planning et les cours
+effectués (date, durée, montant), avec des rappels, et produire la **synthèse mensuelle
+des cours** qui sert à établir les factures.
 
-**Ce n'est pas un logiciel de facturation** : pas d'édition de factures. On enregistre
-les cours donnés et les règlements. Une **attestation fiscale annuelle** (crédit d'impôt
-services à la personne) pourra être produite par payeur.
+**Ce n'est pas un logiciel de facturation ni de comptabilité.** Les factures et le suivi
+des règlements se font dans **Indy** (outil externe déjà utilisé). L'appli ne suit pas
+les encaissements. Elle fournit en revanche la **liste des cours à inclure dans
+l'attestation crédit d'impôt** (la génération de l'attestation elle-même est hors
+périmètre — voir §7).
 
 ## 2. Principes généraux
 
@@ -21,6 +24,8 @@ services à la personne) pourra être produite par payeur.
 - **Sauvegarde/export** à la main de l'utilisateur (format à définir) — indispensable
   puisque les données ne vivent que sur le téléphone.
 - **Saisie la plus simple possible**, en particulier pour l'enregistrement d'une séance.
+- **Facturation et comptabilité externalisées** dans Indy — l'appli n'est qu'une source
+  de synthèse.
 - Langue : français.
 
 ## 3. Entités
@@ -28,8 +33,8 @@ services à la personne) pourra être produite par payeur.
 | Entité | Rôle |
 |---|---|
 | **Élève** | Une personne à qui on donne cours (identité, créneau, niveau, progression). Ne porte pas de montant. |
-| **Payeur / Foyer** | Qui paie et reçoit l'attestation fiscale. Peut regrouper plusieurs élèves (une famille). |
-| **Séance** | Un cours donné = un évènement facturable : date, lieu, durée, **un montant**, mode de paiement, payé ou non, élèves présents. |
+| **Payeur / Foyer** | Qui paie (1 facture / foyer / mois). Peut regrouper plusieurs élèves (une famille). |
+| **Séance** | Un cours donné = un évènement facturable : date, lieu, durée, **un montant**, mode de paiement, **facturée ou non**, élèves présents. |
 
 Relations :
 
@@ -104,19 +109,30 @@ Exemples :
 
 | Cas | Séance |
 |---|---|
-| Élève seul | Léa · 30 € · 45 min · chèque · payé |
-| Famille | Famille Untel · 60 € · 2 h · virement · payé · présents : Marie, Tom |
+| Élève seul | Léa · 30 € · 45 min · chèque · présents : Léa |
+| Famille | Famille Untel · 60 € · 2 h · virement · présents : Marie, Tom |
 
-_(Détail complet de l'écran séance : voir §8, à définir.)_
+Le marquage **« facturée »** n'est pas fait ici : il se fait plus tard, depuis la
+synthèse mensuelle (§9), une fois la facture établie dans Indy.
 
-## 7. Attestation crédit d'impôt (principe)
+_(Détail complet de l'écran séance : voir §8.)_
 
-Calculée **à partir des séances, regroupées par Payeur**, sur une année civile :
-total payé + nombre d'heures. Conforme à une attestation de services à la personne :
-**aucun détail par élève n'est requis**.
+## 7. Liste des cours pour l'attestation crédit d'impôt
 
-Répartition par élève (parts égales) possible **uniquement** pour des statistiques de
-revenu internes, jamais au moment de la saisie.
+La **génération de l'attestation elle-même est hors périmètre** (faite par ailleurs).
+L'appli fournit uniquement **la liste des cours à y inclure**.
+
+Un cours est retenu s'il remplit **tous** ces critères :
+- statut **`Effectuée`** ;
+- **lieu = `Domicile de l'élève`** (visio et cours chez le professeur exclus) ;
+- **mode de paiement ≠ `Liquide`**.
+
+Vue : par **foyer**, sur une **année civile** — liste des séances retenues (date, élève,
+durée, montant) + **total € et total heures**. Données à reporter manuellement dans
+l'attestation.
+
+> _Question ouverte :_ garde-t-on l'interrupteur « Éligible crédit d'impôt » par foyer
+> (§4/§5), ou l'éligibilité est-elle entièrement déduite des trois critères ci-dessus ?
 
 ## 8. Séance / saisie d'un cours
 
@@ -145,8 +161,8 @@ revenu internes, jamais au moment de la saisie.
 | Durée | fiche élève / forfait | pas de 15 min |
 | Lieu | fiche élève | Domicile / Visio / Chez le professeur |
 | Montant | tarif habituel / forfait | **0** si `Annulée` (reste modifiable) |
-| Mode de paiement | fiche élève / payeur | |
-| Payé ? | non | voir §9 |
+| Mode de paiement | fiche élève / payeur | champ **informatif** ; sert au filtre de la liste crédit d'impôt (§7) |
+| Facturée ? | non | passée à « oui » depuis la synthèse mensuelle (§9), pas ici |
 | Commentaire | vide | **un seul champ libre** (travail fait / à faire) ; pour une famille, l'utilisateur y précise le prénom concerné |
 
 ### Rattrapage
@@ -159,23 +175,31 @@ revenu internes, jamais au moment de la saisie.
 
 ### Modification
 - Toute séance, même passée, reste **ouvrable et modifiable sans limite de délai**
-  (montant, présents, statut, payé, commentaire).
+  (montant, présents, statut, facturée, commentaire).
 
-## 9. Suivi des paiements — _À définir (point 4)_
+## 9. Synthèse mensuelle pour facturation
 
-Acquis : le règlement est **découplé de la séance**. L'élève peut payer juste après le
-cours, quelques jours plus tard, ou en une fois pour tout le mois. Il faut donc pouvoir
-**marquer plusieurs séances payées en une seule opération** (un chèque pour le mois).
+L'appli **ne suit pas les encaissements** (gérés dans Indy). Elle produit la **synthèse
+des cours du mois**, qui sert à établir les factures.
 
-À traiter : état payé / dû par élève et par période, saisie d'un règlement (date,
-montant, mode) couvrant une ou plusieurs séances, relevé mensuel à remettre à la
-famille, modes de paiement à distinguer.
+- **1 facture par foyer et par mois** → la synthèse est **groupée par foyer**.
+- Pour un mois choisi, par foyer : liste des séances `Effectuées` — date, **libellé**
+  (auto : « Cours de piano — {prénom} ({durée}) »), montant — puis **sous-total foyer**
+  et **total général**.
+- Filtre **« non facturées »** (actif par défaut).
+- Action : **marquer les séances sélectionnées comme `facturées`**, une fois la facture
+  créée dans Indy → elles disparaissent des synthèses suivantes.
+- **v1 : écran récap uniquement.** Exports (CSV, PDF par foyer) : envisagés plus tard.
+
+Indy : pas d'API exploitable ni d'import structuré ; l'import PDF (OCR, une facture à la
+fois) n'est pas fiable. La voie retenue est la **recopie** de la synthèse à l'écran vers
+Indy.
 
 ## 10. Rappels — _À définir (point 5)_
 
-Types de rappels utiles (cours du jour à saisir, élève absent à reprogrammer, paiement
-en retard…), mécanisme technique (tableau de bord à l'ouverture + notifications
-best-effort + export agenda).
+Types de rappels utiles (cours du jour à saisir, séance `Prévue` non confirmée, rattrapage
+à programmer, synthèse mensuelle à faire…), mécanisme technique (tableau de bord à
+l'ouverture + notifications best-effort + export agenda).
 
 ## 11. Tableau de bord — _À définir (point 6)_
 
