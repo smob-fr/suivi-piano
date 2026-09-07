@@ -67,11 +67,30 @@ export async function eleveFormScreen({ id }) {
 
   /* ----- Payeur ----- */
   const payeurOpts = [["self", "L'élève lui-même"], ...listePayeurs.map((p) => [p.id, libellePayeur(p)])];
+  const payeurHint = el("p.field__hint");
+  const renderPayeurHint = () => {
+    payeurHint.replaceChildren();
+    if (e.payeurId) {
+      payeurHint.append(
+        "Adresse et coordonnées du payeur (pour l'attestation) : ",
+        el("button.link", { type: "button", onclick: () => navigate(`/payeurs/${e.payeurId}`) }, "modifier ce payeur"),
+        "."
+      );
+    } else {
+      payeurHint.append(
+        "Pour un foyer (famille, ou tiers payeur à une autre adresse), crée d'abord le payeur : ",
+        el("button.link", { type: "button", onclick: () => navigate("/payeurs/nouveau") }, "nouveau payeur"),
+        "."
+      );
+    }
+  };
+  renderPayeurHint();
   const payeurMode = el("div", [
     fieldSelect("Payeur", e.payeurId || "self", payeurOpts, (v) => {
       e.payeurId = v === "self" ? null : v;
+      renderPayeurHint();
     }),
-    el("p.field__hint", "Pour créer un foyer (famille), ajoute d'abord le payeur dans l'onglet « Payeurs »."),
+    payeurHint,
   ]);
 
   const form = el("form.form", { onsubmit: (ev) => ev.preventDefault() }, [

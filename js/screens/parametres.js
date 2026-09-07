@@ -36,9 +36,10 @@ export async function parametresScreen() {
     formSection("Import CSV des élèves", [
       el("p.field__hint",
         "Charge tous tes élèves d'un coup. Télécharge le modèle, remplis-le, puis importe-le. " +
-        "Les colonnes payeur_prenom / payeur_nom servent au crédit d'impôt : laisse-les vides " +
-        "si l'élève se paie lui-même ; renseigne-les (mêmes valeurs sur plusieurs lignes) pour " +
-        "regrouper une famille sous un même payeur."
+        "Les colonnes payeur_prenom / payeur_nom servent au crédit d'impôt : vides si l'élève " +
+        "se paie lui-même ; renseignées (mêmes valeurs sur plusieurs lignes) pour regrouper " +
+        "une famille sous un même payeur. Les colonnes payeur_adr_* ne sont utiles que si le " +
+        "payeur habite à une autre adresse que l'élève (sinon celle de l'élève est reprise)."
       ),
       el("div.btn-row", [
         btn("Télécharger le modèle CSV", { onClick: dlTemplate, variant: "ghost" }),

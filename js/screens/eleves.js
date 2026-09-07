@@ -93,7 +93,10 @@ export async function elevesListScreen() {
   );
 
   return screen("Élèves", {
-    actions: [btn("+ Élève", { onClick: () => navigate("/eleves/nouveau"), small: true })],
+    actions: [
+      btn("Payeurs", { onClick: () => navigate("/payeurs"), variant: "ghost", small: true }),
+      btn("+ Élève", { onClick: () => navigate("/eleves/nouveau"), small: true }),
+    ],
     children: [wrap],
   });
 }

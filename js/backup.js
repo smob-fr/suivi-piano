@@ -72,8 +72,11 @@ export async function enregistrerImportCsv(eleves, payeurs) {
 }
 
 function stripTmpFields(p) {
-  const { _foyerLabel, ...rest } = p;
-  return rest;
+  const clean = {};
+  for (const [k, v] of Object.entries(p)) {
+    if (!k.startsWith("_")) clean[k] = v;
+  }
+  return clean;
 }
 
 /* ---------- Rappel de sauvegarde ---------- */
