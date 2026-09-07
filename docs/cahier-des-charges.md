@@ -1,7 +1,8 @@
 # Suivi Piano — Cahier des charges
 
-> Document de travail, construit au fil des échanges. Les sections marquées _À définir_
-> seront complétées ensuite.
+> Document de travail, construit au fil des échanges. Cadrage fonctionnel terminé
+> (§1–§13) ; §14 sauvegarde et §15 plan de construction restent à affiner en cours de
+> développement.
 
 ## 1. Contexte et objectif
 
@@ -249,26 +250,57 @@ Ordre d'affichage, de haut en bas :
 **Navigation principale** — barre en bas, 5 entrées :
 `Accueil` · `Agenda` · `Élèves` · `Séances` · `Synthèse` — Paramètres via l'en-tête.
 
-> _À trancher :_ garder un onglet **Séances** séparé (historique cherchable, tous élèves
-> confondus, filtres statut / facturée / période), **ou** en faire un mode « Liste » dans
-> l'Agenda (barre ramenée à 4 entrées). L'utilisateur a validé l'idée d'un accès
-> historique ; la forme reste ouverte.
+L'onglet **Séances** est un écran séparé : historique de toutes les séances, tous élèves
+confondus, avec filtres (statut, facturée / non, période, élève).
 
-## 12. Agenda / planning — _À définir (point 7)_
+## 12. Agenda / planning
 
-Proposition à valider :
-
-- **Vue Semaine** par défaut : les 7 jours, séances positionnées à l'heure, **couleur
+- **Vue Semaine par défaut** : les 7 jours, séances positionnées à l'heure, **couleur
   selon le statut** (`Prévue` / `Effectuée` / `Annulée`). Navigation semaine ± ; bouton
-  « aujourd'hui ». Vue Jour et vue Liste également.
+  « aujourd'hui ». Vues Jour et Liste également disponibles.
 - **Génération automatique** : à partir des créneaux récurrents des élèves `Actifs`,
-  l'appli crée les séances `Prévue` à l'avance sur un horizon **à définir** (2 semaines ?
-  le mois courant + le suivant ?).
+  l'appli crée les séances `Prévue` **2 semaines à l'avance** (fenêtre glissante).
 - **Regroupement foyer** : séances consécutives au même lieu affichées groupées
   (« Famille Untel — 14 h → 16 h · 3 élèves »).
 - **Séances ponctuelles** : ajout direct sur un créneau libre.
-- **Périodes sans cours** (vacances scolaires, absences du professeur) : possibilité de
-  **bloquer une plage de dates** → pas de génération, séances non créées.
-- **Jours fériés** : exclusion automatique ou ajustement manuel — à trancher.
+- **Périodes sans cours** (vacances scolaires, absences du professeur) : blocage d'une
+  **plage de dates** → aucune séance générée dessus. Sort des séances `Prévue` déjà
+  créées sur la plage : _à préciser au développement_ (suppression ou passage `Annulée`).
+- **Jours fériés** (calendrier français) : **signalés visuellement uniquement**, sans
+  blocage — on peut y placer des cours normalement.
 - **Changement d'un créneau récurrent** : les séances déjà générées et non encore
   `Effectuée` sont mises à jour ; les séances passées ne bougent pas.
+
+## 13. Paramètres
+
+- **Heure du rappel quotidien** (défaut 19 h).
+- Bouton **« Créer / mettre à jour le rappel dans mon calendrier »**.
+- **Périodes sans cours** : gestion des plages de dates bloquées (vacances, absences).
+- **Sauvegarde / export** des données (voir §14).
+- Divers : à compléter au fil du développement.
+
+## 14. Sauvegarde et données — _à préciser_
+
+Les données ne vivent que sur l'appareil. Il faut :
+
+- un **export manuel** (fichier JSON) et un **ré-import** — filet de sécurité, à faire
+  dès la v1 ;
+- un **rappel périodique** « pense à sauvegarder » ;
+- plus tard éventuellement : export vers un fichier partagé (Drive) à la main de
+  l'utilisateur.
+
+## 15. Plan de construction v1
+
+Ordre prévu, chaque étape étant testable sur le téléphone :
+
+1. **Fondations** : modèle de données IndexedDB (Élève, Payeur/Foyer, Créneau, Séance,
+   Périodes sans cours, Paramètres) + export / import JSON.
+2. **Élèves & Foyers** : liste (actifs / archivés), fiche élève complète, payeurs.
+3. **Créneaux & Agenda** : saisie des créneaux, génération des séances `Prévue`
+   (2 semaines), vue Semaine + Jour, regroupement foyer, périodes sans cours, jours fériés.
+4. **Séances** : écran séance (confirmer / éditer), séance ponctuelle, rattrapage,
+   onglet Séances (historique + filtres).
+5. **Accueil & Rappels** : tableau de bord, rappel calendrier, notifications best-effort.
+6. **Synthèse & Crédit d'impôt** : synthèse mensuelle par foyer + marquage `facturée`,
+   liste des cours pour l'attestation (année civile, par foyer, totaux € + heures).
+7. **Finitions** : paramètres, rappel de sauvegarde, ajustements d'ergonomie.
