@@ -123,6 +123,7 @@ La **génération de l'attestation elle-même est hors périmètre** (faite par 
 L'appli fournit uniquement **la liste des cours à y inclure**.
 
 Un cours est retenu s'il remplit **tous** ces critères :
+- le **foyer** a l'interrupteur **« Éligible crédit d'impôt »** coché (§4/§5) ;
 - statut **`Effectuée`** ;
 - **lieu = `Domicile de l'élève`** (visio et cours chez le professeur exclus) ;
 - **mode de paiement ≠ `Liquide`**.
@@ -130,9 +131,6 @@ Un cours est retenu s'il remplit **tous** ces critères :
 Vue : par **foyer**, sur une **année civile** — liste des séances retenues (date, élève,
 durée, montant) + **total € et total heures**. Données à reporter manuellement dans
 l'attestation.
-
-> _Question ouverte :_ garde-t-on l'interrupteur « Éligible crédit d'impôt » par foyer
-> (§4/§5), ou l'éligibilité est-elle entièrement déduite des trois critères ci-dessus ?
 
 ## 8. Séance / saisie d'un cours
 
@@ -184,8 +182,8 @@ des cours du mois**, qui sert à établir les factures.
 
 - **1 facture par foyer et par mois** → la synthèse est **groupée par foyer**.
 - Pour un mois choisi, par foyer : liste des séances `Effectuées` — date, **libellé**
-  (auto : « Cours de piano — {prénom} ({durée}) »), montant — puis **sous-total foyer**
-  et **total général**.
+  (auto : « Cours de piano — {Prénom} {Nom} ({durée}) » ; Nom inclus car des élèves
+  partagent le même prénom), montant — puis **sous-total foyer** et **total général**.
 - Filtre **« non facturées »** (actif par défaut).
 - Action : **marquer les séances sélectionnées comme `facturées`**, une fois la facture
   créée dans Indy → elles disparaissent des synthèses suivantes.
@@ -195,11 +193,36 @@ Indy : pas d'API exploitable ni d'import structuré ; l'import PDF (OCR, une fac
 fois) n'est pas fiable. La voie retenue est la **recopie** de la synthèse à l'écran vers
 Indy.
 
-## 10. Rappels — _À définir (point 5)_
+## 10. Rappels
 
-Types de rappels utiles (cours du jour à saisir, séance `Prévue` non confirmée, rattrapage
-à programmer, synthèse mensuelle à faire…), mécanisme technique (tableau de bord à
-l'ouverture + notifications best-effort + export agenda).
+### Tableau de bord « à faire » (à l'ouverture de l'appli) — **acquis**
+Toujours fiable, c'est la base. Éléments :
+- **Séances à saisir** : cours passés encore en statut `Prévue`.
+- **Cours du jour et de demain**.
+- **Rattrapages à programmer** : séances `Annulée` sans rattrapage ni suppression —
+  reste affiché tant que non traité (en attente de la disponibilité de l'élève).
+- **Début de mois** : « faire la synthèse du mois précédent ».
+
+### Rappel quotidien à heure fixe (appli fermée)
+Contrainte : l'API de notification programmée à heure fixe (Notification Triggers) est
+**abandonnée**. Une PWA seule ne peut pas garantir une notification quotidienne à une
+heure précise. Trois approches (décision en cours) :
+
+- **a) Via le calendrier du téléphone** _(recommandé pour démarrer)_ : l'appli crée un
+  évènement récurrent quotidien à l'heure choisie (« Suivi Piano — vérifier les cours de
+  demain »). 100 % fiable, natif, aucun serveur. Pas de détail dans l'évènement :
+  l'utilisateur ouvre l'appli et voit le tableau de bord.
+- **b) Notifications best-effort** _(sans serveur, en complément)_ : via Periodic
+  Background Sync — le navigateur réveille l'appli ~1 fois par jour, **sans garantie
+  d'heure ni de jour**. En appoint, pas en principal.
+- **c) Push à heure fixe** _(en réserve)_ : mini-serveur gratuit (cron + web-push) qui
+  envoie chaque jour un rappel générique (« Ouvre Suivi Piano »). Fiable. Les données
+  restant sur le téléphone, le serveur n'envoie qu'un rappel générique. À mettre en place
+  seulement si a) ne suffit pas à l'usage.
+
+### Ajouter un cours au calendrier — _optionnel, à valider à l'usage_
+Bouton sur une séance : crée l'évènement dans l'agenda du téléphone (rappel à l'heure
+pile avant le cours).
 
 ## 11. Tableau de bord — _À définir (point 6)_
 
