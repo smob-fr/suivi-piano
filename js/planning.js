@@ -1,10 +1,17 @@
 // Suivi Piano — dates, jours fériés, périodes sans cours, génération des séances
 
-import { uid } from "./util.js";
+import { uid, nowISO } from "./util.js";
 import { JOURS } from "./util.js";
-import { getAll, put, remove } from "./db.js";
+import { getAll, put, remove, bulkPut } from "./db.js";
 
-export const HORIZON_JOURS = 14;
+// Les créneaux récurrents sont générés jusqu'à la fin de l'année scolaire
+// (les créneaux sont valables de septembre à juillet).
+export function finAnneeScolaire(refYmd) {
+  const d = parseYmd(refYmd || today());
+  const mois = d.getMonth() + 1; // 1–12
+  const annee = mois >= 8 ? d.getFullYear() + 1 : d.getFullYear();
+  return `${annee}-07-31`;
+}
 
 /* ---------- Dates (locales, format "YYYY-MM-DD") ---------- */
 
@@ -127,6 +134,7 @@ export const periodes = {
 /* ---------- Génération des séances prévues ---------- */
 
 function seanceAuto(eleve, creneau, date, key) {
+  const now = nowISO();
   return {
     id: uid(),
     date,
@@ -145,6 +153,8 @@ function seanceAuto(eleve, creneau, date, key) {
     rattrapageDe: null,
     source: "auto",
     creneauKey: key,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -155,7 +165,7 @@ function seanceAuto(eleve, creneau, date, key) {
  */
 export async function genererHorizon() {
   const debut = today();
-  const fin = addDays(debut, HORIZON_JOURS);
+  const fin = finAnneeScolaire(debut);
   const [elevesAll, seancesAll, listePeriodes] = await Promise.all([
     getAll("eleves"),
     getAll("seances"),
@@ -202,7 +212,7 @@ export async function genererHorizon() {
 
   const aSupprimer = autoPrevuesFutures.filter((s) => !voulus.has(`${s.creneauKey}|${s.date}`));
 
-  for (const s of aCreer) await put("seances", s);
+  if (aCreer.length) await bulkPut("seances", aCreer);
   for (const s of aMettreAJour) await put("seances", s);
   for (const s of aSupprimer) await remove("seances", s.id);
 

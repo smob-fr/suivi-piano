@@ -8,7 +8,7 @@ import {
   downloadFile, joursDepuisSauvegarde, enregistrerImportCsv,
 } from "../backup.js";
 import { templateCSV, parseCSV, csvToEleves } from "../csv.js";
-import { libellePayeur } from "../model.js";
+import { genererHorizon } from "../planning.js";
 import { render, navigate } from "../router.js";
 
 export async function parametresScreen() {
@@ -81,6 +81,7 @@ export async function parametresScreen() {
     ))) return;
     try {
       const res = await importerSauvegarde(file);
+      try { await genererHorizon(); } catch (e) { console.error(e); }
       toast(`Restauré : ${res.records} enregistrement(s).`, "ok");
       navigate("/eleves");
     } catch (err) {
@@ -151,6 +152,7 @@ export async function parametresScreen() {
     const usedPayeurIds = new Set(eleves.map((e) => e.payeurId).filter(Boolean));
     const payeursToSave = payeurs.filter((p) => usedPayeurIds.has(p.id));
     const res = await enregistrerImportCsv(eleves, payeursToSave);
+    try { await genererHorizon(); } catch (e) { console.error(e); }
     toast(`${res.eleves} élève(s) et ${res.payeurs} payeur(s) importés.`, "ok");
     navigate("/eleves");
   }

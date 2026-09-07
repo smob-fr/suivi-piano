@@ -259,7 +259,9 @@ confondus, avec filtres (statut, facturée / non, période, élève).
   selon le statut** (`Prévue` / `Effectuée` / `Annulée`). Navigation semaine ± ; bouton
   « aujourd'hui ». Vues Jour et Liste également disponibles.
 - **Génération automatique** : à partir des créneaux récurrents des élèves `Actifs`,
-  l'appli crée les séances `Prévue` **2 semaines à l'avance** (fenêtre glissante).
+  l'appli crée les séances `Prévue` **jusqu'au 31 juillet de l'année scolaire en cours**
+  (les créneaux sont valables de septembre à juillet). Regénérée au démarrage, à
+  l'enregistrement d'un élève, à l'import CSV et au changement de période sans cours.
 - **Regroupement foyer** : séances consécutives au même lieu affichées groupées
   (« Famille Untel — 14 h → 16 h · 3 élèves »).
 - **Séances ponctuelles** : ajout direct sur un créneau libre.

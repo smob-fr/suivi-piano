@@ -10,6 +10,7 @@ import {
 } from "../ui.js";
 import { eleves as elevesDB, payeurs as payeursDB } from "../db.js";
 import { nouvelEleve, representantVide, libelleEleve, libellePayeur } from "../model.js";
+import { genererHorizon } from "../planning.js";
 import { navigate } from "../router.js";
 
 export async function eleveFormScreen({ id }) {
@@ -150,6 +151,7 @@ export async function eleveFormScreen({ id }) {
       e.representantLegal = null;
     }
     await elevesDB.save(e);
+    await regenererSilencieux();
     toast("Fiche enregistrée.", "ok");
     navigate("/eleves");
   }
@@ -157,8 +159,13 @@ export async function eleveFormScreen({ id }) {
   async function toggleArchive() {
     e.statut = e.statut === "archive" ? "actif" : "archive";
     await elevesDB.save(e);
+    await regenererSilencieux();
     toast(e.statut === "archive" ? "Élève archivé." : "Élève réactivé.");
     navigate("/eleves");
+  }
+
+  async function regenererSilencieux() {
+    try { await genererHorizon(); } catch (err) { console.error("génération séances", err); }
   }
 
   async function del() {
