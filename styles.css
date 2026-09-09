@@ -460,6 +460,21 @@ html, body {
 .foyer-bloc__head strong { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .recap__row--facture td { color: var(--ink-soft); }
 .recap td .chip { margin-left: 6px; }
+.export-bar { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
+
+/* ---------- Impression / PDF ---------- */
+.print-only { display: none; }
+@media print {
+  .app-header, .app-nav, .seg, .filtres, .field__hint, .fab,
+  .no-print, .foyer-bloc .btn, .back-link { display: none !important; }
+  .print-only { display: block; font-size: 1.3rem; margin: 0 0 12px; }
+  body, .app-main { background: #fff; color: #000; }
+  .app-main { max-width: none; padding: 0; }
+  .foyer-bloc { break-inside: avoid; border-color: #999; margin-top: 10px; }
+  .foyer-bloc--facture { opacity: 1; }
+  .recap td { border-color: #bbb; }
+  .chip { border-color: #999; color: #333; }
+}
 .recap { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .recap td { padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .recap tr:last-child td { border-bottom: 0; }

@@ -368,4 +368,6 @@ Ordre prévu, chaque étape étant testable sur le téléphone :
    par foyer (mois, filtre « non facturées », bouton « marquer ce foyer facturé ») et
    liste crédit d'impôt (année civile, cours retenus, totaux € + heures par foyer). Une
    visite de foyer = une seule ligne (noms cumulés, durée cumulée, montant unique).
-7. **Finitions** : exports (CSV / PDF), ajustements d'ergonomie.
+7. **Finitions** _(en cours)_ : ✅ exports de la synthèse — **CSV** (synthèse mensuelle et
+   liste crédit d'impôt) et **Imprimer / PDF** (mise en page d'impression épurée, « Enregistrer
+   au format PDF » depuis la boîte d'impression). Ajustements d'ergonomie au fil des retours.
