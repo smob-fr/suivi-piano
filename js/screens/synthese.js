@@ -1,10 +1,12 @@
 // Suivi Piano — Synthèse mensuelle (facturation) + liste crédit d'impôt
 
-import { el, fmtEUR, fmtDuree, fmtDateFR, personneNom, sortBy, toast } from "../util.js";
+import { el, fmtEUR, fmtDuree, dureeCourt, fmtDateFR, personneNom, sortBy, toast } from "../util.js";
 import { screen, btn, emptyState } from "../ui.js";
-import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB, bulkPut } from "../db.js";
-import { libelleEleve, libellePayeur, payeurRef } from "../model.js";
+import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB, bulkPut, getParam } from "../db.js";
+import { libelleEleve, libellePayeur, payeurRef, adresseLignes } from "../model.js";
 import { downloadFile } from "../backup.js";
+import { genererFacturePdf } from "../facturePdf.js";
+import { today } from "../planning.js";
 import { render } from "../router.js";
 
 const MOIS_FR = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" });
@@ -31,7 +33,10 @@ function prevMonth() {
 }
 
 export async function syntheseScreen() {
-  const [seances, elevesAll, payeursAll] = await Promise.all([seancesDB.all(), elevesDB.all(), payeursDB.all()]);
+  const [seances, elevesAll, payeursAll, emetteur] = await Promise.all([
+    seancesDB.all(), elevesDB.all(), payeursDB.all(),
+    getParam("emetteur", { nom: "", adresse: "", siren: "", mention: "TVA non applicable, article 293 B du CGI." }),
+  ]);
   const eleveById = new Map(elevesAll.map((e) => [e.id, e]));
   const payeurById = new Map(payeursAll.map((p) => [p.id, p]));
 
@@ -43,12 +48,18 @@ export async function syntheseScreen() {
     const ref = e ? payeurRef(e) : { type: s.payeurType, id: s.payeurId };
     if (ref.type === "payeur") {
       const p = payeurById.get(ref.id);
-      return { id: "p:" + ref.id, nom: p ? libellePayeur(p) : "(payeur supprimé)", eligible: !!p?.eligibleCreditImpot };
+      return {
+        id: "p:" + ref.id,
+        nom: p ? libellePayeur(p) : "(payeur supprimé)",
+        adresse: adresseLignes(p?.adresse),
+        eligible: !!p?.eligibleCreditImpot,
+      };
     }
     const foyerEleve = eleveById.get(ref.id);
     return {
       id: "e:" + ref.id,
       nom: foyerEleve ? libelleEleve(foyerEleve) : "(élève supprimé)",
+      adresse: adresseLignes(foyerEleve?.adresse),
       eligible: !!foyerEleve?.eligibleCreditImpot,
     };
   }
@@ -70,11 +81,16 @@ export async function syntheseScreen() {
       const membres = [s, ...rat];
       const dureeTotale = membres.reduce((n, m) => n + (m.dureeMin || 0), 0);
       const noms = membres.map((m) => personneNom(eleveById.get(m.eleveId)) || "?").join(", ");
+      const prenoms = membres.map((m) => eleveById.get(m.eleveId)?.prenom || "?").join(", ");
+      const dateFR = fmtDateFR(s.date);
       out.push({
         porteuse: s,
         foyer: foyerDe(s),
         date: s.date,
         libelle: `Cours de piano — ${noms} (${fmtDuree(dureeTotale)})`,
+        libelleFacture: membres.length > 1
+          ? `Cours de piano du ${dateFR} — ${prenoms} (${dureeCourt(dureeTotale)})`
+          : `Cours de piano du ${dateFR} (${dureeCourt(dureeTotale)})`,
         dureeTotale,
         montant: Number(s.montant) || 0,
         facturee: !!s.facturee,
@@ -131,9 +147,13 @@ export async function syntheseScreen() {
     return el("div", [
       el("h1.print-only", `Synthèse — ${moisLisible(state.mois)}`),
       controles,
-      barreExport(exportMensuelCSV, `Synthèse ${moisLisible(state.mois)}`),
+      el("div.export-bar.no-print", [
+        btn("Export CSV", { onClick: exportMensuelCSV, variant: "ghost", small: true }),
+        btn("Imprimer / PDF", { onClick: () => imprimer(`Synthèse ${moisLisible(state.mois)}`), variant: "ghost", small: true }),
+        btn(`Factures PDF (${groupes.length})`, { onClick: () => genererToutesFactures(groupes), small: true }),
+      ]),
       el("p.preview-summary", `${evs.length} séance(s) · ${groupes.length} foyer(s) · total ${fmtEUR(totalGeneral)}`),
-      ...groupes.map((g) => {
+      ...groupes.map((g, gi) => {
         const toutFacture = g.lignes.every((ev) => ev.facturee);
         return el("section.foyer-bloc", { class: toutFacture ? "foyer-bloc--facture" : "" }, [
           el("div.foyer-bloc__head", [
@@ -149,14 +169,65 @@ export async function syntheseScreen() {
               ])
             )),
           ]),
-          btn(toutFacture ? "Annuler « facturé »" : "Marquer ce foyer facturé", {
-            onClick: () => marquerFacture(g.lignes.flatMap((ev) => ev.idsAmarquer), !toutFacture),
-            variant: toutFacture ? "ghost" : "primary",
-            small: true,
-          }),
+          el("div.btn-row.no-print", [
+            btn("Facture PDF", { onClick: () => genererFacture(g, gi), variant: "ghost", small: true }),
+            btn(toutFacture ? "Annuler « facturé »" : "Marquer ce foyer facturé", {
+              onClick: () => marquerFacture(g.lignes.flatMap((ev) => ev.idsAmarquer), !toutFacture),
+              variant: toutFacture ? "ghost" : "primary",
+              small: true,
+            }),
+          ]),
         ]);
       }),
     ]);
+  }
+
+  /* ---------- Factures PDF ---------- */
+  function emetteurLignes() {
+    const l = [];
+    if (emetteur.nom) l.push(emetteur.nom);
+    else l.push("[Renseigne l'émetteur dans Paramètres]");
+    for (const a of String(emetteur.adresse || "").split("\n")) if (a.trim()) l.push(a.trim());
+    if (emetteur.siren) l.push(`SIREN : ${emetteur.siren}`);
+    return l;
+  }
+
+  function payloadFacture(g, index) {
+    const [y, m] = state.mois.split("-");
+    return {
+      num: `${y}${m}-${String(index + 1).padStart(2, "0")}`,
+      dateEmission: fmtDateFR(today()),
+      titre: `Cours de piano — ${moisLisible(state.mois)}`,
+      emetteur: emetteurLignes(),
+      clientNom: (g.foyer.nom || "").toUpperCase(),
+      clientAdresse: g.foyer.adresse || [],
+      items: g.lignes.map((ev) => ({
+        designation: ev.libelleFacture,
+        quantite: "1",
+        prixUnitaire: euro(ev.montant),
+        montant: euro(ev.montant),
+      })),
+      total: euro(g.total),
+      mentions: [emetteur.mention].filter(Boolean),
+      filename: `Facture - ${(g.foyer.nom || "client").replace(/[\\/:*?"<>|]/g, "")} - ${moisLisible(state.mois)}.pdf`,
+    };
+  }
+
+  async function genererFacture(g, index = 0) {
+    try {
+      await genererFacturePdf(payloadFacture(g, index));
+    } catch (e) {
+      console.error(e);
+      toast("Génération PDF impossible.", "warn");
+    }
+  }
+
+  async function genererToutesFactures(groupes) {
+    for (let i = 0; i < groupes.length; i += 1) {
+      await genererFacture(groupes[i], i);
+      await new Promise((r) => setTimeout(r, 450));
+    }
+    toast(`${groupes.length} facture(s) générée(s).`, "ok");
   }
 
   async function marquerFacture(ids, valeur = true) {

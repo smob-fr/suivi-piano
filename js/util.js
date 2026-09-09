@@ -72,6 +72,16 @@ export function fmtDuree(min) {
   return `${m} min`;
 }
 
+/** Durée compacte pour un libellé de facture : 60 -> "1h", 90 -> "1h30", 45 -> "45min". */
+export function dureeCourt(min) {
+  min = Number(min) || 0;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h && m) return `${h}h${String(m).padStart(2, "0")}`;
+  if (h) return `${h}h`;
+  return `${m}min`;
+}
+
 export function fmtDateFR(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-");

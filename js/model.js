@@ -104,10 +104,15 @@ export function adresseRenseignee(a) {
 }
 
 export function adresseTexte(a) {
-  if (!a) return "";
+  return adresseLignes(a).join(", ");
+}
+
+/** Adresse en lignes (pour une facture). */
+export function adresseLignes(a) {
+  if (!a) return [];
   const l1 = [a.numero, a.rue].filter(Boolean).join(" ");
   const l2 = [a.cp, a.ville].filter(Boolean).join(" ");
-  return [l1, a.complement, l2].filter(Boolean).join(", ");
+  return [l1, a.complement, l2].filter(Boolean);
 }
 
 /**

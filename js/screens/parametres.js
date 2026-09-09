@@ -1,7 +1,7 @@
 // Suivi Piano — écran Paramètres (sauvegarde, import CSV, réglages)
 
 import { el, toast, confirmDialog, fmtDateFR, personneNom } from "../util.js";
-import { screen, btn, formSection, fieldText } from "../ui.js";
+import { screen, btn, formSection, fieldText, fieldTextarea } from "../ui.js";
 import { getParam, setParam, STORES, clearStore, getAll } from "../db.js";
 import {
   exporterSauvegarde, importerSauvegarde, pickFile, readFileText,
@@ -16,7 +16,9 @@ export async function parametresScreen() {
   const jours = await joursDepuisSauvegarde();
   const lastBackup = await getParam("derniereSauvegarde", null);
   const heureRappel = await getParam("heureRappel", "19:00");
+  const emetteur = await getParam("emetteur", { nom: "", adresse: "", siren: "", mention: "TVA non applicable, article 293 B du CGI." });
   const state = { heure: heureRappel };
+  const sauverEmetteur = () => setParam("emetteur", emetteur);
 
   const importResultBox = el("div");
 
@@ -56,6 +58,15 @@ export async function parametresScreen() {
         btn("Choisir un fichier CSV…", { onClick: choisirCsv }),
       ]),
       importResultBox,
+    ]),
+
+    /* ---- Émetteur des factures ---- */
+    formSection("Émetteur des factures", [
+      el("p.field__hint", "Apparaît en haut des factures PDF générées depuis la Synthèse."),
+      fieldText("Nom / raison sociale", emetteur.nom, (v) => { emetteur.nom = v; sauverEmetteur(); }),
+      fieldTextarea("Adresse", emetteur.adresse, (v) => { emetteur.adresse = v; sauverEmetteur(); }, { rows: 2 }),
+      fieldText("SIREN", emetteur.siren, (v) => { emetteur.siren = v; sauverEmetteur(); }),
+      fieldText("Mention légale (TVA)", emetteur.mention, (v) => { emetteur.mention = v; sauverEmetteur(); }),
     ]),
 
     /* ---- Rappel quotidien ---- */
