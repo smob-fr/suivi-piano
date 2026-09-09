@@ -6,7 +6,7 @@ import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB, bulkPut
 import { libelleEleve, libellePayeur, payeurRef } from "../model.js";
 import { render } from "../router.js";
 
-const state = { vue: "mensuelle", mois: prevMonth(), annee: new Date().getFullYear(), nonFacturees: true };
+const state = { vue: "mensuelle", mois: prevMonth(), annee: new Date().getFullYear(), nonFacturees: false };
 
 function prevMonth() {
   const d = new Date();
@@ -62,6 +62,7 @@ export async function syntheseScreen() {
         libelle: `Cours de piano — ${noms} (${fmtDuree(dureeTotale)})`,
         dureeTotale,
         montant: Number(s.montant) || 0,
+        facturee: !!s.facturee,
         idsAmarquer: [s.id, ...(rattacheesDe.get(s.id) || []).map((r) => r.id)],
       });
     }
@@ -115,36 +116,39 @@ export async function syntheseScreen() {
     return el("div", [
       controles,
       el("p.preview-summary", `${evs.length} séance(s) · ${groupes.length} foyer(s) · total ${fmtEUR(totalGeneral)}`),
-      ...groupes.map((g) =>
-        el("section.foyer-bloc", [
+      ...groupes.map((g) => {
+        const toutFacture = g.lignes.every((ev) => ev.facturee);
+        return el("section.foyer-bloc", { class: toutFacture ? "foyer-bloc--facture" : "" }, [
           el("div.foyer-bloc__head", [
-            el("strong", g.foyer.nom),
+            el("strong", [g.foyer.nom, toutFacture ? el("span.chip.chip--ok", "facturé") : null]),
             el("span.foyer-bloc__total", fmtEUR(g.total)),
           ]),
           el("table.recap", [
             el("tbody", g.lignes.map((ev) =>
-              el("tr", [
+              el("tr", { class: ev.facturee ? "recap__row--facture" : "" }, [
                 el("td.recap__date", fmtDateFR(ev.date)),
-                el("td", ev.libelle),
+                el("td", [ev.libelle, ev.facturee ? el("span.chip.chip--ok", "facturé") : null]),
                 el("td.recap__montant", fmtEUR(ev.montant)),
               ])
             )),
           ]),
-          btn("Marquer ce foyer facturé", {
-            onClick: () => marquerFacture(g.lignes.flatMap((ev) => ev.idsAmarquer)),
-            variant: "ghost",
+          btn(toutFacture ? "Annuler « facturé »" : "Marquer ce foyer facturé", {
+            onClick: () => marquerFacture(g.lignes.flatMap((ev) => ev.idsAmarquer), !toutFacture),
+            variant: toutFacture ? "ghost" : "primary",
             small: true,
           }),
-        ])
-      ),
+        ]);
+      }),
     ]);
   }
 
-  async function marquerFacture(ids) {
+  async function marquerFacture(ids, valeur = true) {
     const set = new Set(ids);
-    const maj = seances.filter((s) => set.has(s.id)).map((s) => ({ ...s, facturee: true, updatedAt: new Date().toISOString() }));
+    const maj = seances
+      .filter((s) => set.has(s.id))
+      .map((s) => ({ ...s, facturee: valeur, updatedAt: new Date().toISOString() }));
     await bulkPut("seances", maj);
-    toast(`${maj.length} séance(s) marquée(s) facturée(s).`, "ok");
+    toast(valeur ? `Foyer marqué facturé (${maj.length} séance·s).` : "Marquage « facturé » retiré.", "ok");
     render();
   }
 

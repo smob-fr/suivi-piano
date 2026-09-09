@@ -455,6 +455,11 @@ html, body {
   padding-bottom: 6px;
 }
 .foyer-bloc__total { font-weight: 700; white-space: nowrap; }
+.foyer-bloc--facture { opacity: 0.7; }
+.foyer-bloc--facture .foyer-bloc__head { border-bottom-color: var(--ok); }
+.foyer-bloc__head strong { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.recap__row--facture td { color: var(--ink-soft); }
+.recap td .chip { margin-left: 6px; }
 .recap { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .recap td { padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .recap tr:last-child td { border-bottom: 0; }
