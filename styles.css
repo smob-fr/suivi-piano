@@ -521,13 +521,22 @@ html, body {
 .zone--agenda { background: var(--surface); border: 1px solid var(--line); padding: 12px; }
 .zone--stats { background: var(--surface-2); border: 1px solid var(--line); padding: 12px; }
 
-.zone--todo.todo-card {
+/* Encart « à faire » : la carte ET le détail déplié partagent le fond violet clair,
+   pour distinguer ces cours de ceux où il n'y a rien à faire. */
+.zone--todo {
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  overflow: hidden;
+}
+.zone--todo-vide { border-color: var(--line); background: var(--surface); }
+
+.todo-card {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
-  border: 1px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 0;
+  background: transparent;
   padding: 14px;
   cursor: pointer;
   font: inherit;
@@ -545,9 +554,11 @@ html, body {
   font-weight: 700;
   font-size: 1.05rem;
 }
+.zone--todo-vide .todo-card__n { background: var(--ink-soft); }
 .todo-card__txt { font-weight: 600; text-align: left; flex: 1; }
 .todo-card__chev { color: var(--accent); }
-.todo-detail { display: grid; gap: 6px; margin: -4px 0 16px; padding: 0 4px; }
+.todo-detail { display: grid; gap: 6px; padding: 0 14px 14px; }
+.todo-detail .seance { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
 .bloc-titre { margin: 8px 0 2px; font-size: 0.85rem; color: var(--ink-soft); }
 
 .jour-bloc { display: grid; gap: 6px; }

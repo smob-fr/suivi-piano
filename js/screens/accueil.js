@@ -35,7 +35,7 @@ export async function accueilScreen() {
   /* ---------- Zone 1 : À faire ---------- */
   const detail = el("div.todo-detail", { hidden: true });
   let ouvert = false;
-  const carteAFaire = el("button.zone.zone--todo.todo-card", { onclick: () => toggleDetail() }, [
+  const carteAFaire = el("button.todo-card", { onclick: () => toggleDetail() }, [
     el("span.todo-card__n", String(nbActions)),
     el("span.todo-card__txt", nbActions === 0 ? "Rien à faire" : [
       aSaisir.length ? `${aSaisir.length} à saisir` : null,
@@ -44,6 +44,7 @@ export async function accueilScreen() {
     ].filter(Boolean).join(" · ")),
     el("span.todo-card__chev", nbActions ? "▾" : ""),
   ]);
+  const zoneTodo = el("section.zone.zone--todo", { class: nbActions ? "" : "zone--todo-vide" }, [carteAFaire, detail]);
   function toggleDetail() {
     ouvert = !ouvert;
     detail.hidden = !ouvert;
@@ -95,7 +96,7 @@ export async function accueilScreen() {
 
   const fab = el("button.fab", { title: "Nouvelle séance ponctuelle", onclick: () => ouvrirNouvelleSeance(rafraichir) }, "+");
 
-  return screen(cap(libelleJour(j)), { children: [carteAFaire, detail, agenda, chiffres, fab] });
+  return screen(cap(libelleJour(j)), { children: [zoneTodo, agenda, chiffres, fab] });
 }
 
 function stat(valeur, label) {
