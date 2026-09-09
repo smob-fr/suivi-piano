@@ -361,6 +361,8 @@ Ordre prévu, chaque étape étant testable sur le téléphone :
 5. ✅ **Accueil & Rappels** : chiffres du mois, nudge début-de-mois, bouton flottant ;
    rappel calendrier (.ics récurrent) + notifications best-effort (permission + Periodic
    Background Sync + notification générique du service worker).
-6. **Synthèse & Crédit d'impôt** : synthèse mensuelle par foyer + marquage `facturée`,
-   liste des cours pour l'attestation (année civile, par foyer, totaux € + heures).
-7. **Finitions** : paramètres, rappel de sauvegarde, ajustements d'ergonomie.
+6. ✅ **Synthèse & Crédit d'impôt** : écran `/synthese` à deux vues — synthèse mensuelle
+   par foyer (mois, filtre « non facturées », bouton « marquer ce foyer facturé ») et
+   liste crédit d'impôt (année civile, cours retenus, totaux € + heures par foyer). Une
+   visite de foyer = une seule ligne (noms cumulés, durée cumulée, montant unique).
+7. **Finitions** : exports (CSV / PDF), ajustements d'ergonomie.

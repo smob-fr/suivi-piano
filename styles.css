@@ -436,6 +436,31 @@ html, body {
 .stat__val { font-weight: 700; font-size: 1rem; }
 .stat__lbl { color: var(--ink-soft); font-size: 0.72rem; margin-top: 2px; }
 
+/* ---------- Synthèse ---------- */
+.foyer-bloc {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 12px 14px;
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.foyer-bloc__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+.foyer-bloc__total { font-weight: 700; white-space: nowrap; }
+.recap { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.recap td { padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.recap tr:last-child td { border-bottom: 0; }
+.recap__date { color: var(--ink-soft); white-space: nowrap; width: 1%; padding-right: 10px; }
+.recap__montant { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
 /* ---------- Bouton flottant ---------- */
 .fab {
   position: fixed;

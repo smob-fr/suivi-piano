@@ -9,6 +9,7 @@ import { accueilScreen } from "./screens/accueil.js";
 import { agendaScreen } from "./screens/agenda.js";
 import { seanceScreen } from "./screens/seance.js";
 import { seancesListeScreen } from "./screens/seancesListe.js";
+import { syntheseScreen } from "./screens/synthese.js";
 import { periodesScreen } from "./screens/periodes.js";
 import { elevesListScreen } from "./screens/eleves.js";
 import { eleveFormScreen } from "./screens/eleveForm.js";
@@ -16,7 +17,7 @@ import { payeursListScreen, payeurFormScreen } from "./screens/payeurs.js";
 import { parametresScreen } from "./screens/parametres.js";
 import { placeholderScreen } from "./screens/placeholder.js";
 
-window.SUIVI_BUILD = "v0.6.2 · 2026-09-09";
+window.SUIVI_BUILD = "v0.7.0 · 2026-09-09";
 
 /* ---------- Structure de la page ---------- */
 const app = document.getElementById("app");
@@ -57,7 +58,7 @@ route("/agenda", agendaScreen);
 route("/seances", seancesListeScreen);
 route("/seances/:id", seanceScreen);
 route("/periodes", periodesScreen);
-route("/synthese", () => placeholderScreen("Synthèse", 6));
+route("/synthese", syntheseScreen);
 
 route("/eleves", elevesListScreen);
 route("/eleves/:id", eleveFormScreen);
