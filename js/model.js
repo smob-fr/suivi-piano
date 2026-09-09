@@ -1,6 +1,17 @@
 // Suivi Piano — fabriques et règles métier (indépendantes de l'UI et du stockage)
 
-import { personneNom, fmtDuree } from "./util.js";
+import { personneNom, fmtDuree, el } from "./util.js";
+
+/** Petit badge de statut de séance (élément DOM). */
+export function badgeStatut(statut) {
+  const map = {
+    prevue: ["Prévu", "prevue"],
+    effectuee: ["Effectué", "effectuee"],
+    annulee: ["Annulé", "annulee"],
+  };
+  const [txt, kind] = map[statut] || [statut, ""];
+  return el("span.badge-statut", { class: `badge-statut--${kind}` }, txt);
+}
 
 export function adresseVide() {
   return { numero: "", rue: "", complement: "", cp: "", ville: "" };

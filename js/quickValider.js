@@ -1,17 +1,13 @@
-// Suivi Piano — popin de validation rapide d'une séance
+// Suivi Piano — popin universelle de gestion rapide d'une séance
+// Fonctionne quel que soit le statut (Prévu / Effectué / Annulé). Aucune redirection
+// vers la fiche élève : tout se règle ici.
 
-import { el, fmtEUR, fmtDuree, DUREES, toast, personneNom } from "./util.js";
+import { el, fmtEUR, fmtDuree, DUREES, LIEUX, toast, personneNom } from "./util.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB } from "./db.js";
 import { libelleEleve, libellePayeur, montantParDefaut, membresVisite } from "./model.js";
-import { libelleJour } from "./planning.js";
-import { validerSolo, validerVisite } from "./seanceOps.js";
-import { navigate } from "./router.js";
+import { libelleJour, today, addDays } from "./planning.js";
+import { validerSolo, validerVisite, annulerDefinitivement, reprogrammer } from "./seanceOps.js";
 
-/**
- * Ouvre la popin de validation rapide.
- * @param {string} seanceId
- * @param {() => void} onDone  rappelé après validation / annulation
- */
 export async function ouvrirQuickValider(seanceId, onDone) {
   const [seance, elevesAll, payeursAll, seancesAll] = await Promise.all([
     seancesDB.get(seanceId), elevesDB.all(), payeursDB.all(), seancesDB.all(),
@@ -22,114 +18,160 @@ export async function ouvrirQuickValider(seanceId, onDone) {
 
   const membres = membresVisite(seance, seancesAll);
   const estVisite = membres.length > 1;
+  const eleve = eleveById.get(seance.eleveId);
   const payeur = seance.payeurType === "payeur" ? payeurById.get(seance.payeurId) : null;
+  const aRattrapage = seancesAll.some((x) => x.rattrapageDe === seance.id);
 
-  let montant = montantParDefaut({
-    eleve: eleveById.get(seance.eleveId),
-    payeur,
-    groupe: estVisite,
-  });
+  const tarifRef = montantParDefaut({ eleve, payeur, groupe: estVisite });
+  let montant = seance.montant != null && seance.montant !== 0 ? seance.montant : tarifRef;
   let dureeMin = seance.dureeMin;
-  const presence = new Map(membres.map((m) => [m.id, true]));
+  const presence = new Map(membres.map((m) => [m.id, m.statut !== "annulee"]));
 
   const overlay = el("div.modal-overlay");
   const fermer = () => overlay.remove();
   overlay.addEventListener("click", (e) => { if (e.target === overlay) fermer(); });
-
-  const titre = estVisite
-    ? `Visite — ${libellePayeur(payeur || {})}`
-    : libelleEleve(eleveById.get(seance.eleveId) || {});
-  const sousTitre = `${libelleJour(seance.date)} · ${seance.heure}`;
-
-  /* ----- Zone "Modifier" (repliée par défaut) ----- */
-  const editZone = el("div.qv__edit", { hidden: true });
-  const rerenderEdit = () => {
-    const kids = [];
-    if (!estVisite) {
-      kids.push(
-        champ("Durée", el("select.field__input", {
-          onchange: (e) => { dureeMin = Number(e.target.value); rerenderResume(); },
-        }, DUREES.map((d) => el("option", { value: d, selected: d === dureeMin }, `${d} min`))))
-      );
-    }
-    kids.push(
-      champ("Montant (€)", el("input.field__input", {
-        type: "number", inputmode: "decimal", value: montant ?? "",
-        oninput: (e) => { montant = e.target.value === "" ? 0 : Number(e.target.value); rerenderResume(); },
-      }))
-    );
-    editZone.replaceChildren(...kids);
-  };
-  rerenderEdit();
-
-  /* ----- Présents (visite) ----- */
-  const presentsZone = estVisite
-    ? el("div.qv__presents", membres.map((m) => {
-        const e = eleveById.get(m.eleveId);
-        const chip = el("button.qv__chip.qv__chip--on", {
-          type: "button",
-          onclick: () => {
-            const on = !presence.get(m.id);
-            presence.set(m.id, on);
-            chip.classList.toggle("qv__chip--on", on);
-          },
-        }, `${m.heure} ${personneNom(e) || "?"}`);
-        return chip;
-      }))
-    : null;
-
-  /* ----- Résumé ----- */
-  const resume = el("p.qv__resume");
-  const rerenderResume = () => {
-    resume.textContent = estVisite
-      ? `Valider la visite (${fmtEUR(montant)} · ${membres.length} élèves)`
-      : `Valider ce cours (${fmtDuree(dureeMin)} — ${fmtEUR(montant)})`;
-  };
-  rerenderResume();
-
-  async function faire(effectuee) {
-    try {
-      if (estVisite) {
-        await validerVisite(membres, { effectuee, montant, presenceById: presence });
-      } else {
-        await validerSolo(seance, { effectuee, montant, dureeMin });
-      }
-      fermer();
-      toast(effectuee ? "Cours validé." : "Cours annulé.", "ok");
-      onDone && onDone();
-    } catch (e) {
-      console.error(e);
-      toast("Échec de l'enregistrement.", "warn");
-    }
-  }
-
-  const box = el("div.modal.qv", [
-    el("div.qv__head", [
-      el("strong.qv__titre", titre),
-      el("span.qv__sous", sousTitre),
-    ]),
-    presentsZone,
-    resume,
-    el("button.btn.btn--primary.qv__oui", { onclick: () => faire(true) }, "OUI, valider"),
-    el("div.qv__row", [
-      el("button.btn.btn--ghost", {
-        onclick: () => {
-          editZone.hidden = !editZone.hidden;
-        },
-      }, "Modifier"),
-      el("button.btn.btn--ghost", { onclick: () => faire(false) }, "Absent / annulé"),
-    ]),
-    editZone,
-    el("button.link.qv__fiche", {
-      type: "button",
-      onclick: () => { fermer(); navigate(`/seances/${seance.id}`); },
-    }, "Ouvrir la fiche complète"),
-  ]);
-
+  const box = el("div.modal.qv");
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
-  function champ(label, input) {
-    return el("label.field", [el("span.field__label", label), input]);
+  const termine = (msg) => {
+    fermer();
+    if (msg) toast(msg, "ok");
+    onDone && onDone();
+  };
+
+  /* ---------- En-tête (toujours affiché) ---------- */
+  function entete() {
+    return el("div.qv__head", [
+      el("strong.qv__titre", estVisite ? `Visite — ${libellePayeur(payeur || {})}` : libelleEleve(eleve || {})),
+      el("span.qv__sous", `${libelleJour(seance.date)} · ${seance.heure}`),
+      el("span.qv__meta", [
+        `${fmtDuree(dureeMin)}`,
+        ` · ${fmtEUR(montant)}`,
+        estVisite ? ` · ${membres.length} élèves` : "",
+        ` · ${LIEUX[seance.lieu] || ""}`,
+      ].join("")),
+    ]);
   }
+
+  /* ---------- Édition durée / montant ---------- */
+  function zoneEdition() {
+    const kids = [];
+    if (!estVisite) {
+      const sel = el("select.field__input", { onchange: (e) => { dureeMin = Number(e.target.value); rendre(); } },
+        DUREES.map((d) => el("option", { value: d, selected: d === dureeMin }, `${d} min`)));
+      kids.push(el("label.field", [el("span.field__label", "Durée"), sel]));
+    }
+    kids.push(el("label.field", [
+      el("span.field__label", "Montant (€)"),
+      el("input.field__input", {
+        type: "number", inputmode: "decimal", value: montant ?? "",
+        oninput: (e) => { montant = e.target.value === "" ? 0 : Number(e.target.value); },
+      }),
+    ]));
+    return el("div.qv__edit", kids);
+  }
+
+  /* ---------- Présents (visite) ---------- */
+  function zonePresents() {
+    if (!estVisite) return null;
+    return el("div.qv__presents", membres.map((m) => {
+      const e = eleveById.get(m.eleveId);
+      const c = el("button.qv__chip", {
+        type: "button", class: presence.get(m.id) ? "qv__chip--on" : "",
+        onclick: () => { presence.set(m.id, !presence.get(m.id)); c.classList.toggle("qv__chip--on", presence.get(m.id)); },
+      }, `${m.heure} ${personneNom(e) || "?"}`);
+      return c;
+    }));
+  }
+
+  /* ---------- Actions selon le statut ---------- */
+  let mode = "principal"; // principal | edition | annuler
+
+  async function valider() {
+    if (estVisite) {
+      if (!membres.some((m) => presence.get(m.id))) return toast("Coche au moins un élève présent.", "warn");
+      await validerVisite(membres, { effectuee: true, montant, presenceById: presence });
+    } else {
+      await validerSolo(seance, { effectuee: true, montant, dureeMin });
+    }
+    termine("Cours validé.");
+  }
+
+  async function passerAnnule() {
+    if (estVisite) await validerVisite(membres, { effectuee: false, montant: 0, presenceById: presence });
+    else await validerSolo(seance, { effectuee: false });
+    seance.statut = "annulee";
+    mode = "annuler";
+    rendre();
+  }
+
+  function rendre() {
+    const kids = [entete(), zonePresents()];
+
+    if (mode === "edition") {
+      kids.push(zoneEdition());
+      kids.push(el("button.btn.btn--primary.qv__oui", { onclick: valider }, "Enregistrer"));
+      kids.push(el("button.link", { type: "button", onclick: () => { mode = "principal"; rendre(); } }, "← retour"));
+      box.replaceChildren(...kids.filter(Boolean));
+      return;
+    }
+
+    if (mode === "annuler" || seance.statut === "annulee") {
+      // Vue « cours annulé » : reprogrammer / annuler définitivement / il a eu lieu
+      if (aRattrapage) {
+        kids.push(el("p.qv__resume", "Cours annulé — rattrapage déjà programmé."));
+      } else if (seance.rattrapageIgnore) {
+        kids.push(el("p.qv__resume", "Cours annulé définitivement."));
+      } else {
+        kids.push(el("p.qv__resume", "Cours annulé. À reprogrammer ?"));
+      }
+
+      if (!aRattrapage) {
+        let dateR = addDays(seance.date, 7);
+        let heureR = seance.heure;
+        const dateInput = el("input.field__input", { type: "date", value: dateR, oninput: (e) => (dateR = e.target.value) });
+        const heureInput = el("input.field__input", { type: "time", value: heureR, oninput: (e) => (heureR = e.target.value) });
+        kids.push(el("div.qv__edit", [
+          el("label.field", [el("span.field__label", "Nouvelle date"), dateInput]),
+          el("label.field", [el("span.field__label", "Heure"), heureInput]),
+        ]));
+        kids.push(el("button.btn.btn--primary.qv__oui", {
+          onclick: async () => {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateR)) return toast("Choisis une date.", "warn");
+            await reprogrammer(seance, { date: dateR, heure: heureR });
+            termine("Rattrapage programmé.");
+          },
+        }, "Reprogrammer ce cours"));
+        kids.push(el("div.qv__row", [
+          el("button.btn.btn--ghost", {
+            onclick: async () => { await annulerDefinitivement(seance); termine("Cours annulé définitivement."); },
+          }, "Annuler définitivement"),
+          el("button.btn.btn--ghost", { onclick: valider }, "Le cours a eu lieu"),
+        ]));
+      } else {
+        kids.push(el("button.btn.btn--ghost.qv__oui", { onclick: valider }, "Le cours a finalement eu lieu"));
+      }
+      box.replaceChildren(...kids.filter(Boolean));
+      return;
+    }
+
+    // Statut prévu ou effectué
+    if (seance.statut === "effectuee") {
+      kids.push(el("p.qv__resume", `✓ Cours validé (${fmtDuree(dureeMin)} — ${fmtEUR(montant)})`));
+    } else {
+      kids.push(el("p.qv__resume", estVisite
+        ? `Valider la visite (${fmtEUR(montant)} · ${membres.length} élèves)`
+        : `Valider ce cours (${fmtDuree(dureeMin)} — ${fmtEUR(montant)})`));
+    }
+    kids.push(el("button.btn.btn--primary.qv__oui", { onclick: valider },
+      seance.statut === "effectuee" ? "Confirmer" : "OUI, valider"));
+    kids.push(el("div.qv__row", [
+      el("button.btn.btn--ghost", { onclick: () => { mode = "edition"; rendre(); } }, "Modifier"),
+      el("button.btn.btn--ghost", { onclick: passerAnnule }, "Absent / annulé"),
+    ]));
+    box.replaceChildren(...kids.filter(Boolean));
+  }
+
+  rendre();
 }

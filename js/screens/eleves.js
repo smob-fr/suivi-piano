@@ -52,7 +52,10 @@ export async function elevesListScreen() {
         (e.adresse?.ville || "").toLowerCase().includes(q)
       );
     }
-    rows = rows.sort((a, b) => personneNom(a).localeCompare(personneNom(b), "fr"));
+    rows = rows.sort((a, b) =>
+      (a.nom || "").localeCompare(b.nom || "", "fr") ||
+      (a.prenom || "").localeCompare(b.prenom || "", "fr")
+    );
 
     if (!rows.length) {
       listBox.replaceChildren(

@@ -1,15 +1,16 @@
 // Suivi Piano — écran Agenda (Semaine / Jour / Liste)
 
-import { el, personneNom, LIEUX, STATUT_SEANCE, fmtEUR, sortBy } from "../util.js";
+import { el, personneNom, LIEUX, fmtEUR, sortBy } from "../util.js";
 import { screen, btn, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB } from "../db.js";
-import { libelleEleve, libellePayeur } from "../model.js";
+import { libelleEleve, libellePayeur, badgeStatut } from "../model.js";
 import {
   today, addDays, lundiDeLaSemaine, libelleJour,
   finHeure, ferieNom, enPeriode, periodes as periodesDB,
 } from "../planning.js";
 import { navigate, render } from "../router.js";
 import { ouvrirQuickValider } from "../quickValider.js";
+import { ouvrirNouvelleSeance } from "../nouvelleSeancePopin.js";
 
 const state = { ancre: today(), vue: "semaine" };
 
@@ -59,18 +60,19 @@ export async function agendaScreen() {
     const p = s.payeurType === "payeur" ? payeurById.get(s.payeurId) : null;
     const sub = [
       LIEUX[s.lieu],
-      s.statut !== "prevue" ? STATUT_SEANCE[s.statut] : null,
-      s.montant != null ? fmtEUR(s.montant) : null,
+      s.montant != null && s.montant !== 0 ? fmtEUR(s.montant) : null,
       s.facturee ? "facturée" : null,
     ].filter(Boolean).join(" · ");
-    const ouvrir = () =>
-      s.statut === "prevue" ? ouvrirQuickValider(s.id, () => render()) : navigate(`/seances/${s.id}`);
-    return el("button.seance", { class: `seance--${s.statut}`, onclick: ouvrir }, [
+    return el("button.seance", {
+      class: `seance--${s.statut}`,
+      onclick: () => ouvrirQuickValider(s.id, () => render()),
+    }, [
       el("span.seance__time", `${s.heure}–${finHeure(s.heure, s.dureeMin)}`),
       el("span.seance__body", [
         el("span.seance__title", [
           LIEU_ICON[s.lieu] ? el("span.seance__ic", LIEU_ICON[s.lieu]) : null,
           libelleEleve(e || {}),
+          badgeStatut(s.statut),
         ]),
         el("span.seance__sub", sub),
         p ? el("span.seance__foyer", `foyer ${libellePayeur(p)}`) : null,
@@ -145,7 +147,7 @@ export async function agendaScreen() {
   return screen("Agenda", {
     actions: [
       btn("Vacances", { onClick: () => navigate("/periodes"), variant: "ghost", small: true }),
-      btn("+ Séance", { onClick: () => navigate("/seances/nouveau"), small: true }),
+      btn("+ Séance", { onClick: () => ouvrirNouvelleSeance(() => render()), small: true }),
     ],
     children: [barre, el("div.agenda__titre-wrap", titre), body],
   });

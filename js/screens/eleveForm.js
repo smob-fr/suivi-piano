@@ -6,7 +6,7 @@ import {
 } from "../util.js";
 import {
   screen, btn, fieldText, fieldNumber, fieldSelect, fieldCheckbox, fieldTextarea,
-  formSection, emptyState,
+  formSection, sectionPliable, emptyState,
 } from "../ui.js";
 import { eleves as elevesDB, payeurs as payeursDB } from "../db.js";
 import { nouvelEleve, representantVide, libelleEleve, libellePayeur } from "../model.js";
@@ -95,40 +95,40 @@ export async function eleveFormScreen({ id }) {
   ]);
 
   const form = el("form.form", { onsubmit: (ev) => ev.preventDefault() }, [
-    formSection("Identité", [
+    sectionPliable("Identité", [
       fieldText("Prénom *", e.prenom, (v) => set("prenom", v)),
       fieldText("Nom", e.nom, (v) => set("nom", v)),
       fieldText("Téléphone", e.telephone, (v) => set("telephone", v), { type: "tel" }),
       fieldText("Email", e.email, (v) => set("email", v), { type: "email" }),
       fieldCheckbox("Élève mineur", e.mineur, (v) => { set("mineur", v); renderRep(); }),
-    ]),
+    ], { ouvert: true }),
     repBox,
-    formSection("Adresse", [
+    sectionPliable("Créneau & lieu", [
+      fieldSelect("Lieu", e.lieu, Object.entries(LIEUX), (v) => set("lieu", v)),
+      fieldCheckbox("Créneau récurrent chaque semaine", e.creneauRecurrent, (v) => set("creneauRecurrent", v)),
+      el("div.field", { style: "grid-column:1/-1" }, [
+        el("span.field__label", "Horaires"),
+        creneauxBox,
+      ]),
+    ], { ouvert: true }),
+    sectionPliable("Adresse", [
       fieldText("N°", e.adresse.numero, (v) => setAdr("numero", v)),
       fieldText("Rue", e.adresse.rue, (v) => setAdr("rue", v)),
       fieldText("Complément", e.adresse.complement, (v) => setAdr("complement", v)),
       fieldText("Code postal", e.adresse.cp, (v) => setAdr("cp", v)),
       fieldText("Ville", e.adresse.ville, (v) => setAdr("ville", v)),
-    ]),
-    formSection("Cours", [
-      fieldSelect("Lieu", e.lieu, Object.entries(LIEUX), (v) => set("lieu", v)),
-      fieldCheckbox("Créneau récurrent chaque semaine", e.creneauRecurrent, (v) => set("creneauRecurrent", v)),
-    ]),
-    el("div.form-section.form-section--inset", [
-      el("div.form-section__title", "Créneaux"),
-      creneauxBox,
-    ]),
-    formSection("Facturation", [
+    ], { ouvert: isNew }),
+    sectionPliable("Facturation", [
       payeurMode,
       fieldNumber("Tarif habituel (€ / séance)", e.tarifHabituel, (v) => set("tarifHabituel", v)),
       fieldSelect("Mode de paiement habituel", e.modePaiementHabituel, Object.entries(MODES_PAIEMENT), (v) => set("modePaiementHabituel", v)),
       fieldCheckbox("Éligible crédit d'impôt", e.eligibleCreditImpot, (v) => set("eligibleCreditImpot", v)),
-    ]),
-    formSection("Divers", [
+    ], { ouvert: isNew }),
+    sectionPliable("Divers", [
       fieldText("Date de début des cours", e.dateDebut || "", (v) => set("dateDebut", v || null), { type: "date" }),
       fieldSelect("Statut", e.statut, [["actif", "Actif"], ["archive", "Archivé"]], (v) => set("statut", v)),
       fieldTextarea("Notes (niveau, morceaux, remarques…)", e.notes, (v) => set("notes", v), { rows: 4 }),
-    ]),
+    ], { ouvert: false }),
     el("div.form-actions", [
       btn("Enregistrer", { onClick: save, variant: "primary" }),
       btn("Annuler", { onClick: () => navigate("/eleves"), variant: "ghost" }),
@@ -192,7 +192,7 @@ export async function eleveFormScreen({ id }) {
     navigate("/eleves");
   }
 
-  return screen(isNew ? "Nouvel élève" : libelleEleve(e), { children: [form] });
+  return screen(isNew ? "Nouvel élève" : libelleEleve(e), { children: [form], back: true });
 }
 
 function cap(s) {

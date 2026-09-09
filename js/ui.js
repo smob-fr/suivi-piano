@@ -2,14 +2,37 @@
 
 import { el } from "./util.js";
 
-export function screen(titre, { actions = [], children = [] } = {}) {
+export function screen(titre, { actions = [], children = [], back = false } = {}) {
   return el("div.screen", [
+    back
+      ? el("button.back-link", { type: "button", onclick: () => history.back() }, "‹ Retour")
+      : null,
     el("div.screen__head", [
       el("h2.screen__title", titre),
       actions.length ? el("div.screen__actions", actions) : null,
     ]),
     el("div.screen__body", children),
   ]);
+}
+
+/**
+ * Section de formulaire repliable.
+ * @param {string} titre
+ * @param {Array} children
+ * @param {{ ouvert?: boolean }} opts
+ */
+export function sectionPliable(titre, children, { ouvert = true } = {}) {
+  const grid = el("div.form-section__grid", children);
+  grid.hidden = !ouvert;
+  const chevron = el("span.form-section__chevron", ouvert ? "▾" : "▸");
+  const toggle = el("button.form-section__toggle", {
+    type: "button",
+    onclick: () => {
+      grid.hidden = !grid.hidden;
+      chevron.textContent = grid.hidden ? "▸" : "▾";
+    },
+  }, [el("span", titre), chevron]);
+  return el("fieldset.form-section.form-section--pliable", [toggle, grid]);
 }
 
 export function btn(label, { onClick, variant = "primary", type = "button", small = false } = {}) {

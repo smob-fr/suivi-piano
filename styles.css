@@ -111,7 +111,50 @@ html, body {
   margin-bottom: 12px;
 }
 .screen__title { margin: 0; font-size: 1.2rem; }
-.screen__actions { display: flex; gap: 8px; }
+.screen__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.back-link {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  padding: 4px 0 8px;
+  cursor: pointer;
+}
+
+/* ---------- Section repliable ---------- */
+.form-section--pliable { padding: 0; overflow: hidden; }
+.form-section__toggle {
+  width: 100%;
+  border: 0;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 650;
+  font-size: 0.92rem;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+.form-section--pliable .form-section__grid { padding: 12px 14px; }
+.form-section__chevron { color: var(--ink-soft); font-size: 0.8rem; }
+
+/* ---------- Badge de statut ---------- */
+.badge-statut {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border: 1px solid;
+}
+.badge-statut--prevue { color: var(--accent); border-color: var(--accent); }
+.badge-statut--effectuee { color: var(--ok); border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.badge-statut--annulee { color: var(--danger); border-color: var(--danger); }
 
 /* ---------- Boutons ---------- */
 .btn {
@@ -329,9 +372,10 @@ html, body {
 
 /* ---------- Popin de validation rapide ---------- */
 .qv { gap: 12px; }
-.qv__head { display: grid; gap: 2px; }
+.qv__head { display: grid; gap: 2px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .qv__titre { font-size: 1.05rem; }
 .qv__sous { color: var(--ink-soft); font-size: 0.85rem; text-transform: capitalize; }
+.qv__meta { color: var(--ink-soft); font-size: 0.82rem; }
 .qv__resume { margin: 0; font-weight: 600; font-size: 1rem; }
 .qv__oui { width: 100%; padding: 14px; font-size: 1.05rem; }
 .qv__row { display: flex; gap: 8px; }
@@ -461,24 +505,37 @@ html, body {
 .seance__sub { font-size: 0.8rem; color: var(--ink-soft); }
 .seance__foyer { font-size: 0.72rem; color: var(--accent); }
 
-/* ---------- Accueil ---------- */
-.todo-card {
+/* ---------- Accueil : zones ---------- */
+.zone {
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+}
+.zone__titre {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ink-soft);
+}
+.zone--agenda { background: var(--surface); border: 1px solid var(--line); padding: 12px; }
+.zone--stats { background: var(--surface-2); border: 1px solid var(--line); padding: 12px; }
+
+.zone--todo.todo-card {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
   padding: 14px;
   cursor: pointer;
   font: inherit;
   color: inherit;
-  margin-bottom: 14px;
 }
 .todo-card__n {
-  min-width: 34px;
-  height: 34px;
+  min-width: 36px;
+  height: 36px;
   border-radius: 10px;
   background: var(--accent);
   color: var(--accent-ink);
@@ -486,11 +543,31 @@ html, body {
   align-items: center;
   justify-content: center;
   font-weight: 700;
+  font-size: 1.05rem;
 }
-.todo-card__txt { font-weight: 600; text-align: left; }
-.todo-detail { display: grid; gap: 6px; margin: -6px 0 16px; }
-.bloc { margin-bottom: 16px; display: grid; gap: 6px; }
-.bloc-titre { margin: 6px 0 2px; font-size: 0.92rem; }
+.todo-card__txt { font-weight: 600; text-align: left; flex: 1; }
+.todo-card__chev { color: var(--accent); }
+.todo-detail { display: grid; gap: 6px; margin: -4px 0 16px; padding: 0 4px; }
+.bloc-titre { margin: 8px 0 2px; font-size: 0.85rem; color: var(--ink-soft); }
+
+.jour-bloc { display: grid; gap: 6px; }
+.jour-bloc + .jour-bloc { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.jour-bloc__titre {
+  margin: 0;
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.jour-bloc__date { color: var(--ink-soft); font-size: 0.8rem; font-weight: 400; text-transform: capitalize; }
+.jour-bloc--today .jour-bloc__titre { color: var(--accent); }
+.jour-bloc--today {
+  margin: -4px -6px 0;
+  padding: 6px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
 
 /* ---------- Lignes info (récapitulatif séance) ---------- */
 .info-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 0.88rem; }

@@ -213,7 +213,7 @@ export async function seanceScreen({ id }) {
     navigate("/agenda");
   }
 
-  return screen(titre, { children: [form] });
+  return screen(titre, { children: [form], back: true });
 
   function appliquerEleve(target, e) {
     target.eleveId = e.id;

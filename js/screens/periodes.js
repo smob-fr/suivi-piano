@@ -51,5 +51,5 @@ export async function periodesScreen() {
     render();
   }
 
-  return screen("Périodes sans cours", { children: [form, el("div.list", items)] });
+  return screen("Périodes sans cours", { children: [form, el("div.list", items)], back: true });
 }

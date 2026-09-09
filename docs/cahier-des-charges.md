@@ -16,6 +16,21 @@ les encaissements. Elle fournit en revanche la **liste des cours à inclure dans
 l'attestation crédit d'impôt** (la génération de l'attestation elle-même est hors
 périmètre — voir §7).
 
+## 1 bis. Principes d'ergonomie
+
+- **Tout se règle dans des popins** depuis l'accueil et l'agenda : valider un cours,
+  l'annuler, le reprogrammer, en créer un ponctuel. On ne va jamais sur la fiche élève
+  pour ça (la fiche élève = configuration initiale uniquement).
+- **Un tap sur une séance** ouvre la popin quel que soit son statut, avec toujours :
+  élève, date, durée, prix. « Absent / annulé » propose alors **reprogrammer** (date +
+  heure) ou **annuler définitivement** ; sans choix, le cours reste dans « à
+  reprogrammer ».
+- **Badge de statut** (Prévu / Effectué / Annulé) sur chaque séance affichée.
+- Accueil découpé en **zones visuellement distinctes** : à faire (haut), agenda 3 jours,
+  chiffres du mois.
+- Fiches longues (élève) en **sections repliables**.
+- Tout sous-écran a un lien **‹ Retour**.
+
 ## 2. Principes généraux
 
 - **Application web installable (PWA)** : icône sur l'écran d'accueil Android, plein écran.

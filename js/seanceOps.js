@@ -1,16 +1,59 @@
 // Suivi Piano — opérations de validation d'une séance (partagées écran / popin)
 
 import { seances as seancesDB } from "./db.js";
-import { nowISO } from "./util.js";
+import { nowISO, uid } from "./util.js";
+import { addDays } from "./planning.js";
 
 /** Valide (ou annule) une séance individuelle. */
 export async function validerSolo(seance, { effectuee, montant, dureeMin }) {
   seance.statut = effectuee ? "effectuee" : "annulee";
   seance.montant = effectuee ? (Number(montant) || 0) : 0;
   if (dureeMin) seance.dureeMin = Number(dureeMin);
+  if (effectuee) seance.rattrapageIgnore = false;
   seance.rattacheeA = null;
   seance.updatedAt = nowISO();
   await seancesDB.save(seance);
+}
+
+/** Marque une séance annulée comme « ne pas reprogrammer » (sort de la liste à faire). */
+export async function annulerDefinitivement(seance) {
+  seance.statut = "annulee";
+  seance.montant = 0;
+  seance.rattrapageIgnore = true;
+  seance.updatedAt = nowISO();
+  await seancesDB.save(seance);
+}
+
+/**
+ * Crée une séance de rattrapage liée à `origine` (déjà annulée).
+ * @returns la séance créée
+ */
+export async function reprogrammer(origine, { date, heure } = {}) {
+  const now = nowISO();
+  const rattrapage = {
+    id: uid(),
+    date: date || addDays(origine.date, 7),
+    heure: heure || origine.heure,
+    dureeMin: origine.dureeMin,
+    eleveId: origine.eleveId,
+    eleveIds: [origine.eleveId],
+    payeurType: origine.payeurType,
+    payeurId: origine.payeurId,
+    lieu: origine.lieu,
+    statut: "prevue",
+    montant: null,
+    modePaiement: origine.modePaiement,
+    facturee: false,
+    commentaire: "",
+    rattrapageDe: origine.id,
+    rattacheeA: null,
+    source: "manuelle",
+    creneauKey: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await seancesDB.save(rattrapage);
+  return rattrapage;
 }
 
 /**

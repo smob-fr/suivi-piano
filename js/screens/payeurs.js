@@ -33,6 +33,7 @@ export async function payeursListScreen() {
     : [emptyState("Aucun payeur distinct. Un payeur regroupe les élèves d'une même famille.")];
 
   return screen("Payeurs / foyers", {
+    back: true,
     actions: [btn("+ Payeur", { onClick: () => navigate("/payeurs/nouveau"), small: true })],
     children: [el("div.list", items)],
   });
@@ -119,5 +120,5 @@ export async function payeurFormScreen({ id }) {
     navigate("/payeurs");
   }
 
-  return screen(isNew ? "Nouveau payeur" : libellePayeur(p), { children: [form] });
+  return screen(isNew ? "Nouveau payeur" : libellePayeur(p), { children: [form], back: true });
 }
