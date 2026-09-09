@@ -3,7 +3,7 @@
 import { el, fmtEUR, fmtDuree, fmtDateFR, personneNom, sortBy, toast } from "../util.js";
 import { screen, btn, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB, bulkPut } from "../db.js";
-import { libelleEleve, libellePayeur } from "../model.js";
+import { libelleEleve, libellePayeur, payeurRef } from "../model.js";
 import { render } from "../router.js";
 
 const state = { vue: "mensuelle", mois: prevMonth(), annee: new Date().getFullYear(), nonFacturees: true };
@@ -20,17 +20,22 @@ export async function syntheseScreen() {
   const eleveById = new Map(elevesAll.map((e) => [e.id, e]));
   const payeurById = new Map(payeursAll.map((p) => [p.id, p]));
 
-  // Le foyer = le payeur ACTUEL de l'élève (un payeur = une facture, un ou plusieurs
-  // élèves). On ne se fie pas au payeur figé sur la séance : l'élève a pu être rattaché
-  // à un payeur après la génération de la séance.
+  // Le foyer = le payeur ACTUEL configuré sur la fiche de l'élève (un payeur = une
+  // facture = un ou plusieurs élèves). On ne se fie pas au payeur figé sur la séance,
+  // qui peut dater d'avant le rattachement.
   function foyerDe(s) {
     const e = eleveById.get(s.eleveId);
-    const payeurId = e?.payeurId || (s.payeurType === "payeur" ? s.payeurId : null);
-    if (payeurId) {
-      const p = payeurById.get(payeurId);
-      return { id: "p:" + payeurId, nom: p ? libellePayeur(p) : "(payeur supprimé)", eligible: !!p?.eligibleCreditImpot };
+    const ref = e ? payeurRef(e) : { type: s.payeurType, id: s.payeurId };
+    if (ref.type === "payeur") {
+      const p = payeurById.get(ref.id);
+      return { id: "p:" + ref.id, nom: p ? libellePayeur(p) : "(payeur supprimé)", eligible: !!p?.eligibleCreditImpot };
     }
-    return { id: "e:" + s.eleveId, nom: e ? libelleEleve(e) : "(élève supprimé)", eligible: !!e?.eligibleCreditImpot };
+    const foyerEleve = eleveById.get(ref.id);
+    return {
+      id: "e:" + ref.id,
+      nom: foyerEleve ? libelleEleve(foyerEleve) : "(élève supprimé)",
+      eligible: !!foyerEleve?.eligibleCreditImpot,
+    };
   }
   const rattacheesDe = new Map(); // porteuseId -> [séances rattachées]
   for (const s of seances) {

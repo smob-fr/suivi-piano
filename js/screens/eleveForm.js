@@ -18,7 +18,10 @@ export async function eleveFormScreen({ id }) {
   const e = isNew ? nouvelEleve() : await elevesDB.get(id);
   if (!e) return screen("Élève introuvable", { children: [emptyState("Cette fiche n'existe plus.")] });
 
-  const listePayeurs = await payeursDB.all();
+  const [listePayeurs, tousEleves] = await Promise.all([payeursDB.all(), elevesDB.all()]);
+  const autresEleves = tousEleves
+    .filter((x) => x.id !== e.id && x.statut === "actif")
+    .sort((a, b) => (a.nom || "").localeCompare(b.nom || "", "fr"));
 
   const set = (k, v) => { e[k] = v; };
   const setAdr = (k, v) => { e.adresse[k] = v; };
@@ -66,29 +69,39 @@ export async function eleveFormScreen({ id }) {
   };
   renderCreneaux();
 
-  /* ----- Payeur ----- */
-  const payeurOpts = [["self", "L'élève lui-même"], ...listePayeurs.map((p) => [p.id, libellePayeur(p)])];
+  /* ----- Payeur -----
+     Valeurs : "self" | "e:<id élève parent>" | "p:<id payeur externe>" */
+  const payeurOpts = [
+    ["self", "L'élève lui-même"],
+    ...autresEleves.map((x) => ["e:" + x.id, `${personneNom(x)} (élève)`]),
+    ...listePayeurs.map((p) => ["p:" + p.id, `${libellePayeur(p)} (payeur externe)`]),
+  ];
+  const payeurValeur = () => (e.payeurEleveId ? "e:" + e.payeurEleveId : e.payeurId ? "p:" + e.payeurId : "self");
   const payeurHint = el("p.field__hint");
   const renderPayeurHint = () => {
     payeurHint.replaceChildren();
     if (e.payeurId) {
       payeurHint.append(
-        "Adresse et coordonnées du payeur (pour l'attestation) : ",
+        "Coordonnées du payeur externe (pour l'attestation) : ",
         el("button.link", { type: "button", onclick: () => navigate(`/payeurs/${e.payeurId}`) }, "modifier ce payeur"),
         "."
       );
+    } else if (e.payeurEleveId) {
+      payeurHint.append("Les cours de cet élève seront regroupés avec ceux du payeur sur une seule facture.");
     } else {
       payeurHint.append(
-        "Pour un foyer (famille, ou tiers payeur à une autre adresse), crée d'abord le payeur : ",
-        el("button.link", { type: "button", onclick: () => navigate("/payeurs/nouveau") }, "nouveau payeur"),
+        "Choisis un autre élève (un parent lui aussi élève) ou, pour un tiers non élève, ",
+        el("button.link", { type: "button", onclick: () => navigate("/payeurs/nouveau") }, "crée un payeur externe"),
         "."
       );
     }
   };
   renderPayeurHint();
   const payeurMode = el("div", [
-    fieldSelect("Payeur", e.payeurId || "self", payeurOpts, (v) => {
-      e.payeurId = v === "self" ? null : v;
+    fieldSelect("Payeur", payeurValeur(), payeurOpts, (v) => {
+      if (v === "self") { e.payeurId = null; e.payeurEleveId = null; }
+      else if (v.startsWith("e:")) { e.payeurEleveId = v.slice(2); e.payeurId = null; }
+      else if (v.startsWith("p:")) { e.payeurId = v.slice(2); e.payeurEleveId = null; }
       renderPayeurHint();
     }),
     payeurHint,
@@ -101,7 +114,7 @@ export async function eleveFormScreen({ id }) {
       fieldText("Téléphone", e.telephone, (v) => set("telephone", v), { type: "tel" }),
       fieldText("Email", e.email, (v) => set("email", v), { type: "email" }),
       fieldCheckbox("Élève mineur", e.mineur, (v) => { set("mineur", v); renderRep(); }),
-    ], { ouvert: true }),
+    ], { ouvert: false }),
     repBox,
     sectionPliable("Créneau & lieu", [
       fieldSelect("Lieu", e.lieu, Object.entries(LIEUX), (v) => set("lieu", v)),
@@ -110,20 +123,20 @@ export async function eleveFormScreen({ id }) {
         el("span.field__label", "Horaires"),
         creneauxBox,
       ]),
-    ], { ouvert: true }),
+    ], { ouvert: false }),
     sectionPliable("Adresse", [
       fieldText("N°", e.adresse.numero, (v) => setAdr("numero", v)),
       fieldText("Rue", e.adresse.rue, (v) => setAdr("rue", v)),
       fieldText("Complément", e.adresse.complement, (v) => setAdr("complement", v)),
       fieldText("Code postal", e.adresse.cp, (v) => setAdr("cp", v)),
       fieldText("Ville", e.adresse.ville, (v) => setAdr("ville", v)),
-    ], { ouvert: isNew }),
+    ], { ouvert: false }),
     sectionPliable("Facturation", [
       payeurMode,
       fieldNumber("Tarif habituel (€ / séance)", e.tarifHabituel, (v) => set("tarifHabituel", v)),
       fieldSelect("Mode de paiement habituel", e.modePaiementHabituel, Object.entries(MODES_PAIEMENT), (v) => set("modePaiementHabituel", v)),
       fieldCheckbox("Éligible crédit d'impôt", e.eligibleCreditImpot, (v) => set("eligibleCreditImpot", v)),
-    ], { ouvert: isNew }),
+    ], { ouvert: false }),
     sectionPliable("Divers", [
       fieldText("Date de début des cours", e.dateDebut || "", (v) => set("dateDebut", v || null), { type: "date" }),
       fieldSelect("Statut", e.statut, [["actif", "Actif"], ["archive", "Archivé"]], (v) => set("statut", v)),

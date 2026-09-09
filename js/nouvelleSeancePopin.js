@@ -3,7 +3,7 @@
 
 import { el, toast, personneNom, LIEUX, uid, nowISO } from "./util.js";
 import { seances as seancesDB, eleves as elevesDB } from "./db.js";
-import { nomPrenom, montantParDefaut } from "./model.js";
+import { nomPrenom, montantParDefaut, payeurRef } from "./model.js";
 import { today } from "./planning.js";
 
 export async function ouvrirNouvelleSeance(onDone) {
@@ -66,8 +66,8 @@ export async function ouvrirNouvelleSeance(onDone) {
       dureeMin: e.creneaux?.[0]?.dureeMin || 60,
       eleveId: e.id,
       eleveIds: [e.id],
-      payeurType: e.payeurId ? "payeur" : "eleve",
-      payeurId: e.payeurId || e.id,
+      payeurType: payeurRef(e).type,
+      payeurId: payeurRef(e).id,
       lieu: draft.lieu,
       statut: passe ? "effectuee" : "prevue",
       montant: passe ? montantParDefaut({ eleve: e, payeur: null, groupe: false }) : null,

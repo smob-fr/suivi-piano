@@ -6,7 +6,7 @@ import {
 } from "../util.js";
 import { screen, btn, fieldText, fieldNumber, fieldSelect, fieldTextarea, fieldCheckbox, formSection, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB } from "../db.js";
-import { libelleEleve, libellePayeur, montantParDefaut, membresVisite } from "../model.js";
+import { libelleEleve, libellePayeur, montantParDefaut, membresVisite, payeurRef } from "../model.js";
 import { finHeure, libelleJour, today, addDays } from "../planning.js";
 import { navigate, currentQuery } from "../router.js";
 
@@ -216,24 +216,26 @@ export async function seanceScreen({ id }) {
   return screen(titre, { children: [form], back: true });
 
   function appliquerEleve(target, e) {
+    const ref = payeurRef(e);
     target.eleveId = e.id;
     target.eleveIds = [e.id];
-    target.payeurType = e.payeurId ? "payeur" : "eleve";
-    target.payeurId = e.payeurId || e.id;
+    target.payeurType = ref.type;
+    target.payeurId = ref.id;
     target.lieu = e.lieu;
     target.modePaiement = e.modePaiementHabituel;
   }
 }
 
 function baseSeance(e0) {
+  const ref = e0 ? payeurRef(e0) : { type: "eleve", id: "" };
   return {
     date: today(),
     heure: "17:00",
     dureeMin: 60,
     eleveId: e0?.id || "",
     eleveIds: e0 ? [e0.id] : [],
-    payeurType: e0?.payeurId ? "payeur" : "eleve",
-    payeurId: e0?.payeurId || e0?.id || "",
+    payeurType: ref.type,
+    payeurId: ref.id,
     lieu: e0?.lieu || "domicile",
     statut: "effectuee",
     montant: null,

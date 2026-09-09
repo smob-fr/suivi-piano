@@ -54,8 +54,11 @@ périmètre — voir §7).
 
 Relations :
 
-- Un **Élève** est rattaché soit à lui-même comme payeur, soit à un **Payeur**.
-- Un **Payeur** peut être rattaché à plusieurs élèves (= foyer / famille).
+- Le **payeur** d'un élève est : lui-même, **un autre élève** (le parent qui est aussi
+  élève), ou un **Payeur externe** (tiers non élève, ex. grand-parent).
+- Un même payeur (élève-parent ou Payeur externe) regroupe tous les cours de tous ses
+  élèves : **un payeur = une facture**. La synthèse résout le payeur d'après la fiche
+  **actuelle** de l'élève.
 - Une **Séance** concerne un payeur (ou un élève qui se paie lui-même) et **un ou
   plusieurs élèves présents**.
 

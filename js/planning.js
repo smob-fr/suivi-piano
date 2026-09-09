@@ -3,6 +3,7 @@
 import { uid, nowISO } from "./util.js";
 import { JOURS } from "./util.js";
 import { getAll, put, remove, bulkPut } from "./db.js";
+import { payeurRef } from "./model.js";
 
 // Les créneaux récurrents sont générés jusqu'à la fin de l'année scolaire
 // (les créneaux sont valables de septembre à juillet).
@@ -179,6 +180,7 @@ export async function chercherConflitCreneaux(creneaux, selfId) {
 
 function seanceAuto(eleve, creneau, date, key) {
   const now = nowISO();
+  const ref = payeurRef(eleve);
   return {
     id: uid(),
     date,
@@ -186,8 +188,8 @@ function seanceAuto(eleve, creneau, date, key) {
     dureeMin: creneau.dureeMin,
     eleveId: eleve.id,
     eleveIds: [eleve.id],
-    payeurType: eleve.payeurId ? "payeur" : "eleve",
-    payeurId: eleve.payeurId || eleve.id,
+    payeurType: ref.type,
+    payeurId: ref.id,
     lieu: eleve.lieu,
     statut: "prevue",
     montant: null,
@@ -246,8 +248,7 @@ export async function genererHorizon() {
         if (!ex) {
           aCreer.push(seanceAuto(eleve, c, d, key));
         } else if (ex.statut === "prevue") {
-          const pType = eleve.payeurId ? "payeur" : "eleve";
-          const pId = eleve.payeurId || eleve.id;
+          const { type: pType, id: pId } = payeurRef(eleve);
           let modifie = false;
           if (ex.dureeMin !== c.dureeMin) { ex.dureeMin = c.dureeMin; modifie = true; }
           if (ex.lieu !== eleve.lieu) { ex.lieu = eleve.lieu; modifie = true; }

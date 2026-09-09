@@ -30,7 +30,9 @@ export function nouvelEleve() {
     lieu: "domicile",
     creneauRecurrent: true,
     creneaux: [], // [{ jour: "lundi", heure: "17:00", dureeMin: 60 }]
-    payeurId: null, // null => l'élève est son propre payeur
+    payeurId: null, // id d'un payeur externe (ex. grand-parent non élève)
+    payeurEleveId: null, // id d'un autre élève qui paie (ex. le parent, lui aussi élève)
+    // aucun des deux => l'élève est son propre payeur
     tarifHabituel: null, // € pour une séance de cet élève seul
     modePaiementHabituel: "cheque",
     eligibleCreditImpot: false,
@@ -56,6 +58,20 @@ export function nouveauPayeur() {
 
 export function representantVide() {
   return { prenom: "", nom: "", telephone: "", email: "" };
+}
+
+/**
+ * Qui paie pour cet élève ? Renvoie une référence stable pour le regroupement « foyer ».
+ * - payeur externe  -> { type: "payeur", id }
+ * - autre élève      -> { type: "eleve", id }  (le parent qui est aussi élève)
+ * - lui-même         -> { type: "eleve", id: <son propre id> }
+ */
+export function payeurRef(eleve) {
+  if (eleve?.payeurEleveId && eleve.payeurEleveId !== eleve.id) {
+    return { type: "eleve", id: eleve.payeurEleveId };
+  }
+  if (eleve?.payeurId) return { type: "payeur", id: eleve.payeurId };
+  return { type: "eleve", id: eleve?.id };
 }
 
 /** Libellé d'affichage d'un élève (Prénom Nom). */
@@ -114,9 +130,11 @@ export const CRITERES_CREDIT_IMPOT =
  * Triées par heure ; la première est la « porteuse » du montant.
  */
 export function membresVisite(seance, toutes) {
-  if (!seance || seance.payeurType !== "payeur") return [seance].filter(Boolean);
+  if (!seance) return [];
+  // Séance individuelle si le payeur est l'élève lui-même.
+  if (seance.payeurType === "eleve" && seance.payeurId === seance.eleveId) return [seance];
   const groupe = toutes.filter(
-    (s) => s.payeurType === "payeur" && s.payeurId === seance.payeurId && s.date === seance.date
+    (s) => s.payeurType === seance.payeurType && s.payeurId === seance.payeurId && s.date === seance.date
   );
   if (groupe.length <= 1) return [seance];
   return groupe.slice().sort((a, b) => String(a.heure).localeCompare(String(b.heure)));
