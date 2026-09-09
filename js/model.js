@@ -58,10 +58,16 @@ export function representantVide() {
   return { prenom: "", nom: "", telephone: "", email: "" };
 }
 
-/** Libellé d'affichage d'un élève. */
+/** Libellé d'affichage d'un élève (Prénom Nom). */
 export function libelleEleve(e) {
   const n = personneNom(e);
   return n || "(élève sans nom)";
+}
+
+/** Libellé « Nom Prénom » (listes et sélecteurs d'élèves). */
+export function nomPrenom(e) {
+  const s = [e?.nom, e?.prenom].filter(Boolean).join(" ").trim();
+  return s || "(élève sans nom)";
 }
 
 /** Libellé d'affichage d'un payeur. */

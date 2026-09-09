@@ -3,7 +3,7 @@
 import { el, personneNom, fmtEUR, LIEUX, sortBy, debounce } from "../util.js";
 import { screen, btn, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB } from "../db.js";
-import { libelleEleve, badgeStatut } from "../model.js";
+import { libelleEleve, nomPrenom, badgeStatut } from "../model.js";
 import { finHeure, libelleJour, today } from "../planning.js";
 import { render } from "../router.js";
 import { ouvrirQuickValider } from "../quickValider.js";
@@ -32,7 +32,7 @@ export async function seancesListeScreen() {
       ["tous", "Facturée : tous"], ["non", "Non facturée"], ["oui", "Facturée"],
     ], (v) => { state.facturee = v; paint(); }),
     selectFiltre("Élève", state.eleveId, [
-      ["", "Tous les élèves"], ...elevesTries.map((e) => [e.id, personneNom(e)]),
+      ["", "Tous les élèves"], ...elevesTries.map((e) => [e.id, nomPrenom(e)]),
     ], (v) => { state.eleveId = v; paint(); }),
     el("label.field", [
       el("span.field__label", "Mois précis"),

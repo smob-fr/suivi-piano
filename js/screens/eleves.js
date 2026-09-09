@@ -3,7 +3,7 @@
 import { el, debounce, personneNom, JOURS, fmtEUR } from "../util.js";
 import { screen, btn, emptyState, listItem } from "../ui.js";
 import { eleves as elevesDB, payeurs as payeursDB } from "../db.js";
-import { libelleEleve, libellePayeur } from "../model.js";
+import { nomPrenom, libellePayeur } from "../model.js";
 import { navigate } from "../router.js";
 
 const state = { q: "", statut: "actif" };
@@ -76,7 +76,7 @@ export async function elevesListScreen() {
           e.tarifHabituel != null ? fmtEUR(e.tarifHabituel) : null,
         ].filter(Boolean).join(" · ");
         return listItem({
-          title: libelleEleve(e),
+          title: nomPrenom(e),
           subtitle: sub,
           onClick: () => navigate(`/eleves/${e.id}`),
           badges: [

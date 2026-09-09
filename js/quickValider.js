@@ -30,7 +30,11 @@ export async function ouvrirQuickValider(seanceId, onDone) {
   const overlay = el("div.modal-overlay");
   const fermer = () => overlay.remove();
   overlay.addEventListener("click", (e) => { if (e.target === overlay) fermer(); });
-  const box = el("div.modal.qv");
+  const content = el("div.qv__content");
+  const box = el("div.modal.qv", [
+    el("button.modal-close", { type: "button", "aria-label": "Fermer", onclick: fermer }, "✕"),
+    content,
+  ]);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
@@ -113,7 +117,7 @@ export async function ouvrirQuickValider(seanceId, onDone) {
       kids.push(zoneEdition());
       kids.push(el("button.btn.btn--primary.qv__oui", { onclick: valider }, "Enregistrer"));
       kids.push(el("button.link", { type: "button", onclick: () => { mode = "principal"; rendre(); } }, "← retour"));
-      box.replaceChildren(...kids.filter(Boolean));
+      content.replaceChildren(...kids.filter(Boolean));
       return;
     }
 
@@ -152,7 +156,7 @@ export async function ouvrirQuickValider(seanceId, onDone) {
       } else {
         kids.push(el("button.btn.btn--ghost.qv__oui", { onclick: valider }, "Le cours a finalement eu lieu"));
       }
-      box.replaceChildren(...kids.filter(Boolean));
+      content.replaceChildren(...kids.filter(Boolean));
       return;
     }
 
@@ -170,7 +174,7 @@ export async function ouvrirQuickValider(seanceId, onDone) {
       el("button.btn.btn--ghost", { onclick: () => { mode = "edition"; rendre(); } }, "Modifier"),
       el("button.btn.btn--ghost", { onclick: passerAnnule }, "Absent / annulé"),
     ]));
-    box.replaceChildren(...kids.filter(Boolean));
+    content.replaceChildren(...kids.filter(Boolean));
   }
 
   rendre();

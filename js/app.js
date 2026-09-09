@@ -16,7 +16,7 @@ import { payeursListScreen, payeurFormScreen } from "./screens/payeurs.js";
 import { parametresScreen } from "./screens/parametres.js";
 import { placeholderScreen } from "./screens/placeholder.js";
 
-window.SUIVI_BUILD = "v0.6.1 · 2026-09-09";
+window.SUIVI_BUILD = "v0.6.2 · 2026-09-09";
 
 /* ---------- Structure de la page ---------- */
 const app = document.getElementById("app");

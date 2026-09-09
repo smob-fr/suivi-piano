@@ -360,6 +360,7 @@ html, body {
   padding: 20px;
 }
 .modal {
+  position: relative;
   background: var(--surface);
   border-radius: var(--radius);
   padding: 18px;
@@ -367,12 +368,30 @@ html, body {
   display: grid;
   gap: 14px;
 }
-.modal__msg { margin: 0; }
+.modal__msg { margin: 0; padding-right: 24px; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.modal-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 8px;
+  z-index: 1;
+}
+.modal-close:hover { background: var(--surface-2); }
 
 /* ---------- Popin de validation rapide ---------- */
 .qv { gap: 12px; }
-.qv__head { display: grid; gap: 2px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.qv__content { display: grid; gap: 12px; }
+.qv__head { display: grid; gap: 2px; padding: 0 24px 4px 0; border-bottom: 1px solid var(--line); }
 .qv__titre { font-size: 1.05rem; }
 .qv__sous { color: var(--ink-soft); font-size: 0.85rem; text-transform: capitalize; }
 .qv__meta { color: var(--ink-soft); font-size: 0.82rem; }

@@ -126,6 +126,7 @@ export function confirmDialog(message, { danger = false, okLabel = "Confirmer", 
       resolve(val);
     };
     const box = el("div.modal", [
+      el("button.modal-close", { type: "button", "aria-label": "Fermer", onclick: () => close(false) }, "✕"),
       el("p.modal__msg", message),
       el("div.modal__actions", [
         el("button.btn.btn--ghost", { onclick: () => close(false) }, cancelLabel),

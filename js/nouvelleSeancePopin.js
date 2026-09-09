@@ -3,7 +3,7 @@
 
 import { el, toast, personneNom, LIEUX, uid, nowISO } from "./util.js";
 import { seances as seancesDB, eleves as elevesDB } from "./db.js";
-import { libelleEleve, montantParDefaut } from "./model.js";
+import { nomPrenom, montantParDefaut } from "./model.js";
 import { today } from "./planning.js";
 
 export async function ouvrirNouvelleSeance(onDone) {
@@ -30,12 +30,13 @@ export async function ouvrirNouvelleSeance(onDone) {
       const el2 = actifs.find((x) => x.id === draft.eleveId);
       if (el2) { draft.lieu = el2.lieu; selLieu.value = el2.lieu; }
     },
-  }, actifs.map((e) => el("option", { value: e.id, selected: e.id === draft.eleveId }, libelleEleve(e))));
+  }, actifs.map((e) => el("option", { value: e.id, selected: e.id === draft.eleveId }, nomPrenom(e))));
 
   const selLieu = el("select.field__input", { onchange: (e) => (draft.lieu = e.target.value) },
     Object.entries(LIEUX).map(([v, t]) => el("option", { value: v, selected: v === draft.lieu }, t)));
 
   const box = el("div.modal.qv", [
+    el("button.modal-close", { type: "button", "aria-label": "Fermer", onclick: fermer }, "✕"),
     el("div.qv__head", [el("strong.qv__titre", "Nouvelle séance ponctuelle")]),
     el("label.field", [el("span.field__label", "Élève"), selEleve]),
     el("div.qv__edit", [
