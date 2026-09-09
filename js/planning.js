@@ -245,10 +245,18 @@ export async function genererHorizon() {
         const ex = autoIndex.get(kd);
         if (!ex) {
           aCreer.push(seanceAuto(eleve, c, d, key));
-        } else if (ex.statut === "prevue" && (ex.dureeMin !== c.dureeMin || ex.lieu !== eleve.lieu)) {
-          ex.dureeMin = c.dureeMin;
-          ex.lieu = eleve.lieu;
-          aMettreAJour.push(ex);
+        } else if (ex.statut === "prevue") {
+          const pType = eleve.payeurId ? "payeur" : "eleve";
+          const pId = eleve.payeurId || eleve.id;
+          let modifie = false;
+          if (ex.dureeMin !== c.dureeMin) { ex.dureeMin = c.dureeMin; modifie = true; }
+          if (ex.lieu !== eleve.lieu) { ex.lieu = eleve.lieu; modifie = true; }
+          if (ex.payeurType !== pType || ex.payeurId !== pId) {
+            ex.payeurType = pType;
+            ex.payeurId = pId;
+            modifie = true;
+          }
+          if (modifie) aMettreAJour.push(ex);
         }
       }
     }

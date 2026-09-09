@@ -20,12 +20,16 @@ export async function syntheseScreen() {
   const eleveById = new Map(elevesAll.map((e) => [e.id, e]));
   const payeurById = new Map(payeursAll.map((p) => [p.id, p]));
 
+  // Le foyer = le payeur ACTUEL de l'élève (un payeur = une facture, un ou plusieurs
+  // élèves). On ne se fie pas au payeur figé sur la séance : l'élève a pu être rattaché
+  // à un payeur après la génération de la séance.
   function foyerDe(s) {
-    if (s.payeurType === "payeur") {
-      const p = payeurById.get(s.payeurId);
-      return { id: "p:" + s.payeurId, nom: p ? libellePayeur(p) : "(payeur supprimé)", eligible: !!p?.eligibleCreditImpot };
-    }
     const e = eleveById.get(s.eleveId);
+    const payeurId = e?.payeurId || (s.payeurType === "payeur" ? s.payeurId : null);
+    if (payeurId) {
+      const p = payeurById.get(payeurId);
+      return { id: "p:" + payeurId, nom: p ? libellePayeur(p) : "(payeur supprimé)", eligible: !!p?.eligibleCreditImpot };
+    }
     return { id: "e:" + s.eleveId, nom: e ? libelleEleve(e) : "(élève supprimé)", eligible: !!e?.eligibleCreditImpot };
   }
   const rattacheesDe = new Map(); // porteuseId -> [séances rattachées]
