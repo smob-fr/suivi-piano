@@ -17,6 +17,7 @@ export async function parametresScreen() {
   const lastBackup = await getParam("derniereSauvegarde", null);
   const heureRappel = await getParam("heureRappel", "19:00");
   const emetteur = await getParam("emetteur", { nom: "", adresse: "", siren: "", mention: "TVA non applicable, article 293 B du CGI." });
+  const emailFactures = await getParam("emailFactures", "");
   const state = { heure: heureRappel };
   const sauverEmetteur = () => setParam("emetteur", emetteur);
 
@@ -67,6 +68,8 @@ export async function parametresScreen() {
       fieldTextarea("Adresse", emetteur.adresse, (v) => { emetteur.adresse = v; sauverEmetteur(); }, { rows: 2 }),
       fieldText("SIREN", emetteur.siren, (v) => { emetteur.siren = v; sauverEmetteur(); }),
       fieldText("Mention légale (TVA)", emetteur.mention, (v) => { emetteur.mention = v; sauverEmetteur(); }),
+      fieldText("Email destinataire des factures", emailFactures, (v) => setParam("emailFactures", v.trim()), { type: "email" }),
+      el("p.field__hint", "Utilisé par « Envoyer les factures par mail » (Synthèse). Sur Android, ouvre le partage : choisis ton appli mail, les PDF sont joints, tu confirmes le destinataire et tu envoies."),
     ]),
 
     /* ---- Rappel quotidien ---- */

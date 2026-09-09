@@ -5,7 +5,7 @@ import { screen, btn, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB, bulkPut, getParam } from "../db.js";
 import { libelleEleve, libellePayeur, payeurRef, adresseLignes } from "../model.js";
 import { downloadFile } from "../backup.js";
-import { genererFacturePdf } from "../facturePdf.js";
+import { genererFacturePdf, construireFactureFile } from "../facturePdf.js";
 import { today } from "../planning.js";
 import { render } from "../router.js";
 
@@ -150,7 +150,8 @@ export async function syntheseScreen() {
       el("div.export-bar.no-print", [
         btn("Export CSV", { onClick: exportMensuelCSV, variant: "ghost", small: true }),
         btn("Imprimer / PDF", { onClick: () => imprimer(`Synthèse ${moisLisible(state.mois)}`), variant: "ghost", small: true }),
-        btn(`Factures PDF (${groupes.length})`, { onClick: () => genererToutesFactures(groupes), small: true }),
+        btn(`Factures PDF (${groupes.length})`, { onClick: () => genererToutesFactures(groupes), variant: "ghost", small: true }),
+        btn("Envoyer les factures par mail", { onClick: () => envoyerFacturesMail(groupes), small: true }),
       ]),
       el("p.preview-summary", `${evs.length} séance(s) · ${groupes.length} foyer(s) · total ${fmtEUR(totalGeneral)}`),
       ...groupes.map((g, gi) => {
@@ -228,6 +229,41 @@ export async function syntheseScreen() {
       await new Promise((r) => setTimeout(r, 450));
     }
     toast(`${groupes.length} facture(s) générée(s).`, "ok");
+  }
+
+  async function envoyerFacturesMail(groupes) {
+    if (!groupes.length) return;
+    toast("Préparation des factures…", "info");
+    let files;
+    try {
+      files = await Promise.all(groupes.map((g, i) => construireFactureFile(payloadFacture(g, i))));
+    } catch (e) {
+      console.error(e);
+      return toast("Génération des PDF impossible.", "warn");
+    }
+    const dest = String((await getParam("emailFactures", "")) || "").trim();
+    const sujet = `Factures cours de piano — ${moisLisible(state.mois)}`;
+    const corps =
+      `Bonjour,\n\nCi-joint les factures de cours de piano de ${moisLisible(state.mois)} ` +
+      `(${groupes.length} facture·s).\n\nCordialement`;
+
+    if (navigator.canShare && navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files, title: sujet, text: corps + (dest ? `\n\nÀ envoyer à : ${dest}` : "") });
+        return;
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+        console.error(e);
+      }
+    }
+    // Repli : on télécharge les PDF et on ouvre un brouillon de mail (sans pièces jointes).
+    for (const f of files) {
+      downloadFile(f.name, f, "application/pdf");
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    const url = `mailto:${encodeURIComponent(dest)}?subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`;
+    window.location.href = url;
+    toast("PDF téléchargés — joins-les au mail qui vient de s'ouvrir.", "ok");
   }
 
   async function marquerFacture(ids, valeur = true) {

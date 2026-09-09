@@ -32,6 +32,17 @@ function chargerJsPDF() {
  * }} d
  */
 export async function genererFacturePdf(d) {
+  const doc = await construireDoc(d);
+  downloadFile(d.filename, doc.output("blob"), "application/pdf");
+}
+
+/** Renvoie la facture sous forme de File (pour le partage / l'envoi par mail). */
+export async function construireFactureFile(d) {
+  const doc = await construireDoc(d);
+  return new File([doc.output("blob")], d.filename, { type: "application/pdf" });
+}
+
+async function construireDoc(d) {
   const JsPDF = await chargerJsPDF();
   const doc = new JsPDF({ unit: "mm", format: "a4" });
   const M = 20; // marge gauche
@@ -94,5 +105,5 @@ export async function genererFacturePdf(d) {
   F(9);
   for (const m of d.mentions || []) { txt(m, M, y); y += 5; }
 
-  downloadFile(d.filename, doc.output("blob"), "application/pdf");
+  return doc;
 }
