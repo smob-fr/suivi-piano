@@ -118,10 +118,14 @@ export function adresseLignes(a) {
 /**
  * Montant pré-rempli pour une séance.
  * - séance individuelle : tarif habituel de l'élève
- * - séance de foyer (payeur avec forfait) : montant du forfait
+ * - visite de foyer avec forfait fixe (payeur.forfait) : montant du forfait
+ * - visite de foyer sans forfait : somme des tarifs habituels des élèves du groupe (`membres`)
  */
-export function montantParDefaut({ eleve, payeur, groupe }) {
+export function montantParDefaut({ eleve, payeur, groupe, membres }) {
   if (groupe && payeur?.forfait?.montant != null) return Number(payeur.forfait.montant);
+  if (groupe && membres) {
+    return membres.reduce((n, e) => n + (Number(e?.tarifHabituel) || 0), 0);
+  }
   if (eleve?.tarifHabituel != null) return Number(eleve.tarifHabituel);
   return 0;
 }

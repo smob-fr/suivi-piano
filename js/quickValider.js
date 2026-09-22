@@ -22,10 +22,18 @@ export async function ouvrirQuickValider(seanceId, onDone) {
   const payeur = seance.payeurType === "payeur" ? payeurById.get(seance.payeurId) : null;
   const aRattrapage = seancesAll.some((x) => x.rattrapageDe === seance.id);
 
-  const tarifRef = montantParDefaut({ eleve, payeur, groupe: estVisite });
-  let montant = seance.montant != null && seance.montant !== 0 ? seance.montant : tarifRef;
-  let dureeMin = seance.dureeMin;
   const presence = new Map(membres.map((m) => [m.id, m.statut !== "annulee"]));
+
+  /** Montant auto : forfait du payeur, sinon somme des tarifs des élèves présents. */
+  function calculerMontantAuto() {
+    if (!estVisite) return montantParDefaut({ eleve, payeur, groupe: false });
+    const presents = membres.filter((m) => presence.get(m.id)).map((m) => eleveById.get(m.eleveId));
+    return montantParDefaut({ eleve, payeur, groupe: true, membres: presents });
+  }
+
+  let montant = seance.montant != null && seance.montant !== 0 ? seance.montant : calculerMontantAuto();
+  let montantModifie = false;
+  let dureeMin = seance.dureeMin;
 
   const overlay = el("div.modal-overlay");
   const fermer = () => overlay.remove();
@@ -70,7 +78,7 @@ export async function ouvrirQuickValider(seanceId, onDone) {
       el("span.field__label", "Montant (€)"),
       el("input.field__input", {
         type: "number", inputmode: "decimal", value: montant ?? "",
-        oninput: (e) => { montant = e.target.value === "" ? 0 : Number(e.target.value); },
+        oninput: (e) => { montant = e.target.value === "" ? 0 : Number(e.target.value); montantModifie = true; },
       }),
     ]));
     return el("div.qv__edit", kids);
@@ -81,11 +89,14 @@ export async function ouvrirQuickValider(seanceId, onDone) {
     if (!estVisite) return null;
     return el("div.qv__presents", membres.map((m) => {
       const e = eleveById.get(m.eleveId);
-      const c = el("button.qv__chip", {
+      return el("button.qv__chip", {
         type: "button", class: presence.get(m.id) ? "qv__chip--on" : "",
-        onclick: () => { presence.set(m.id, !presence.get(m.id)); c.classList.toggle("qv__chip--on", presence.get(m.id)); },
+        onclick: () => {
+          presence.set(m.id, !presence.get(m.id));
+          if (!montantModifie) montant = calculerMontantAuto();
+          rendre();
+        },
       }, `${m.heure} ${personneNom(e) || "?"}`);
-      return c;
     }));
   }
 

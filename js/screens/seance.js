@@ -61,7 +61,10 @@ export async function seanceScreen({ id }) {
   function prefillMontant() {
     const st = estVisite ? statutVisite : s.statut;
     if (st === "effectuee" && (estVisite ? montantVisite : s.montant) == null) {
-      const v = montantParDefaut({ eleve: eleveCourant(), payeur: payeurCourant(), groupe: estVisite });
+      const membresPresents = estVisite
+        ? membres.filter((m) => presence.get(m.id)).map((m) => eleveById.get(m.eleveId))
+        : undefined;
+      const v = montantParDefaut({ eleve: eleveCourant(), payeur: payeurCourant(), groupe: estVisite, membres: membresPresents });
       if (estVisite) montantVisite = v; else s.montant = v;
     }
   }
