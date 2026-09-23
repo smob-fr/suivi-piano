@@ -34,6 +34,11 @@ export async function ouvrirQuickValider(seanceId, onDone) {
   let montant = seance.montant != null && seance.montant !== 0 ? seance.montant : calculerMontantAuto();
   let montantModifie = false;
   let dureeMin = seance.dureeMin;
+  const dureeById = new Map(membres.map((m) => [m.id, m.dureeMin]));
+  /** Durée affichée : celle de la séance, ou le total des présents pour une visite. */
+  const dureeAffichee = () => estVisite
+    ? membres.filter((m) => presence.get(m.id)).reduce((n, m) => n + (dureeById.get(m.id) || 0), 0)
+    : dureeMin;
 
   const overlay = el("div.modal-overlay");
   const fermer = () => overlay.remove();
@@ -58,7 +63,7 @@ export async function ouvrirQuickValider(seanceId, onDone) {
       el("strong.qv__titre", estVisite ? `Visite — ${libellePayeur(payeur || {})}` : libelleEleve(eleve || {})),
       el("span.qv__sous", `${libelleJour(seance.date)} · ${seance.heure}`),
       el("span.qv__meta", [
-        `${fmtDuree(dureeMin)}`,
+        `${fmtDuree(dureeAffichee())}`,
         ` · ${fmtEUR(montant)}`,
         estVisite ? ` · ${membres.length} élèves` : "",
         ` · ${LIEUX[seance.lieu] || ""}`,
@@ -73,6 +78,13 @@ export async function ouvrirQuickValider(seanceId, onDone) {
       const sel = el("select.field__input", { onchange: (e) => { dureeMin = Number(e.target.value); rendre(); } },
         DUREES.map((d) => el("option", { value: d, selected: d === dureeMin }, `${d} min`)));
       kids.push(el("label.field", [el("span.field__label", "Durée"), sel]));
+    } else {
+      for (const m of membres) {
+        const e = eleveById.get(m.eleveId);
+        const sel = el("select.field__input", { onchange: (ev) => { dureeById.set(m.id, Number(ev.target.value)); rendre(); } },
+          DUREES.map((d) => el("option", { value: d, selected: d === dureeById.get(m.id) }, `${d} min`)));
+        kids.push(el("label.field", [el("span.field__label", `Durée — ${m.heure} ${personneNom(e) || "?"}`), sel]));
+      }
     }
     kids.push(el("label.field", [
       el("span.field__label", "Montant (€)"),
@@ -106,7 +118,7 @@ export async function ouvrirQuickValider(seanceId, onDone) {
   async function valider() {
     if (estVisite) {
       if (!membres.some((m) => presence.get(m.id))) return toast("Coche au moins un élève présent.", "warn");
-      await validerVisite(membres, { effectuee: true, montant, presenceById: presence });
+      await validerVisite(membres, { effectuee: true, montant, presenceById: presence, dureeById });
     } else {
       await validerSolo(seance, { effectuee: true, montant, dureeMin });
     }
@@ -176,7 +188,7 @@ export async function ouvrirQuickValider(seanceId, onDone) {
       kids.push(el("p.qv__resume", `✓ Cours validé (${fmtDuree(dureeMin)} — ${fmtEUR(montant)})`));
     } else {
       kids.push(el("p.qv__resume", estVisite
-        ? `Valider la visite (${fmtEUR(montant)} · ${membres.length} élèves)`
+        ? `Valider la visite (${fmtDuree(dureeAffichee())} — ${fmtEUR(montant)} · ${membres.length} élèves)`
         : `Valider ce cours (${fmtDuree(dureeMin)} — ${fmtEUR(montant)})`));
     }
     kids.push(el("button.btn.btn--primary.qv__oui", { onclick: valider },

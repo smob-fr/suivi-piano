@@ -60,8 +60,9 @@ export async function reprogrammer(origine, { date, heure } = {}) {
  * Valide (ou annule) une visite de foyer : plusieurs séances, un seul montant.
  * @param membres séances triées par heure
  * @param presenceById Map<id, boolean>
+ * @param dureeById Map<id, minutes> (optionnel) : durée modifiée de chaque séance
  */
-export async function validerVisite(membres, { effectuee, montant, presenceById }) {
+export async function validerVisite(membres, { effectuee, montant, presenceById, dureeById }) {
   const now = nowISO();
   const porteuse = effectuee
     ? membres.find((m) => presenceById.get(m.id)) || membres[0]
@@ -69,6 +70,7 @@ export async function validerVisite(membres, { effectuee, montant, presenceById 
   for (const m of membres) {
     const present = presenceById.get(m.id);
     m.rattacheeA = m.id === porteuse.id ? null : porteuse.id;
+    if (dureeById?.get(m.id)) m.dureeMin = Number(dureeById.get(m.id));
     if (!effectuee) {
       m.statut = "annulee";
       m.montant = 0;

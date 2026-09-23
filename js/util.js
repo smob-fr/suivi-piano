@@ -105,7 +105,7 @@ export const MODES_PAIEMENT = {
 
 export const JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
-export const DUREES = [15, 30, 45, 60, 75, 90];
+export const DUREES = [15, 30, 45, 60, 75, 90, 105, 120];
 
 export const STATUT_SEANCE = {
   prevue: "Prévue",
