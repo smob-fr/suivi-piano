@@ -121,10 +121,11 @@ export function toast(message, kind = "info") {
     host = el("div#toast-host");
     document.body.appendChild(host);
   }
-  const node = el("div.toast", { class: `toast--${kind}` }, message);
-  host.appendChild(node);
+  // Confirmations : discrètes et brèves ; avertissements : un peu plus longs.
+  const node = el("div.toast", { class: `toast--${kind}` }, kind === "ok" ? `✓ ${message}` : message);
+  host.replaceChildren(node);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => node.remove(), 3600);
+  toastTimer = setTimeout(() => node.remove(), kind === "warn" ? 3200 : 1600);
 }
 
 /* ---- Confirmation (promesse) ---- */
