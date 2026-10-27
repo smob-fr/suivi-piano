@@ -8,7 +8,7 @@ import {
   screen, btn, fieldText, fieldNumber, fieldSelect, fieldCheckbox, fieldTextarea,
   formSection, sectionPliable, emptyState,
 } from "../ui.js";
-import { eleves as elevesDB, payeurs as payeursDB } from "../db.js";
+import { eleves as elevesDB, payeurs as payeursDB, seances as seancesDB } from "../db.js";
 import { nouvelEleve, representantVide, libelleEleve, libellePayeur } from "../model.js";
 import { genererHorizon, conflitInterne, chercherConflitCreneaux } from "../planning.js";
 import { navigate } from "../router.js";
@@ -73,7 +73,9 @@ export async function eleveFormScreen({ id }) {
      Valeurs : "self" | "e:<id élève parent>" | "p:<id payeur externe>" */
   const payeurOpts = [
     ["self", "L'élève lui-même"],
-    ...autresEleves.map((x) => ["e:" + x.id, `${personneNom(x)} (élève)`]),
+    // Plus de nouveau lien « payé par un autre élève » : on regroupe le foyer en un seul élève.
+    // L'option reste visible uniquement si elle est déjà choisie (données existantes).
+    ...autresEleves.filter((x) => x.id === e.payeurEleveId).map((x) => ["e:" + x.id, `${personneNom(x)} (élève)`]),
     ...listePayeurs.map((p) => ["p:" + p.id, `${libellePayeur(p)} (payeur externe)`]),
   ];
   const payeurValeur = () => (e.payeurEleveId ? "e:" + e.payeurEleveId : e.payeurId ? "p:" + e.payeurId : "self");
@@ -87,10 +89,14 @@ export async function eleveFormScreen({ id }) {
         "."
       );
     } else if (e.payeurEleveId) {
-      payeurHint.append("Les cours de cet élève seront regroupés avec ceux du payeur sur une seule facture.");
+      payeurHint.append(
+        "Ancien mode « payé par un autre élève ». Pour simplifier : ",
+        el("button.link", { type: "button", onclick: () => navigate("/fusion") }, "regrouper le foyer"),
+        " en un seul élève."
+      );
     } else {
       payeurHint.append(
-        "Choisis un autre élève (un parent lui aussi élève) ou, pour un tiers non élève, ",
+        "Pour qu'une autre personne paie, choisis-la ci-dessus ou ",
         el("button.link", { type: "button", onclick: () => navigate("/payeurs/nouveau") }, "crée un payeur externe"),
         "."
       );
@@ -118,6 +124,8 @@ export async function eleveFormScreen({ id }) {
     repBox,
     sectionPliable("Créneau & lieu", [
       fieldSelect("Lieu", e.lieu, Object.entries(LIEUX), (v) => set("lieu", v)),
+      fieldText("Autres participants au cours (prénoms, séparés par une virgule)", (e.participants || []).join(", "),
+        (v) => set("participants", v.split(",").map((x) => x.trim()).filter(Boolean))),
       fieldCheckbox("Créneau récurrent chaque semaine", e.creneauRecurrent, (v) => set("creneauRecurrent", v)),
       el("div.field", { style: "grid-column:1/-1" }, [
         el("span.field__label", "Horaires"),
@@ -133,7 +141,7 @@ export async function eleveFormScreen({ id }) {
     ], { ouvert: false }),
     sectionPliable("Facturation", [
       payeurMode,
-      fieldNumber("Tarif habituel (€ / séance)", e.tarifHabituel, (v) => set("tarifHabituel", v)),
+      fieldNumber("Tarif habituel (€ par cours, participants compris)", e.tarifHabituel, (v) => set("tarifHabituel", v)),
       fieldSelect("Mode de paiement habituel", e.modePaiementHabituel, Object.entries(MODES_PAIEMENT), (v) => set("modePaiementHabituel", v)),
       fieldCheckbox("Éligible crédit d'impôt", e.eligibleCreditImpot, (v) => set("eligibleCreditImpot", v)),
     ], { ouvert: false }),
@@ -195,6 +203,10 @@ export async function eleveFormScreen({ id }) {
   }
 
   async function del() {
+    const historique = (await seancesDB.all()).filter((s) => s.eleveId === id && s.statut !== "prevue").length;
+    if (historique) {
+      return toast(`Suppression impossible : ${historique} séance(s) passée(s) lui sont rattachées. Archive l'élève à la place.`, "warn");
+    }
     const ok = await confirmDialog(
       `Supprimer définitivement la fiche de ${libelleEleve(e)} ? Cette action est irréversible.`,
       { danger: true, okLabel: "Supprimer" }

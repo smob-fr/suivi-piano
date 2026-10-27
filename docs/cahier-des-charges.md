@@ -114,6 +114,21 @@ Exemple (mère + 2 enfants, visite de 2 h à domicile) :
 3 fiches Élève distinctes (identité, créneau, progression propres à chacun) + 1 Payeur
 « Famille Untel » rattaché aux 3, portant le forfait 60 € / 2 h.
 
+### Simplification des foyers (v0.10) — **décision**
+
+Un foyer = **un payeur + un élève principal**. Plusieurs personnes (maman + enfants…) qui suivent le même
+cours ne sont plus des élèves distincts mais des **participants** (champ informatif sur la fiche) : un seul
+créneau (ex. 1 h 30), une seule durée, un seul tarif, une seule séance par cours.
+
+Migration des données existantes (outil « Regrouper les foyers », Paramètres ou bandeau de la liste Élèves) :
+- détection des élèves actifs partageant le même payeur ; si le payeur est lui-même élève, il devient l'élève principal ;
+- créneaux fusionnés par jour (début le plus tôt, durées additionnées), tarif = forfait du payeur sinon somme des tarifs ;
+- **aucune séance existante n'est modifiée** (historique, facturé, crédit d'impôt intacts) ; les anciens élèves sont
+  **archivés** (jamais supprimés) et rattachés à l'élève principal ; seules les séances futures automatiques sont régénérées ;
+- sauvegarde JSON téléchargée automatiquement avant la fusion ; chaque fusion est **annulable** ;
+- la suppression d'un élève ayant des séances passées est refusée (archivage seulement).
+Les anciennes « visites » (séances groupées) restent lisibles et facturables telles quelles.
+
 ## 6. Principe de saisie d'une séance
 
 **Une séance = un montant.** Même écran pour un élève seul et pour une famille.

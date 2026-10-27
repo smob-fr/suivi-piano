@@ -1,6 +1,6 @@
 // Suivi Piano — Synthèse mensuelle (facturation) + liste crédit d'impôt
 
-import { el, fmtEUR, fmtDuree, dureeCourt, fmtDateFR, personneNom, sortBy, toast } from "../util.js";
+import { el, fmtEUR, fmtDuree, fmtDateFR, personneNom, sortBy, toast } from "../util.js";
 import { screen, btn, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB, bulkPut, getParam } from "../db.js";
 import { libelleEleve, libellePayeur, payeurRef, adresseLignes } from "../model.js";
@@ -35,7 +35,7 @@ function prevMonth() {
 export async function syntheseScreen() {
   const [seances, elevesAll, payeursAll, emetteur] = await Promise.all([
     seancesDB.all(), elevesDB.all(), payeursDB.all(),
-    getParam("emetteur", { nom: "", adresse: "", siren: "", mention: "TVA non applicable, article 293 B du CGI." }),
+    getParam("emetteur", {}),
   ]);
   const eleveById = new Map(elevesAll.map((e) => [e.id, e]));
   const payeurById = new Map(payeursAll.map((p) => [p.id, p]));
@@ -80,17 +80,16 @@ export async function syntheseScreen() {
       const rat = (rattacheesDe.get(s.id) || []).filter((r) => r.statut === "effectuee");
       const membres = [s, ...rat];
       const dureeTotale = membres.reduce((n, m) => n + (m.dureeMin || 0), 0);
-      const noms = membres.map((m) => personneNom(eleveById.get(m.eleveId)) || "?").join(", ");
-      const prenoms = membres.map((m) => eleveById.get(m.eleveId)?.prenom || "?").join(", ");
+      const participants = membres.length === 1 ? (eleveById.get(s.eleveId)?.participants || []) : [];
+      const noms = membres.map((m) => personneNom(eleveById.get(m.eleveId)) || "?").join(", ")
+        + (participants.length ? ` + ${participants.join(", ")}` : "");
       const dateFR = fmtDateFR(s.date);
       out.push({
         porteuse: s,
         foyer: foyerDe(s),
         date: s.date,
         libelle: `Cours de piano — ${noms} (${fmtDuree(dureeTotale)})`,
-        libelleFacture: membres.length > 1
-          ? `Cours de piano du ${dateFR} — ${prenoms} (${dureeCourt(dureeTotale)})`
-          : `Cours de piano du ${dateFR} (${dureeCourt(dureeTotale)})`,
+        libelleFacture: `Cours du ${dateFR.slice(0, 5)}`,
         dureeTotale,
         montant: Number(s.montant) || 0,
         facturee: !!s.facturee,
@@ -184,23 +183,25 @@ export async function syntheseScreen() {
   }
 
   /* ---------- Factures PDF ---------- */
-  function emetteurLignes() {
-    const l = [];
-    if (emetteur.nom) l.push(emetteur.nom);
-    else l.push("[Renseigne l'émetteur dans Paramètres]");
-    for (const a of String(emetteur.adresse || "").split("\n")) if (a.trim()) l.push(a.trim());
-    if (emetteur.siren) l.push(`SIREN : ${emetteur.siren}`);
-    return l;
+  function emetteurPdf() {
+    return {
+      nom: emetteur.nom || "",
+      adresse: String(emetteur.adresse || "").split(String.fromCharCode(10)).map((a) => a.trim()).filter(Boolean),
+      siret: emetteur.siret || emetteur.siren || "",
+      iban: emetteur.iban || "",
+      bic: emetteur.bic || "",
+    };
   }
 
   function payloadFacture(g, index) {
-    const [y, m] = state.mois.split("-");
+    const aujourdhui = today();
+    const nomMois = new Intl.DateTimeFormat("fr-FR", { month: "long" }).format(new Date(`${state.mois}-01T12:00:00`));
     return {
-      num: `${y}${m}-${String(index + 1).padStart(2, "0")}`,
-      dateEmission: fmtDateFR(today()),
-      titre: `Cours de piano — ${moisLisible(state.mois)}`,
-      emetteur: emetteurLignes(),
-      clientNom: (g.foyer.nom || "").toUpperCase(),
+      num: `f${aujourdhui.slice(0, 4)}${aujourdhui.slice(5, 7)}-${String(index + 1).padStart(3, "0")}`,
+      dateEmission: fmtDateFR(aujourdhui),
+      titre: `Cours de piano ${nomMois.charAt(0).toUpperCase()}${nomMois.slice(1)}`,
+      emetteur: emetteurPdf(),
+      clientNom: g.foyer.nom || "",
       clientAdresse: g.foyer.adresse || [],
       items: g.lignes.map((ev) => ({
         designation: ev.libelleFacture,
@@ -209,7 +210,8 @@ export async function syntheseScreen() {
         montant: euro(ev.montant),
       })),
       total: euro(g.total),
-      mentions: [emetteur.mention].filter(Boolean),
+      echeance: emetteur.echeance || "À réception.",
+      termes: emetteur.termes ?? "Cette facture concerne uniquement de la prestation de service.",
       filename: `Facture - ${(g.foyer.nom || "client").replace(/[\\/:*?"<>|]/g, "")} - ${moisLisible(state.mois)}.pdf`,
     };
   }

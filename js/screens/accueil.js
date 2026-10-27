@@ -3,7 +3,7 @@
 import { el, personneNom, fmtEUR, LIEUX, sortBy } from "../util.js";
 import { screen } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB } from "../db.js";
-import { libelleEleve, badgeStatut } from "../model.js";
+import { libelleEleve, badgeStatut, participantsTexte } from "../model.js";
 import { today, addDays, libelleJour, finHeure } from "../planning.js";
 import { navigate, render } from "../router.js";
 import { ouvrirQuickValider } from "../quickValider.js";
@@ -28,7 +28,7 @@ export async function accueilScreen() {
       el("span.seance__time", `${s.heure}–${finHeure(s.heure, s.dureeMin)}`),
       el("span.seance__body", [
         el("span.seance__title", [libelleEleve(eleveById.get(s.eleveId) || {}), badgeStatut(s.statut)]),
-        el("span.seance__sub", [LIEUX[s.lieu], s.montant != null && s.montant !== 0 ? fmtEUR(s.montant) : null].filter(Boolean).join(" · ")),
+        el("span.seance__sub", [participantsTexte(eleveById.get(s.eleveId)), LIEUX[s.lieu], s.montant != null && s.montant !== 0 ? fmtEUR(s.montant) : null].filter(Boolean).join(" · ")),
       ]),
     ]);
 

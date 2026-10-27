@@ -15,9 +15,10 @@ import { elevesListScreen } from "./screens/eleves.js";
 import { eleveFormScreen } from "./screens/eleveForm.js";
 import { payeursListScreen, payeurFormScreen } from "./screens/payeurs.js";
 import { parametresScreen } from "./screens/parametres.js";
+import { fusionFoyersScreen } from "./screens/fusionFoyers.js";
 import { placeholderScreen } from "./screens/placeholder.js";
 
-window.SUIVI_BUILD = "v0.9.4 · 2026-10-14";
+window.SUIVI_BUILD = "v0.10.0 · 2026-10-27";
 
 /* ---------- Structure de la page ---------- */
 const app = document.getElementById("app");
@@ -65,13 +66,14 @@ route("/eleves/:id", eleveFormScreen);
 route("/payeurs", payeursListScreen);
 route("/payeurs/:id", payeurFormScreen);
 route("/parametres", parametresScreen);
+route("/fusion", fusionFoyersScreen);
 
 setNotFound(() => placeholderScreen("Page introuvable", 0));
 
 /* ---------- Surlignage de l'onglet actif ---------- */
 function highlightNav(path) {
   const root = "/" + (path.split("/")[1] || "accueil");
-  const map = { "/periodes": "/agenda", "/payeurs": "/eleves" };
+  const map = { "/periodes": "/agenda", "/payeurs": "/eleves", "/fusion": "/eleves" };
   const active = map[root] || root;
   [...nav.children].forEach((item) => {
     item.classList.toggle("app-nav__item--on", item.dataset.path === active);

@@ -3,7 +3,7 @@
 // Stratégie « réseau d'abord » : en ligne, l'appli récupère toujours la dernière
 // version ; le cache ne sert que de repli hors ligne.
 // Incrémente VERSION à chaque mise en ligne.
-const VERSION = "v0.9.4";
+const VERSION = "v0.10.0";
 const CACHE = `suivi-piano-${VERSION}`;
 
 const ASSETS = [
@@ -26,6 +26,8 @@ const ASSETS = [
   "./js/quickValider.js",
   "./js/nouvelleSeancePopin.js",
   "./js/rappels.js",
+  "./js/fusion.js",
+  "./js/screens/fusionFoyers.js",
   "./js/facturePdf.js",
   "./js/vendor/jspdf.umd.min.js",
   "./js/screens/accueil.js",

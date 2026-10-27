@@ -3,7 +3,7 @@
 import { el, personneNom, LIEUX, fmtEUR, sortBy } from "../util.js";
 import { screen, btn, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB } from "../db.js";
-import { libelleEleve, libellePayeur, badgeStatut } from "../model.js";
+import { libelleEleve, libellePayeur, badgeStatut, participantsTexte } from "../model.js";
 import {
   today, addDays, lundiDeLaSemaine, libelleJour,
   finHeure, ferieNom, enPeriode, periodes as periodesDB,
@@ -59,6 +59,7 @@ export async function agendaScreen() {
     const e = eleveById.get(s.eleveId);
     const p = s.payeurType === "payeur" ? payeurById.get(s.payeurId) : null;
     const sub = [
+      participantsTexte(e),
       LIEUX[s.lieu],
       s.montant != null && s.montant !== 0 ? fmtEUR(s.montant) : null,
       s.facturee ? "facturée" : null,

@@ -33,7 +33,8 @@ export function nouvelEleve() {
     payeurId: null, // id d'un payeur externe (ex. grand-parent non élève)
     payeurEleveId: null, // id d'un autre élève qui paie (ex. le parent, lui aussi élève)
     // aucun des deux => l'élève est son propre payeur
-    tarifHabituel: null, // € pour une séance de cet élève seul
+    participants: [], // autres personnes qui suivent le cours avec l'élève (prénoms) — information seule
+    tarifHabituel: null, // € pour un cours (toutes les personnes présentes comprises)
     modePaiementHabituel: "cheque",
     eligibleCreditImpot: false,
     dateDebut: null, // "YYYY-MM-DD"
@@ -78,6 +79,12 @@ export function payeurRef(eleve) {
 export function libelleEleve(e) {
   const n = personneNom(e);
   return n || "(élève sans nom)";
+}
+
+/** « avec Léo, Théo » si l'élève partage son cours avec d'autres personnes, sinon "". */
+export function participantsTexte(e) {
+  const p = (e?.participants || []).filter(Boolean);
+  return p.length ? `avec ${p.join(", ")}` : "";
 }
 
 /** Libellé « Nom Prénom » (listes et sélecteurs d'élèves). */

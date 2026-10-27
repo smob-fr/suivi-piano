@@ -4,7 +4,7 @@
 
 import { el, fmtEUR, fmtDuree, DUREES, LIEUX, toast, personneNom } from "./util.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB } from "./db.js";
-import { libelleEleve, libellePayeur, montantParDefaut, membresVisite } from "./model.js";
+import { libelleEleve, libellePayeur, montantParDefaut, membresVisite, participantsTexte } from "./model.js";
 import { libelleJour, today, addDays } from "./planning.js";
 import { validerSolo, validerVisite, annulerDefinitivement, reprogrammer } from "./seanceOps.js";
 
@@ -62,6 +62,7 @@ export async function ouvrirQuickValider(seanceId, onDone) {
     return el("div.qv__head", [
       el("strong.qv__titre", estVisite ? `Visite — ${libellePayeur(payeur || {})}` : libelleEleve(eleve || {})),
       el("span.qv__sous", `${libelleJour(seance.date)} · ${seance.heure}`),
+      !estVisite && participantsTexte(eleve) ? el("span.qv__sous", participantsTexte(eleve)) : null,
       el("span.qv__meta", [
         `${fmtDuree(dureeAffichee())}`,
         ` · ${fmtEUR(montant)}`,

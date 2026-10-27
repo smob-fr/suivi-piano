@@ -16,7 +16,10 @@ export async function parametresScreen() {
   const jours = await joursDepuisSauvegarde();
   const lastBackup = await getParam("derniereSauvegarde", null);
   const heureRappel = await getParam("heureRappel", "19:00");
-  const emetteur = await getParam("emetteur", { nom: "", adresse: "", siren: "", mention: "TVA non applicable, article 293 B du CGI." });
+  const emetteur = await getParam("emetteur", {});
+  if (emetteur.siret == null) emetteur.siret = emetteur.siren || "";
+  if (emetteur.termes == null) emetteur.termes = "Cette facture concerne uniquement de la prestation de service.";
+  if (emetteur.echeance == null) emetteur.echeance = "À réception.";
   const emailFactures = await getParam("emailFactures", "");
   const state = { heure: heureRappel };
   const sauverEmetteur = () => setParam("emetteur", emetteur);
@@ -61,13 +64,22 @@ export async function parametresScreen() {
       importResultBox,
     ]),
 
+    /* ---- Foyers ---- */
+    formSection("Foyers", [
+      el("p.field__hint", "Regroupe les élèves d'un même foyer en un seul élève principal (un payeur, un cours, un tarif). L'historique est conservé."),
+      el("div.btn-row", [btn("Regrouper les foyers…", { onClick: () => navigate("/fusion") })]),
+    ]),
+
     /* ---- Émetteur des factures ---- */
     formSection("Émetteur des factures", [
-      el("p.field__hint", "Apparaît en haut des factures PDF générées depuis la Synthèse."),
+      el("p.field__hint", "Ces informations figurent sur les factures PDF (en-tête, échéance, termes, pied de page avec SIRET et coordonnées bancaires)."),
       fieldText("Nom / raison sociale", emetteur.nom, (v) => { emetteur.nom = v; sauverEmetteur(); }),
       fieldTextarea("Adresse", emetteur.adresse, (v) => { emetteur.adresse = v; sauverEmetteur(); }, { rows: 2 }),
-      fieldText("SIREN", emetteur.siren, (v) => { emetteur.siren = v; sauverEmetteur(); }),
-      fieldText("Mention légale (TVA)", emetteur.mention, (v) => { emetteur.mention = v; sauverEmetteur(); }),
+      fieldText("SIRET", emetteur.siret, (v) => { emetteur.siret = v; sauverEmetteur(); }),
+      fieldText("IBAN", emetteur.iban, (v) => { emetteur.iban = v; sauverEmetteur(); }),
+      fieldText("BIC", emetteur.bic, (v) => { emetteur.bic = v; sauverEmetteur(); }),
+      fieldText("Échéance de paiement", emetteur.echeance, (v) => { emetteur.echeance = v; sauverEmetteur(); }),
+      fieldTextarea("Termes et conditions", emetteur.termes, (v) => { emetteur.termes = v; sauverEmetteur(); }, { rows: 2 }),
       fieldText("Email destinataire des factures", emailFactures, (v) => setParam("emailFactures", v.trim()), { type: "email" }),
       el("p.field__hint", "Utilisé par « Envoyer les factures par mail » (Synthèse). Sur Android, ouvre le partage : choisis ton appli mail, les PDF sont joints, tu confirmes le destinataire et tu envoies."),
     ]),

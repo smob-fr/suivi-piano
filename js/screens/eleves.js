@@ -5,6 +5,7 @@ import { screen, btn, emptyState, listItem } from "../ui.js";
 import { eleves as elevesDB, payeurs as payeursDB } from "../db.js";
 import { nomPrenom, libelleEleve, libellePayeur, payeurRef } from "../model.js";
 import { navigate } from "../router.js";
+import { detecterGroupes } from "../fusion.js";
 
 const state = { q: "", statut: "actif" };
 
@@ -98,10 +99,19 @@ export async function elevesListScreen() {
 
   paint();
 
-  wrap.append(
+  const nbFoyers = detecterGroupes(all).length;
+  wrap.append(...[
+    nbFoyers
+      ? el("button.list-item", { onclick: () => navigate("/fusion") }, [
+          el("div.list-item__main", [
+            el("div.list-item__title", `${nbFoyers} foyer${nbFoyers > 1 ? "s" : ""} à regrouper`),
+            el("div.list-item__sub", "Plusieurs élèves partagent le même payeur → un seul élève principal. Touche pour regrouper."),
+          ]),
+        ])
+      : null,
     el("div.toolbar", [search, tabs]),
-    listBox
-  );
+    listBox,
+  ].filter(Boolean));
 
   return screen("Élèves", {
     actions: [

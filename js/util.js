@@ -105,7 +105,7 @@ export const MODES_PAIEMENT = {
 
 export const JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
-export const DUREES = [15, 30, 45, 60, 75, 90, 105, 120];
+export const DUREES = Array.from({ length: 12 }, (_, i) => (i + 1) * 15); // 15 min → 3 h
 
 export const STATUT_SEANCE = {
   prevue: "Prévue",
@@ -167,6 +167,10 @@ export function sortBy(arr, keyFn) {
     const kb = keyFn(b);
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
+}
+
+export function cap(s) {
+  return String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
 }
 
 export function personneNom(p) {
