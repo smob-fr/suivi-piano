@@ -26,7 +26,6 @@ export async function payeursListScreen() {
               p.forfait?.montant != null
                 ? el("span.chip.chip--info", `forfait ${fmtEUR(p.forfait.montant)}`)
                 : null,
-              p.eligibleCreditImpot ? el("span.chip.chip--ok", "crédit d'impôt") : null,
             ].filter(Boolean),
           })
         )
@@ -82,7 +81,6 @@ export async function payeurFormScreen({ id }) {
     ]),
     formSection("Facturation", [
       fieldSelect("Mode de paiement habituel", p.modePaiementHabituel, Object.entries(MODES_PAIEMENT), (v) => set("modePaiementHabituel", v)),
-      fieldCheckbox("Éligible crédit d'impôt", p.eligibleCreditImpot, (v) => set("eligibleCreditImpot", v)),
       fieldCheckbox("Forfait foyer (montant global)", !!p.forfait, (v) => {
         p.forfait = v ? { montant: null, dureeMin: 120 } : null;
         renderForfait();

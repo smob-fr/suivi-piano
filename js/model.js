@@ -138,7 +138,7 @@ export function montantParDefaut({ eleve, payeur, groupe, membres }) {
 }
 
 export const CRITERES_CREDIT_IMPOT =
-  "Cours retenu si : statut Effectuée, lieu « Domicile de l'élève », mode de paiement ≠ Liquide, foyer éligible.";
+  "Cours retenu si : statut Effectuée, lieu « Domicile de l'élève », mode de paiement ≠ Liquide.";
 
 /**
  * Séances qui composent la même « visite » : même foyer (payeur), même date.

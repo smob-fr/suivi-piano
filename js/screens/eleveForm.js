@@ -143,7 +143,6 @@ export async function eleveFormScreen({ id }) {
       payeurMode,
       fieldNumber("Tarif habituel (€ par cours, participants compris)", e.tarifHabituel, (v) => set("tarifHabituel", v)),
       fieldSelect("Mode de paiement habituel", e.modePaiementHabituel, Object.entries(MODES_PAIEMENT), (v) => set("modePaiementHabituel", v)),
-      fieldCheckbox("Éligible crédit d'impôt", e.eligibleCreditImpot, (v) => set("eligibleCreditImpot", v)),
     ], { ouvert: false }),
     sectionPliable("Divers", [
       fieldText("Date de début des cours", e.dateDebut || "", (v) => set("dateDebut", v || null), { type: "date" }),

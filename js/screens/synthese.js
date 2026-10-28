@@ -8,6 +8,7 @@ import { downloadFile } from "../backup.js";
 import { genererFacturePdf, construireFactureFile } from "../facturePdf.js";
 import { today } from "../planning.js";
 import { render } from "../router.js";
+import { ouvrirModifierSeance } from "../modifierSeancePopin.js";
 
 const MOIS_FR = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" });
 function moisLisible(ym) {
@@ -63,7 +64,6 @@ export async function syntheseScreen() {
         id: "p:" + ref.id,
         nom: p ? libellePayeur(p) : "(payeur supprimé)",
         adresse: adresseLignes(p?.adresse),
-        eligible: !!p?.eligibleCreditImpot,
       };
     }
     const foyerEleve = eleveById.get(ref.id);
@@ -71,7 +71,6 @@ export async function syntheseScreen() {
       id: "e:" + ref.id,
       nom: foyerEleve ? libelleEleve(foyerEleve) : "(élève supprimé)",
       adresse: adresseLignes(foyerEleve?.adresse),
-      eligible: !!foyerEleve?.eligibleCreditImpot,
     };
   }
   const rattacheesDe = new Map(); // porteuseId -> [séances rattachées]
@@ -178,6 +177,15 @@ export async function syntheseScreen() {
                 el("td.recap__date", fmtDateFR(ev.date)),
                 el("td", [ev.libelle, ev.facturee ? el("span.chip.chip--ok", "facturé") : null]),
                 el("td.recap__montant", fmtEUR(ev.montant)),
+                el("td.recap__edit.no-print", el("button.link", {
+                  type: "button",
+                  title: "Modifier ce cours",
+                  onclick: () => ouvrirModifierSeance({
+                    porteuse: ev.porteuse,
+                    rattachees: (rattacheesDe.get(ev.porteuse.id) || []).filter((r) => r.statut === "effectuee"),
+                    titre: g.foyer.nom,
+                  }, () => render()),
+                }, "Modifier")),
               ])
             )),
           ]),
@@ -296,8 +304,7 @@ export async function syntheseScreen() {
     const evs = evenements((s) =>
       s.date.slice(0, 4) === an &&
       s.lieu === "domicile" &&
-      s.modePaiement !== "liquide" &&
-      foyerDe(s).eligible
+      s.modePaiement !== "liquide"
     );
     const groupes = groupeParFoyer(evs);
     const totalEuros = groupes.reduce((n, g) => n + g.total, 0);
@@ -314,8 +321,8 @@ export async function syntheseScreen() {
       el("h1.print-only", `Crédit d'impôt — année ${an}`),
       controles,
       el("p.field__hint",
-        "Cours retenus : effectués, au domicile de l'élève, réglés autrement qu'en liquide, " +
-        "pour un foyer marqué « éligible crédit d'impôt ». L'attestation elle-même se fait ailleurs."
+        "Cours retenus : effectués, au domicile de l'élève et réglés autrement qu'en liquide. " +
+        "L'attestation elle-même se fait ailleurs."
       ),
       groupes.length
         ? el("div", [
@@ -356,7 +363,7 @@ export async function syntheseScreen() {
 
     const lignes = mois.map((ym) => {
       const evs = evenements((s) =>
-        s.date.slice(0, 7) === ym && (state.sapTous || (s.lieu === "domicile" && s.modePaiement !== "liquide" && foyerDe(s).eligible))
+        s.date.slice(0, 7) === ym && (state.sapTous || (s.lieu === "domicile" && s.modePaiement !== "liquide"))
       );
       const groupes = groupeParFoyer(evs).map((g) => ({
         nom: g.foyer.nom, cours: g.lignes.length, minutes: g.heures, ca: g.total,
@@ -386,7 +393,7 @@ export async function syntheseScreen() {
       el("label.field.field--check", [
         el("input", { type: "checkbox", checked: state.sapTous, onchange: (e) => { state.sapTous = e.target.checked; render(); } }),
         el("span.field__label", "Compter tous les cours"),
-        el("span.field__hint", "Par défaut : cours à domicile, hors paiement en liquide, pour un foyer éligible (activité de service à la personne)."),
+        el("span.field__hint", "Par défaut : cours à domicile, hors paiement en liquide (activité de service à la personne)."),
       ]),
     ]);
 
