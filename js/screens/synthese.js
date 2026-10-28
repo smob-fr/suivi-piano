@@ -356,7 +356,7 @@ export async function syntheseScreen() {
 
     const lignes = mois.map((ym) => {
       const evs = evenements((s) =>
-        s.date.slice(0, 7) === ym && (state.sapTous || (s.lieu === "domicile" && foyerDe(s).eligible))
+        s.date.slice(0, 7) === ym && (state.sapTous || (s.lieu === "domicile" && s.modePaiement !== "liquide" && foyerDe(s).eligible))
       );
       const groupes = groupeParFoyer(evs).map((g) => ({
         nom: g.foyer.nom, cours: g.lignes.length, minutes: g.heures, ca: g.total,
@@ -386,7 +386,7 @@ export async function syntheseScreen() {
       el("label.field.field--check", [
         el("input", { type: "checkbox", checked: state.sapTous, onchange: (e) => { state.sapTous = e.target.checked; render(); } }),
         el("span.field__label", "Compter tous les cours"),
-        el("span.field__hint", "Par défaut : cours à domicile pour un foyer éligible (activité de service à la personne)."),
+        el("span.field__hint", "Par défaut : cours à domicile, hors paiement en liquide, pour un foyer éligible (activité de service à la personne)."),
       ]),
     ]);
 
