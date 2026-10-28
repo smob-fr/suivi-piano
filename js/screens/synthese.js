@@ -23,7 +23,18 @@ function toCSV(entetes, lignes) {
   return "﻿" + corps + "\r\n";
 }
 
-const state = { vue: "mensuelle", mois: prevMonth(), annee: new Date().getFullYear(), nonFacturees: false };
+const trimPrec = trimestrePrecedent();
+const state = {
+  vue: "mensuelle", mois: prevMonth(), annee: new Date().getFullYear(), nonFacturees: false,
+  sapAnnee: trimPrec.annee, sapTrim: trimPrec.trim, sapTous: false, sapOuverts: new Set(),
+};
+
+/** Dernier trimestre civil terminé (celui qu'on déclare). */
+function trimestrePrecedent() {
+  const d = new Date();
+  const t = Math.floor(d.getMonth() / 3) + 1; // trimestre en cours
+  return t === 1 ? { annee: d.getFullYear() - 1, trim: 4 } : { annee: d.getFullYear(), trim: t - 1 };
+}
 
 function prevMonth() {
   const d = new Date();
@@ -115,12 +126,13 @@ export async function syntheseScreen() {
   const barre = el("div.seg", [
     seg("Synthèse mensuelle", "mensuelle"),
     seg("Crédit d'impôt", "credit"),
+    seg("Déclaration SAP", "sap"),
   ]);
   function seg(label, val) {
     return el("button.seg__btn", { class: state.vue === val ? "seg__btn--on" : "", onclick: () => { state.vue = val; render(); } }, label);
   }
 
-  const body = state.vue === "mensuelle" ? vueMensuelle() : vueCredit();
+  const body = state.vue === "mensuelle" ? vueMensuelle() : state.vue === "sap" ? vueSAP() : vueCredit();
 
   /* ---------- Vue mensuelle ---------- */
   function vueMensuelle() {
@@ -328,6 +340,92 @@ export async function syntheseScreen() {
             ),
           ])
         : emptyState("Aucun cours éligible pour cette année."),
+    ]);
+  }
+
+  /* ---------- Déclaration trimestrielle SAP (formulaire EMA) ---------- */
+  function vueSAP() {
+    const an = state.sapAnnee;
+    const mois = [0, 1, 2].map((i) => `${an}-${String((state.sapTrim - 1) * 3 + i + 1).padStart(2, "0")}`);
+    const nomMois = (ym) => {
+      const m = new Intl.DateTimeFormat("fr-FR", { month: "long" }).format(new Date(`${ym}-01T12:00:00`));
+      return m.charAt(0).toUpperCase() + m.slice(1);
+    };
+    const h = (min) => (min / 60).toFixed(2).replace(".", ",").replace(/,00$/, "");
+    const hhmm = (min) => `${Math.floor(min / 60)} h${String(min % 60).padStart(2, "0")}`;
+
+    const lignes = mois.map((ym) => {
+      const evs = evenements((s) =>
+        s.date.slice(0, 7) === ym && (state.sapTous || (s.lieu === "domicile" && foyerDe(s).eligible))
+      );
+      const groupes = groupeParFoyer(evs).map((g) => ({
+        nom: g.foyer.nom, cours: g.lignes.length, minutes: g.heures, ca: g.total,
+      }));
+      return {
+        ym, groupes,
+        clients: groupes.length,
+        minutes: groupes.reduce((n, g) => n + g.minutes, 0),
+        ca: groupes.reduce((n, g) => n + g.ca, 0),
+      };
+    });
+    const tot = {
+      minutes: lignes.reduce((n, l) => n + l.minutes, 0),
+      ca: lignes.reduce((n, l) => n + l.ca, 0),
+    };
+
+    const controles = el("div.filtres", [
+      el("label.field", [
+        el("span.field__label", "Année"),
+        el("input.field__input", { type: "number", value: state.sapAnnee, min: 2020, max: 2100, oninput: (e) => { state.sapAnnee = Number(e.target.value); state.sapOuverts.clear(); render(); } }),
+      ]),
+      el("label.field", [
+        el("span.field__label", "Trimestre"),
+        el("select.field__input", { onchange: (e) => { state.sapTrim = Number(e.target.value); state.sapOuverts.clear(); render(); } },
+          [1, 2, 3, 4].map((t) => el("option", { value: t, selected: t === state.sapTrim }, `Trimestre ${t}`))),
+      ]),
+      el("label.field.field--check", [
+        el("input", { type: "checkbox", checked: state.sapTous, onchange: (e) => { state.sapTous = e.target.checked; render(); } }),
+        el("span.field__label", "Compter tous les cours"),
+        el("span.field__hint", "Par défaut : cours à domicile pour un foyer éligible (activité de service à la personne)."),
+      ]),
+    ]);
+
+    const tete = el("tr", [el("th", "Mois"), el("th", "Nb clients"), el("th", "Nb heures facturées"), el("th", "CA SAP (HT)")]);
+    const corps = [];
+    for (const l of lignes) {
+      const ouvert = state.sapOuverts.has(l.ym);
+      corps.push(el("tr.sap__mois", [
+        el("td", el("button.link", {
+          type: "button",
+          onclick: () => { ouvert ? state.sapOuverts.delete(l.ym) : state.sapOuverts.add(l.ym); render(); },
+        }, `${ouvert ? "▾" : "▸"} ${nomMois(l.ym)}`)),
+        el("td.sap__num", String(l.clients)),
+        el("td.sap__num", l.minutes ? `${h(l.minutes)} (${hhmm(l.minutes)})` : "0"),
+        el("td.sap__num", euro(l.ca)),
+      ]));
+      if (ouvert) {
+        corps.push(el("tr.sap__detail", el("td", { colspan: 4 }, l.groupes.length
+          ? el("table.recap", [
+              el("thead", el("tr", [el("th", "Nom"), el("th.sap__num", "Cours"), el("th.sap__num", "Heures"), el("th.sap__num", "CA")])),
+              el("tbody", l.groupes.map((g) => el("tr", [
+                el("td", g.nom),
+                el("td.sap__num", String(g.cours)),
+                el("td.sap__num", h(g.minutes)),
+                el("td.sap__num", euro(g.ca)),
+              ]))),
+            ])
+          : el("p.field__hint", "Aucun cours ce mois-ci."))));
+      }
+    }
+    corps.push(el("tr.sap__total", [
+      el("td", `Total T${state.sapTrim} ${an}`), el("td"),
+      el("td.sap__num", `${h(tot.minutes)} (${hhmm(tot.minutes)})`), el("td.sap__num", euro(tot.ca)),
+    ]));
+
+    return el("div", [
+      controles,
+      el("p.field__hint", "À reporter dans le formulaire EMA (mode prestataire). Nb intervenants : 1."),
+      el("div.preview-scroll", el("table.sap", [el("thead", tete), el("tbody", corps)])),
     ]);
   }
 
