@@ -679,3 +679,5 @@ html, body {
 .sap__total td { font-weight: 700; border-top: 2px solid var(--line); }
 .sap__detail > td { background: var(--surface-2); padding: 4px 8px; }
 .sap__mois .link { font-weight: 600; }
+.sap__diag { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--surface); }
+.sap__diag summary { cursor: pointer; font-weight: 600; }

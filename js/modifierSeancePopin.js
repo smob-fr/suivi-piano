@@ -1,9 +1,9 @@
 // Suivi Piano — popin de modification d'un cours (depuis la Synthèse mensuelle)
-// Modifie le montant, la durée et la date d'un cours déjà effectué.
+// Modifie le montant, la durée, la date, le lieu et le mode de paiement d'un cours.
 // Pour une ancienne « visite » (séances groupées), la durée est la durée totale :
 // l'écart est reporté sur la séance porteuse, la date est appliquée à tout le groupe.
 
-import { el, toast, fmtEUR, fmtDateFR, DUREES, nowISO } from "./util.js";
+import { el, toast, fmtDateFR, DUREES, LIEUX, MODES_PAIEMENT, nowISO } from "./util.js";
 import { seances as seancesDB } from "./db.js";
 
 /**
@@ -16,6 +16,8 @@ export function ouvrirModifierSeance({ porteuse, rattachees = [], titre }, onDon
     date: porteuse.date,
     dureeMin: (porteuse.dureeMin || 0) + dureeRatt,
     montant: Number(porteuse.montant) || 0,
+    lieu: porteuse.lieu,
+    modePaiement: porteuse.modePaiement,
   };
 
   const overlay = el("div.modal-overlay");
@@ -43,6 +45,14 @@ export function ouvrirModifierSeance({ porteuse, rattachees = [], titre }, onDon
           oninput: (e) => (draft.montant = e.target.value === "" ? 0 : Number(e.target.value)),
         })]),
     ]),
+    el("div.qv__edit", [
+      el("label.field", [el("span.field__label", "Lieu"),
+        el("select.field__input", { onchange: (e) => (draft.lieu = e.target.value) },
+          Object.entries(LIEUX).map(([v, t]) => el("option", { value: v, selected: v === draft.lieu }, t)))]),
+      el("label.field", [el("span.field__label", "Paiement"),
+        el("select.field__input", { onchange: (e) => (draft.modePaiement = e.target.value) },
+          Object.entries(MODES_PAIEMENT).map(([v, t]) => el("option", { value: v, selected: v === draft.modePaiement }, t)))]),
+    ]),
     el("button.btn.btn--primary.qv__oui", { onclick: enregistrer }, "Enregistrer"),
     el("button.link", { type: "button", onclick: fermer }, "Annuler"),
   ]);
@@ -57,9 +67,11 @@ export function ouvrirModifierSeance({ porteuse, rattachees = [], titre }, onDon
       date: draft.date,
       dureeMin: Math.max(15, draft.dureeMin - dureeRatt),
       montant: draft.montant,
+      lieu: draft.lieu,
+      modePaiement: draft.modePaiement,
       updatedAt: now,
     }];
-    for (const r of rattachees) maj.push({ ...r, date: draft.date, updatedAt: now });
+    for (const r of rattachees) maj.push({ ...r, date: draft.date, lieu: draft.lieu, modePaiement: draft.modePaiement, updatedAt: now });
     for (const s of maj) await seancesDB.save(s);
     fermer();
     onDone && onDone();

@@ -9,6 +9,9 @@ import { genererFacturePdf, construireFactureFile } from "../facturePdf.js";
 import { today } from "../planning.js";
 import { render } from "../router.js";
 import { ouvrirModifierSeance } from "../modifierSeancePopin.js";
+import { ouvrirNouvelleSeance } from "../nouvelleSeancePopin.js";
+import { ouvrirQuickValider } from "../quickValider.js";
+import { LIEUX } from "../util.js";
 
 const MOIS_FR = new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric" });
 function moisLisible(ym) {
@@ -100,6 +103,7 @@ export async function syntheseScreen() {
         date: s.date,
         libelle: `Cours de piano — ${noms} (${fmtDuree(dureeTotale)})`,
         libelleFacture: `Cours du ${dateFR.slice(0, 5)}`,
+        eleves: [...membres.map((m) => personneNom(eleveById.get(m.eleveId)) || "?"), ...participants],
         dureeTotale,
         montant: Number(s.montant) || 0,
         facturee: !!s.facturee,
@@ -133,6 +137,20 @@ export async function syntheseScreen() {
 
   const body = state.vue === "mensuelle" ? vueMensuelle() : state.vue === "sap" ? vueSAP() : vueCredit();
 
+  /** Ajout d'un cours (effectué) directement depuis la synthèse, pré-rempli depuis la fiche élève. */
+  function ajouterCours(foyerId = null) {
+    const ids = foyerId
+      ? elevesAll.filter((e) => {
+          const r = payeurRef(e);
+          return `${r.type === "payeur" ? "p" : "e"}:${r.id}` === foyerId;
+        }).map((e) => e.id)
+      : null;
+    const [y, m] = state.mois.split("-");
+    const aujourdhui = today();
+    const date = aujourdhui.slice(0, 7) === state.mois ? aujourdhui : `${y}-${m}-01`;
+    ouvrirNouvelleSeance(() => render(), { eleveIds: ids, date, effectuee: true, titre: "Ajouter un cours" });
+  }
+
   /* ---------- Vue mensuelle ---------- */
   function vueMensuelle() {
     const evs = evenements((s) => s.date.slice(0, 7) === state.mois && (!state.nonFacturees || !s.facturee));
@@ -158,6 +176,7 @@ export async function syntheseScreen() {
       el("h1.print-only", `Synthèse — ${moisLisible(state.mois)}`),
       controles,
       el("div.export-bar.no-print", [
+        btn("+ Ajouter un cours", { onClick: () => ajouterCours(), variant: "ghost", small: true }),
         btn("Export CSV", { onClick: exportMensuelCSV, variant: "ghost", small: true }),
         btn("Imprimer / PDF", { onClick: () => imprimer(`Synthèse ${moisLisible(state.mois)}`), variant: "ghost", small: true }),
         btn(`Factures PDF (${groupes.length})`, { onClick: () => genererToutesFactures(groupes), variant: "ghost", small: true }),
@@ -190,6 +209,7 @@ export async function syntheseScreen() {
             )),
           ]),
           el("div.btn-row.no-print", [
+            btn("+ Ajouter un cours", { onClick: () => ajouterCours(g.foyer.id), variant: "ghost", small: true }),
             btn("Facture PDF", { onClick: () => genererFacture(g, gi), variant: "ghost", small: true }),
             btn(toutFacture ? "Annuler « facturé »" : "Marquer ce foyer facturé", {
               onClick: () => marquerFacture(g.lignes.flatMap((ev) => ev.idsAmarquer), !toutFacture),
@@ -367,6 +387,7 @@ export async function syntheseScreen() {
       );
       const groupes = groupeParFoyer(evs).map((g) => ({
         nom: g.foyer.nom, cours: g.lignes.length, minutes: g.heures, ca: g.total,
+        eleves: [...new Set(g.lignes.flatMap((ev) => ev.eleves))],
       }));
       return {
         ym, groupes,
@@ -415,7 +436,8 @@ export async function syntheseScreen() {
           ? el("table.recap", [
               el("thead", el("tr", [el("th", "Nom"), el("th.sap__num", "Cours"), el("th.sap__num", "Heures"), el("th.sap__num", "CA")])),
               el("tbody", l.groupes.map((g) => el("tr", [
-                el("td", g.nom),
+                el("td", [g.nom, g.eleves.length > 1 || g.eleves[0] !== g.nom
+                  ? el("div.field__hint", g.eleves.join(", ")) : null]),
                 el("td.sap__num", String(g.cours)),
                 el("td.sap__num", h(g.minutes)),
                 el("td.sap__num", euro(g.ca)),
@@ -433,6 +455,68 @@ export async function syntheseScreen() {
       controles,
       el("p.field__hint", "À reporter dans le formulaire EMA (mode prestataire). Nb intervenants : 1."),
       el("div.preview-scroll", el("table.sap", [el("thead", tete), el("tbody", corps)])),
+      diagnosticSAP(mois),
+    ]);
+  }
+
+  /**
+   * « Pourquoi ce cours n'est pas compté ? » — liste, pour le trimestre, chaque séance passée
+   * qui ne remonte PAS dans le tableau, avec la raison exacte et un lien pour la corriger.
+   */
+  function diagnosticSAP(mois) {
+    const jour = today();
+    const lib = (id) => personneNom(eleveById.get(id)) || "(élève supprimé)";
+    const exclus = [];
+    let annulees = 0;
+    for (const s of seances) {
+      if (!mois.includes(s.date.slice(0, 7)) || s.date > jour) continue;
+      if (s.statut === "annulee") { annulees += 1; continue; }
+      const raisons = [];
+      const e = eleveById.get(s.eleveId);
+      if (s.statut === "prevue") {
+        raisons.push("pas encore validée (statut « prévue »)");
+      } else if (s.rattacheeA) {
+        const porteuse = seances.find((x) => x.id === s.rattacheeA);
+        if (!porteuse) raisons.push("rattachée à une séance introuvable : son montant n'est compté nulle part");
+        else if (porteuse.statut !== "effectuee") raisons.push("rattachée à une séance non effectuée : son montant n'est compté nulle part");
+        else continue; // visite : comptée via la séance porteuse
+      } else if (!state.sapTous) {
+        if (s.lieu !== "domicile") {
+          raisons.push(`lieu : ${LIEUX[s.lieu] || s.lieu || "non renseigné"}` +
+            (e && e.lieu === "domicile" ? " (la fiche élève dit « Domicile »)" : ""));
+        }
+        if (s.modePaiement === "liquide") raisons.push("paiement en liquide");
+      }
+      if (raisons.length) exclus.push({ s, raisons });
+    }
+    exclus.sort((a, b) => a.s.date.localeCompare(b.s.date));
+
+    const corps = exclus.length
+      ? el("table.recap", [el("tbody", exclus.map(({ s, raisons }) =>
+          el("tr", [
+            el("td.recap__date", fmtDateFR(s.date)),
+            el("td", [lib(s.eleveId), el("div.field__hint", raisons.join(" · "))]),
+            el("td.recap__edit", s.statut === "effectuee"
+              ? el("button.link", {
+                  type: "button",
+                  onclick: () => ouvrirModifierSeance({
+                    porteuse: s,
+                    rattachees: (rattacheesDe.get(s.id) || []).filter((r) => r.statut === "effectuee"),
+                    titre: lib(s.eleveId),
+                  }, () => render()),
+                }, "Modifier")
+              : el("button.link", { type: "button", onclick: () => ouvrirQuickValider(s.id, () => render()) }, "Valider")),
+          ])
+        ))])
+      : el("p.field__hint", "Tous les cours effectués du trimestre sont comptés.");
+
+    return el("details.sap__diag", { open: exclus.length > 0 }, [
+      el("summary", `Cours non comptés (${exclus.length})`),
+      el("p.field__hint",
+        "Un cours n'est compté que s'il est effectué, à domicile et payé autrement qu'en liquide. " +
+        "Les valeurs de lieu et de paiement sont celles de la séance (copiées de la fiche élève au moment de sa création)." +
+        (annulees ? ` ${annulees} cours annulé(s) ne sont pas listés.` : "")),
+      corps,
     ]);
   }
 
