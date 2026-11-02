@@ -1,9 +1,9 @@
 // Suivi Piano — popin de modification d'un cours (depuis la Synthèse mensuelle)
-// Modifie le montant, la durée, la date, le lieu et le mode de paiement d'un cours.
+// Modifie le montant, la durée, la date, le lieu et le mode de paiement d'un cours, ou le supprime.
 // Pour une ancienne « visite » (séances groupées), la durée est la durée totale :
 // l'écart est reporté sur la séance porteuse, la date est appliquée à tout le groupe.
 
-import { el, toast, fmtDateFR, DUREES, LIEUX, MODES_PAIEMENT, nowISO } from "./util.js";
+import { el, toast, confirmDialog, fmtDateFR, DUREES, LIEUX, MODES_PAIEMENT, nowISO } from "./util.js";
 import { seances as seancesDB } from "./db.js";
 
 /**
@@ -55,9 +55,23 @@ export function ouvrirModifierSeance({ porteuse, rattachees = [], titre }, onDon
     ]),
     el("button.btn.btn--primary.qv__oui", { onclick: enregistrer }, "Enregistrer"),
     el("button.link", { type: "button", onclick: fermer }, "Annuler"),
+    el("button.btn.btn--danger.btn--sm", { type: "button", onclick: supprimer }, "Supprimer ce cours"),
   ]);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+
+  async function supprimer() {
+    const ok = await confirmDialog(
+      `Supprimer définitivement ce cours du ${fmtDateFR(porteuse.date)} (${titre}) ?` +
+      (rattachees.length ? ` Les ${rattachees.length} séance(s) rattachée(s) seront supprimées aussi.` : "") +
+      " Il n'apparaîtra plus dans les synthèses ni les factures.",
+      { danger: true, okLabel: "Supprimer" }
+    );
+    if (!ok) return;
+    for (const s of [porteuse, ...rattachees]) await seancesDB.remove(s.id);
+    fermer();
+    onDone && onDone();
+  }
 
   async function enregistrer() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return toast("Choisis une date.", "warn");
