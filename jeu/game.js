@@ -23,6 +23,10 @@
     crack: "#9a8656", crackDark: "#5e5232",
     danger: "#e5483c", dangerDark: "#8c241d",
     player: "#efe8d8", hat: "#d9a441",
+    fedora: "#7a4b27", fedoraBand: "#3b2414", fedoraTop: "#93603a",
+    skin: "#e2a777", jacket: "#6b3d1f", jacketHi: "#8a5530",
+    shirt: "#cdb67e", pants: "#5a5240", boots: "#2e1f15",
+    satchel: "#a07a45", whip: "#3d2716", void: "#070b09",
     enemy: "#7c8c84", eye: "#e5483c",
     door: "#d9a441", doorIn: "#060a08",
     god: "#d9a441", hint: "#bfd3c8",
@@ -208,16 +212,28 @@
   ];
 
   /* ================= Canvas & mise à l'échelle ================= */
+  const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  document.body.classList.toggle("tactile", isTouch);
+
   const canvas = document.getElementById("jeu");
   const ctx = canvas.getContext("2d");
   const stage = document.getElementById("scene");
   let scale = 1, dpr = 1;
+  const view = { w: W, h: H };       // taille visible, en unités de jeu
+  const cam = { x: 0, y: 0 };        // coin haut-gauche de la vue
+  const CAM_EXT = { x: 16, top: 24, bottom: 76 }; // marges autorisées hors de la salle
 
+  // Sur téléphone, on zoome : la vue montre ~22 × 11 tuiles et suit le joueur.
+  // Sur grand écran, la salle entière tient à l'écran.
   function resize() {
     const wrap = stage.parentElement.getBoundingClientRect();
-    scale = Math.max(0.5, Math.min(wrap.width / W, wrap.height / H));
+    const fit = Math.min(wrap.width / W, wrap.height / H);
+    const zoom = Math.min(wrap.width / 352, wrap.height / 176);
+    scale = Math.max(0.5, isTouch || fit < 1.6 ? Math.max(fit, zoom) : fit);
     dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const cw = Math.floor(W * scale), ch = Math.floor(H * scale);
+    const cw = Math.floor(wrap.width), ch = Math.floor(wrap.height);
+    view.w = cw / scale; view.h = ch / scale;
+    if (R) updateCamera(true);
     stage.style.width = cw + "px";
     stage.style.height = ch + "px";
     canvas.width = Math.floor(cw * dpr);
@@ -284,8 +300,6 @@
     el.addEventListener("contextmenu", (e) => e.preventDefault());
   });
 
-  const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
-  document.body.classList.toggle("tactile", isTouch);
 
   /* ================= Son (WebAudio, synthèse simple) ================= */
   let audio = null, muted = false;
@@ -374,7 +388,7 @@
 
   function makePlayer(tx, ty) {
     return {
-      x: tx * T + 3, y: ty * T + 2, w: 10, h: 14,
+      x: tx * T + 3, y: ty * T + 1, w: 10, h: 15,
       vx: 0, vy: 0, face: 1, grounded: false,
       coyote: 0, buffer: 0, alive: true, anim: 0,
     };
@@ -767,8 +781,9 @@
     game.deathsByRoom[R.index]++; game.totalDeaths++;
     sfx.death();
     R.shake = 6;
-    burst(p.x + 5, p.y + 7, C.player, 18, 2.2);
-    burst(p.x + 5, p.y + 2, C.hat, 6, 1.5);
+    burst(p.x + 5, p.y + 7, C.jacket, 12, 2.2);
+    burst(p.x + 5, p.y + 7, C.shirt, 8, 2);
+    burst(p.x + 5, p.y + 2, C.skin, 4, 1.5);
     R.hat = { x: p.x, y: p.y, vx: -p.face * 1.2, vy: -4, r: 0 };
     R.say = { text: TAUNTS[Math.floor(Math.random() * TAUNTS.length)], t: 0, dur: 90 };
   }
@@ -799,6 +814,7 @@
     game.ammo = { ...game.entryAmmo };
     const keep = R.say && fromDeath ? R.say : null;
     R = buildRoom(game.roomIndex);
+    updateCamera(true);
     game.mode = "play";
     runTriggers(true);
     if (keep && !R.say) R.say = keep;
@@ -814,17 +830,33 @@
     }
   }
 
+  /* ================= Caméra ================= */
+  function updateCamera(snap) {
+    const p = R.player;
+    const fx = p.x + p.w / 2 + p.face * 24, fy = p.y + p.h / 2 - 6;
+    let tx, ty;
+    if (view.w >= W + CAM_EXT.x * 2) tx = (W - view.w) / 2;
+    else tx = Math.max(-CAM_EXT.x, Math.min(W + CAM_EXT.x - view.w, fx - view.w / 2));
+    if (view.h >= H + CAM_EXT.top + CAM_EXT.bottom) ty = (H - view.h) / 2;
+    else ty = Math.max(-CAM_EXT.top, Math.min(H + CAM_EXT.bottom - view.h, fy - view.h / 2));
+    if (view.h >= H && view.h < H + CAM_EXT.top + CAM_EXT.bottom) ty = Math.min(ty, (H - view.h) / 2 + 30);
+    if (snap) { cam.x = tx; cam.y = ty; }
+    else { cam.x += (tx - cam.x) * 0.12; cam.y += (ty - cam.y) * 0.12; }
+  }
+
   /* ================= Rendu ================= */
   function render() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = C.bg;
+    ctx.fillStyle = C.void;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     const k = scale * dpr;
+    if (!R) { ctx.setTransform(k, 0, 0, k, 0, 0); drawTitleBackdrop(); return; }
+    if (game.mode !== "card" || game.cardT < 2) updateCamera(game.mode === "card");
     let sx = 0, sy = 0;
-    if (R && R.shake > 0 && !reducedMotion) { sx = (Math.random() - 0.5) * R.shake; sy = (Math.random() - 0.5) * R.shake; }
-    ctx.setTransform(k, 0, 0, k, sx * k, sy * k);
-
-    if (!R) { drawTitleBackdrop(); return; }
+    if (R.shake > 0 && !reducedMotion) { sx = (Math.random() - 0.5) * R.shake; sy = (Math.random() - 0.5) * R.shake; }
+    ctx.setTransform(k, 0, 0, k, Math.round((sx - cam.x) * k), Math.round((sy - cam.y) * k));
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, W, H);
     drawBackground();
     drawTiles();
     drawDoor();
@@ -842,7 +874,7 @@
     if (game.mode === "card") drawCard();
     if (game.mode === "win") {
       ctx.fillStyle = `rgba(13,21,18,${Math.min(1, game.winT / 40)})`;
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillRect(0, 0, view.w, view.h);
     }
   }
 
@@ -850,7 +882,7 @@
 
   function drawTitleBackdrop() {
     ctx.fillStyle = C.bg2;
-    for (let i = 0; i < 6; i++) ctx.fillRect(40 + i * 80, 60, 18, H);
+    for (let i = 0; i < 8; i++) ctx.fillRect(40 + i * 80, 60, 18, view.h);
   }
 
   function drawBackground() {
@@ -981,6 +1013,20 @@
     }
   }
 
+  function drawFedora(x, y, face) {
+    ctx.fillStyle = C.fedora;
+    ctx.fillRect(x - 3, y + 3, 16, 2);          // bord
+    ctx.fillRect(x, y - 1, 10, 4);              // calotte
+    ctx.fillStyle = C.fedoraTop;
+    ctx.fillRect(x + 1, y - 2, 8, 1);
+    ctx.fillStyle = C.void;
+    ctx.fillRect(x + 4, y - 2, 2, 1);           // pincement du dessus
+    ctx.fillStyle = C.fedoraBand;
+    ctx.fillRect(x, y + 2, 10, 1);              // ruban
+    if (face < 0) { ctx.fillStyle = C.fedora; ctx.fillRect(x - 4, y + 4, 2, 1); }
+    else { ctx.fillStyle = C.fedora; ctx.fillRect(x + 12, y + 4, 2, 1); }
+  }
+
   function drawPlayer() {
     const p = R.player;
     if (!p.alive) {
@@ -988,31 +1034,66 @@
       if (h) {
         h.vy += 0.25; h.x += h.vx; h.y += h.vy; h.r += 0.2;
         ctx.save(); ctx.translate(h.x + 5, h.y); ctx.rotate(h.r);
-        ctx.fillStyle = C.hat; ctx.fillRect(-7, 0, 14, 2); ctx.fillRect(-4, -4, 8, 4);
+        drawFedora(-5, -2, 1);
         ctx.restore();
       }
       return;
     }
     const run = p.grounded && Math.abs(p.vx) > 0.3;
-    const bob = run ? Math.abs(Math.sin(p.anim)) * 1.2 : 0;
-    const squash = !p.grounded ? (p.vy < 0 ? 1 : 0) : 0;
-    const x = Math.round(p.x * 2) / 2, y = p.y - bob;
-    // corps
-    ctx.fillStyle = C.player;
-    ctx.fillRect(x + 1, y + 4 - squash, p.w - 2, p.h - 4 + squash);
-    // jambes
-    if (run) {
-      const s = Math.sin(p.anim) * 2;
-      ctx.fillRect(x + 2 + s, y + p.h - 1, 2, 1 + bob);
-      ctx.fillRect(x + p.w - 4 - s, y + p.h - 1, 2, 1 + bob);
-    }
-    // œil
-    ctx.fillStyle = C.bg;
-    ctx.fillRect(p.face > 0 ? x + 6 : x + 2, y + 6, 2, 2);
+    const air = !p.grounded;
+    const ph = Math.sin(p.anim);
+    const bob = run ? Math.abs(ph) * 1 : 0;
+    const f = p.face;
+    const x = Math.round(p.x), y = Math.round(p.y - bob);
+    // dessin en miroir selon la direction : on travaille dans un repère local 10 × 15
+    ctx.save();
+    if (f < 0) { ctx.translate(x + p.w, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
+
+    // jambes et bottes
+    const legA = run ? ph * 2 : air ? -1 : 0, legB = run ? -ph * 2 : air ? 1 : 0;
+    ctx.fillStyle = C.pants;
+    ctx.fillRect(2 + legA, 10, 3, 3);
+    ctx.fillRect(5 + legB, 10, 3, 3);
+    ctx.fillStyle = C.boots;
+    ctx.fillRect(2 + legA, 13, 3, 2);
+    ctx.fillRect(5 + legB, 13, 4, 2);
+
+    // chemise + veste en cuir ouverte
+    ctx.fillStyle = C.shirt;
+    ctx.fillRect(2, 5, 6, 5);
+    ctx.fillStyle = C.jacket;
+    ctx.fillRect(1, 5, 3, 6);
+    ctx.fillRect(7, 5, 2, 6);
+    ctx.fillStyle = C.jacketHi;
+    ctx.fillRect(1, 5, 1, 6);
+    // ceinture
+    ctx.fillStyle = C.fedoraBand;
+    ctx.fillRect(2, 9, 6, 1);
+    // sangle et sacoche
+    ctx.fillStyle = C.satchel;
+    ctx.fillRect(4, 5, 1, 1); ctx.fillRect(5, 6, 1, 1); ctx.fillRect(6, 7, 1, 1);
+    ctx.fillRect(0, 8, 3, 3);
+    // fouet enroulé à la hanche
+    ctx.strokeStyle = C.whip; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(8.5, 10.5, 1.6, 0, Math.PI * 2); ctx.stroke();
+
+    // bras (balancement)
+    const arm = run ? -ph * 1.5 : 0;
+    ctx.fillStyle = C.jacket;
+    ctx.fillRect(7 + (arm > 0 ? 1 : 0), 6, 2, 3);
+    ctx.fillStyle = C.skin;
+    ctx.fillRect(8 + (arm > 0 ? 1 : 0), 9 + Math.round(arm * 0.5), 2, 1);
+
+    // tête
+    ctx.fillStyle = C.skin;
+    ctx.fillRect(3, 1, 6, 4);
+    ctx.fillStyle = C.void;
+    ctx.fillRect(7, 2, 1, 1);                   // œil
+    ctx.fillStyle = "#b9805a";
+    ctx.fillRect(4, 4, 5, 1);                   // barbe de trois jours
     // chapeau
-    ctx.fillStyle = C.hat;
-    ctx.fillRect(x - 2, y + 3 - squash, p.w + 4, 2);
-    ctx.fillRect(x + 1, y - 1 - squash, p.w - 2, 4);
+    drawFedora(0, -3, 1);
+    ctx.restore();
   }
 
   function drawParticles() {
@@ -1035,7 +1116,7 @@
 
   function drawHud() {
     ctx.fillStyle = "rgba(6,10,8,0.72)";
-    ctx.fillRect(0, 0, W, 15);
+    ctx.fillRect(0, 0, view.w, 15);
     const ty = TYPES[R.def.type];
     ctx.textBaseline = "middle";
     ctx.font = `8px ${FONT_PIX}`;
@@ -1046,7 +1127,7 @@
     ctx.fillText(`${R.index + 1}/${ROOMS.length}  ${R.def.name.toUpperCase()}`, 18, 8);
 
     // munitions
-    let x = 300;
+    let x = view.w - 112 - 52 / scale;
     const fl = game.flash && game.flash.t > 0 ? game.flash : null;
     if (fl) fl.t--;
     ctx.fillStyle = fl && fl.what === "bullets" && fl.t % 8 < 4 ? C.danger : C.text;
@@ -1086,9 +1167,11 @@
       const a = Math.min(1, (s.dur - s.t) / 20);
       ctx.globalAlpha = a;
       ctx.font = `8px ${FONT_TXT}`;
-      const lines = wrapText(s.text, 300);
-      const bw = 320, bh = 16 + lines.length * 11;
-      const bx = (W - bw) / 2, by = 22;
+      const bw = Math.min(330, view.w - 24);
+      const lines = wrapText(s.text, bw - 20);
+      const bh = 16 + lines.length * 11;
+      const bx = (view.w - bw) / 2, by = 20;
+      R.sayBottom = by + bh;
       ctx.fillStyle = "rgba(6,10,8,0.85)";
       ctx.fillRect(bx, by, bw, bh);
       ctx.fillStyle = C.god;
@@ -1114,33 +1197,35 @@
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       const w = ctx.measureText(h.text).width + 16;
       ctx.fillStyle = "rgba(6,10,8,0.75)";
-      ctx.fillRect((W - w) / 2, H - 46, w, 14);
+      const hy = R.say ? (R.sayBottom || 50) + 6 : 22;
+      ctx.fillRect((view.w - w) / 2, hy, w, 14);
       ctx.fillStyle = C.hint;
-      ctx.fillText(h.text, W / 2, H - 39);
+      ctx.fillText(h.text, view.w / 2, hy + 7);
       ctx.globalAlpha = 1;
     }
   }
 
   function drawCard() {
     const t = game.cardT;
+    const VW2 = view.w / 2, VH2 = view.h / 2;
     const a = t < 60 ? 1 : 1 - (t - 60) / 15;
     ctx.globalAlpha = Math.max(0, a);
     ctx.fillStyle = C.bg;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, view.w, view.h);
     const ty = TYPES[R.def.type];
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.font = `8px ${FONT_PIX}`;
     ctx.fillStyle = C.dim;
-    ctx.fillText(`ACTE 1  ·  SALLE ${R.index + 1} SUR ${ROOMS.length}`, W / 2, H / 2 - 30);
+    ctx.fillText(`ACTE 1  ·  SALLE ${R.index + 1} SUR ${ROOMS.length}`, VW2, VH2 - 30);
     ctx.font = `16px ${FONT_PIX}`;
     ctx.fillStyle = C.text;
-    ctx.fillText(R.def.name.toUpperCase(), W / 2, H / 2 - 6);
+    ctx.fillText(R.def.name.toUpperCase(), VW2, VH2 - 6);
     ctx.font = `8px ${FONT_PIX}`;
     const lw = ctx.measureText(ty.label.toUpperCase()).width + 16;
     ctx.fillStyle = ty.color;
-    ctx.fillRect((W - lw) / 2, H / 2 + 16, lw, 14);
+    ctx.fillRect((view.w - lw) / 2, VH2 + 16, lw, 14);
     ctx.fillStyle = C.bg;
-    ctx.fillText(ty.label.toUpperCase(), W / 2, H / 2 + 23.5);
+    ctx.fillText(ty.label.toUpperCase(), VW2, VH2 + 23.5);
     ctx.globalAlpha = 1;
   }
 
@@ -1193,7 +1278,38 @@
     showOverlay("fin");
   }
 
-  document.getElementById("btn-jouer").addEventListener("click", startGame);
+  /* ---------- Plein écran ---------- */
+  const root = document.documentElement;
+  const fsSupported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) &&
+    !!(root.requestFullscreen || root.webkitRequestFullscreen);
+  const standalone = matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches || navigator.standalone === true;
+  const inFrame = (() => { try { return window.self !== window.top; } catch (_) { return true; } })();
+  const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  function enterFullscreen() {
+    if (!fsSupported || isFs()) return;
+    try {
+      const r = (root.requestFullscreen || root.webkitRequestFullscreen).call(root, { navigationUI: "hide" });
+      Promise.resolve(r).then(() => screen.orientation?.lock?.("landscape")).catch(() => {});
+    } catch (_) {}
+  }
+  function toggleFullscreen() {
+    if (isFs()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else enterFullscreen();
+  }
+  document.querySelectorAll("[data-plein]").forEach((b) => {
+    b.hidden = !fsSupported || standalone;
+    b.addEventListener("click", toggleFullscreen);
+  });
+  const astuce = document.getElementById("astuce-plein");
+  if (astuce && !fsSupported && !standalone) {
+    astuce.hidden = false;
+    astuce.textContent = inFrame
+      ? "Le plein écran n'est pas disponible dans cet aperçu. Il le sera dans la version installée sur l'écran d'accueil."
+      : "Plein écran : touche Partager, puis « Sur l'écran d'accueil », et lance le jeu depuis l'icône.";
+  }
+  ["fullscreenchange", "webkitfullscreenchange"].forEach((ev) => document.addEventListener(ev, () => setTimeout(resize, 50)));
+
+  document.getElementById("btn-jouer").addEventListener("click", () => { if (isTouch) enterFullscreen(); startGame(); });
   document.getElementById("btn-rejouer").addEventListener("click", startGame);
   document.getElementById("btn-reprendre").addEventListener("click", togglePause);
   document.getElementById("btn-recommencer").addEventListener("click", () => { game.paused = false; restartRoom(); });
