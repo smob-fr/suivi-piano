@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<!--CONTENU-->
+<title>Le Temple qui Triche</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#0d1512">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Une seule scène noire-jade, plein écran, en paysage. Le jeu est un écran unique,
+     les menus sont des panneaux posés dessus. Choix volontaire d'un seul thème sombre. */
+  :root {
+    --fond: #0d1512;
+    --fond-2: #13201b;
+    --pierre: #3a5649;
+    --texte: #efe8d8;
+    --terne: #8aa398;
+    --or: #d9a441;
+    --danger: #e5483c;
+    --f-pix: "Silkscreen", "Courier New", monospace;
+    --f-txt: "JetBrains Mono", ui-monospace, "Courier New", monospace;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--fond);
+    color: var(--texte);
+    font-family: var(--f-txt);
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  #cadre {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+  body.tactile #cadre {
+    padding-left: calc(env(safe-area-inset-left, 0px) + 136px);
+    padding-right: calc(env(safe-area-inset-right, 0px) + 136px);
+  }
+  #zone { width: 100%; height: 100%; display: grid; place-items: center; min-width: 0; }
+  #scene { position: relative; }
+  #jeu { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--or); outline-offset: 3px; }
+
+  #btn-pause {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    right: calc(env(safe-area-inset-right, 0px) + 8px);
+    width: 40px; height: 34px;
+    border: 1px solid rgba(239,232,216,.25); border-radius: 6px;
+    background: rgba(6,10,8,.6);
+    display: none; place-items: center; cursor: pointer;
+    z-index: 5;
+  }
+  #btn-pause span { display: block; width: 12px; height: 12px; border-left: 4px solid var(--texte); border-right: 4px solid var(--texte); box-sizing: border-box; }
+  body.en-jeu #btn-pause { display: grid; }
+
+  /* ---------- Contrôles tactiles ---------- */
+  .pad { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); display: none; gap: 10px; z-index: 4; }
+  body.tactile.en-jeu .pad { display: flex; }
+  .pad.gauche { left: calc(env(safe-area-inset-left, 0px) + 10px); gap: 8px; }
+  .pad.droite {
+    right: calc(env(safe-area-inset-right, 0px) + 10px);
+    display: none; grid-template-columns: 56px 56px; gap: 8px; justify-items: center;
+  }
+  body.tactile.en-jeu .pad.droite { display: grid; }
+  .pad.droite .saut { grid-column: 1 / -1; justify-self: end; }
+  .touche {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 2px solid rgba(239,232,216,.28);
+    background: rgba(6,10,8,.35);
+    display: grid; place-items: center;
+    font-family: var(--f-pix); font-size: 11px; letter-spacing: .06em;
+    color: rgba(239,232,216,.85);
+    touch-action: none;
+    transition: background .06s, transform .06s;
+  }
+  .touche.on { background: rgba(217,164,65,.35); border-color: var(--or); transform: scale(.94); }
+  .touche.saut { width: 72px; height: 72px; }
+  .touche.tnt { color: var(--danger); }
+  .fleche { width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; }
+  .fleche.g { border-right: 16px solid currentColor; margin-right: 4px; }
+  .fleche.d { border-left: 16px solid currentColor; margin-left: 4px; }
+
+  /* ---------- Panneaux ---------- */
+  .panneau {
+    position: fixed; inset: 0; z-index: 10;
+    display: grid; place-items: center;
+    padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(13,21,18,.9);
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .carte { width: min(100%, 560px); display: grid; gap: 14px; }
+  .surtitre { font-family: var(--f-pix); font-size: 11px; letter-spacing: .14em; color: var(--terne); margin: 0; }
+  h1 {
+    font-family: var(--f-pix); font-weight: 700;
+    font-size: clamp(28px, 7vw, 54px); line-height: .95;
+    margin: 0; text-wrap: balance; letter-spacing: .01em;
+  }
+  h1 em { font-style: normal; color: var(--or); }
+  h2 { font-family: var(--f-pix); font-size: 26px; margin: 0; }
+  .recit { margin: 0; color: var(--terne); line-height: 1.55; font-size: 13px; max-width: 60ch; }
+  .recit strong { color: var(--texte); font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bouton {
+    font-family: var(--f-pix); font-size: 14px; letter-spacing: .08em;
+    padding: 12px 22px; border-radius: 4px; cursor: pointer;
+    border: 2px solid var(--or); background: var(--or); color: var(--fond);
+  }
+  .bouton.discret { background: transparent; color: var(--texte); border-color: rgba(239,232,216,.3); }
+  .types { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 11px; color: var(--terne); }
+  .types li { display: flex; align-items: center; gap: 6px; }
+  .types i { width: 8px; height: 8px; display: inline-block; }
+  .clavier { font-size: 11px; color: var(--terne); margin: 0; line-height: 1.6; }
+  .clavier kbd { font-family: var(--f-txt); color: var(--texte); border: 1px solid rgba(239,232,216,.25); border-radius: 3px; padding: 0 4px; }
+  body.tactile .clavier { display: none; }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+  .stats div { border-top: 2px solid var(--pierre); padding-top: 8px; min-width: 0; }
+  .stats dt { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--terne); }
+  .stats dd { margin: 4px 0 0; font-family: var(--f-pix); font-size: 15px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .citation { margin: 0; color: var(--or); font-size: 13px; }
+
+  #tourner {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-items: center; text-align: center;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: var(--fond);
+  }
+  #tourner .tel { width: 44px; height: 72px; border: 3px solid var(--or); border-radius: 8px; margin: 0 auto 18px; animation: pivot 2s ease-in-out infinite; }
+  @keyframes pivot { 0%, 30% { transform: rotate(0) } 60%, 100% { transform: rotate(-90deg) } }
+  @media (prefers-reduced-motion: reduce) { #tourner .tel { animation: none; transform: rotate(-90deg); } .touche { transition: none; } }
+  @media (max-height: 420px) { .carte { gap: 10px; } h1 { font-size: 30px; } .recit { font-size: 12px; } }
+</style>
+
+<div id="cadre">
+  <div id="zone">
+    <div id="scene"><canvas id="jeu" aria-label="Zone de jeu"></canvas></div>
+  </div>
+</div>
+
+<button id="btn-pause" type="button" aria-label="Pause"><span></span></button>
+
+<div class="pad gauche" aria-hidden="true">
+  <div class="touche" data-btn="left"><span class="fleche g"></span></div>
+  <div class="touche" data-btn="right"><span class="fleche d"></span></div>
+</div>
+<div class="pad droite" aria-hidden="true">
+  <div class="touche tnt" data-btn="tnt">TNT</div>
+  <div class="touche" data-btn="fire">TIR</div>
+  <div class="touche saut" data-btn="jump">SAUT</div>
+</div>
+
+<section id="ecran-titre" class="panneau">
+  <div class="carte">
+    <p class="surtitre">ACTE 1 · L'ENTRÉE DU TEMPLE · PROTOTYPE</p>
+    <h1>Le Temple<br>qui <em>Triche</em></h1>
+    <p class="recit">Un aventurier entre dans le temple de <strong>Trickster-Ka</strong>, dieu des farces.
+      Les pièges ne sont jamais deux fois les mêmes : le temple se souvient de chacune de tes morts.</p>
+    <ul class="types">
+      <li><i style="background:#6fb58f"></i>Exploration</li>
+      <li><i style="background:#e5483c"></i>Trahison</li>
+      <li><i style="background:#e3913b"></i>Action</li>
+      <li><i style="background:#b49ae6"></i>Histoire</li>
+    </ul>
+    <div class="actions">
+      <button id="btn-jouer" class="bouton" type="button">Entrer dans le temple</button>
+      <button class="bouton discret" type="button" data-son>Son : activé</button>
+    </div>
+    <p class="clavier"><kbd>←</kbd> <kbd>→</kbd> courir · <kbd>↑</kbd> ou <kbd>Espace</kbd> sauter · <kbd>X</kbd> tirer · <kbd>C</kbd> dynamite · <kbd>R</kbd> recommencer · <kbd>Échap</kbd> pause</p>
+  </div>
+</section>
+
+<section id="ecran-pause" class="panneau" hidden>
+  <div class="carte">
+    <h2>Pause</h2>
+    <p class="recit">Recommencer la salle compte comme une mort. Le temple s'en souviendra.</p>
+    <div class="actions">
+      <button id="btn-reprendre" class="bouton" type="button">Reprendre</button>
+      <button id="btn-recommencer" class="bouton discret" type="button">Recommencer la salle</button>
+      <button class="bouton discret" type="button" data-son>Son : activé</button>
+    </div>
+  </div>
+</section>
+
+<section id="ecran-fin" class="panneau" hidden>
+  <div class="carte">
+    <p class="surtitre">FIN DU PROTOTYPE · ACTE 1</p>
+    <h2>Tu es sorti du temple.</h2>
+    <p class="citation" id="fin-mot"></p>
+    <dl class="stats">
+      <div><dt>Morts</dt><dd id="fin-morts">0</dd></div>
+      <div><dt>Temps</dt><dd id="fin-temps">0 s</dd></div>
+      <div><dt>Salle la plus cruelle</dt><dd id="fin-pire">–</dd></div>
+    </dl>
+    <div class="actions">
+      <button id="btn-rejouer" class="bouton" type="button">Rejouer</button>
+    </div>
+  </div>
+</section>
+
+<div id="tourner" hidden>
+  <div>
+    <div class="tel"></div>
+    <p class="surtitre">TOURNE TON TÉLÉPHONE</p>
+    <p class="recit">Le temple se joue à l'horizontale.</p>
+  </div>
+</div>
+
+<script src="game.js"></script>
+<!--/CONTENU-->
+</html>
