@@ -2,7 +2,11 @@
 
 Jeu de plateforme pour mobile (en paysage), à mi-chemin entre l'exploration d'un *Rick Dangerous*
 (munitions limitées, dynamite, momies) et les pièges farceurs d'un *Level Devil*
-(le décor change sous tes pieds). Le dieu farceur Trickster-Ka commente chacune de tes morts.
+(le décor change sous tes pieds). L'explorateur Max fait la course contre le professeur Lecoquin,
+un archéologue tricheur qui a piégé tout le temple pour arriver le premier à l'Œil de Jade.
+
+Pas d'armes : on saute sur les ennemis ou on les assomme quelques secondes d'un coup de massue.
+La dynamite sert à ouvrir les murs fissurés.
 
 **50 niveaux en 5 actes**, avec une difficulté qui augmente :
 
@@ -12,7 +16,7 @@ Jeu de plateforme pour mobile (en paysage), à mi-chemin entre l'exploration d'u
 | 2 | La crypte | momies, faux murs, sols fissurés, éboulements |
 | 3 | Les mines | chauves-souris, pics au plafond, deux rochers |
 | 4 | Les cascades | commandes inversées, longs sauts |
-| 5 | Le sanctuaire | tout à la fois, et la finale contre le dieu |
+| 5 | Le sanctuaire | tout à la fois, et la finale : ouvrir le coffre de l'Œil de Jade |
 
 Chaque acte alterne Exploration, Trahison, Action et Histoire. Le temple se souvient :
 certains pièges changent selon le nombre de morts dans le niveau. La progression et les records
@@ -24,7 +28,7 @@ sont gardés dans le navigateur.
 python -m http.server 8000   # puis http://localhost:8000/jeu/
 ```
 
-- Clavier : ← → courir · ↑ / Espace sauter · X tirer · C dynamite · R recommencer · Échap pause
+- Clavier : ← → courir · ↑ / Espace sauter · X massue · C dynamite · R recommencer · Échap pause
 - Mobile : boutons tactiles (déplacement à gauche ; saut, tir, TNT à droite)
 - Installable sur l'écran d'accueil (plein écran, paysage) grâce à `manifest.webmanifest`
 
@@ -47,4 +51,4 @@ pièges, pour 0 à 3 morts.
 
 Légende des cartes : `#` pierre · `B` mur fissuré · `^` pics · `v` pics au plafond · `P` départ ·
 `D` porte · `J` ressort · `x` fausse dalle · `F` faux mur · `<` `>` lance-flèches · `m` momie ·
-`s` serpent · `b` chauve-souris · `a` balles · `t` dynamite.
+`s` serpent · `b` chauve-souris · `a` pièce d'or · `t` dynamite.

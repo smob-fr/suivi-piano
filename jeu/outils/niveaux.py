@@ -13,7 +13,7 @@ Légende des cartes :
   #  pierre            B  mur fissuré (dynamite)   ^  pics au sol    v  pics au plafond
   P  départ            D  porte                     J  ressort        x  fausse dalle (s'effondre)
   F  faux mur          <  >  lance-flèches          m  momie          s  serpent
-  b  chauve-souris     a  balles (+3)               t  dynamite (+1)  .  vide
+  b  chauve-souris     a  pièce d'or               t  dynamite (+1)  .  vide
 """
 import json, os, sys
 
@@ -282,11 +282,11 @@ def acte1():
         "#.P...####^^####...s....B..D.#",
         "##############################",
     ], [
-        {"max": 0, "act": [["say", "Bienvenue dans mon temple, petit aventurier."]]},
+        {"max": 0, "act": [["say", "Ha ! Max ! Tu arrives trop tard : l'Œil de Jade sera à moi !"]]},
         {"min": 1, "act": [["say", "Déjà ? On n'a même pas commencé."]]},
         {"zone": [4, 1, 1, 15], "act": [["hint", "Saute par-dessus les pics"]]},
         {"zone": [9, 1, 1, 15], "act": [["hint", "Ramasse la dynamite"]]},
-        {"zone": [15, 1, 1, 15], "act": [["hint", "Tire sur le serpent"]]},
+        {"zone": [15, 1, 1, 15], "act": [["hint", "Saute sur le serpent, ou assomme-le avec ta massue"]]},
         {"zone": [21, 1, 1, 15], "act": [["hint", "Pose la dynamite contre le mur fissuré, puis recule"]]},
     ], _tnt=1))
     L.append(brut("Le couloir honnête", "trahison", ["##############################"] * 11 + [
@@ -323,7 +323,7 @@ def acte1():
         "#^^^^^^^^^^^^^^^^^^^^#..D.####",
         "##############################",
     ], [
-        {"max": 0, "act": [["say", "Mes momies ne dorment jamais. Enfin, presque."]]},
+        {"max": 0, "act": [["say", "Les momies de ce temple ne dorment jamais. Enfin, presque."]]},
         {"min": 2, "act": [["say", "Le toit de la porte a l'air fragile, non ?"]]},
         {"zone": [9, 8, 1, 1], "act": [["fall", 9, 6, 2, 1, 28], ["hint", "Ça tremble au-dessus…"]]},
         {"zone": [21, 1, 7, 10], "act": [["hint", "La porte est en dessous…"]]},
@@ -362,8 +362,8 @@ def acte1():
     ], [
         {"max": 0, "act": [["say", "Tu es arrivé jusqu'ici ? Impressionnant."]]},
         {"min": 1, "act": [["say", "Bon. Celle-là, c'était un piège. Mais c'est fini, juré."]]},
-        {"max": 0, "zone": [7, 1, 1, 15], "act": [["say", "Je suis Trickster-Ka, dieu des farces. Ce temple est mon terrain de jeu."]]},
-        {"max": 0, "zone": [14, 1, 1, 15], "act": [["say", "Cette salle n'a aucun piège. Promis."]]},
+        {"max": 0, "zone": [7, 1, 1, 15], "act": [["say", "Professeur Lecoquin, pour te servir. Le trésor, c'est pour moi. Les pièges, c'est pour toi."]]},
+        {"max": 0, "zone": [14, 1, 1, 15], "act": [["say", "Cette salle n'a aucun piège. Parole d'archéologue."]]},
         {"max": 0, "lethal": True, "zone": [19, 1, 1, 15], "act": [["collapse", 21, 16, 4, 1, 0]]},
         {"min": 1, "zone": [19, 1, 1, 15], "act": [["say", "…"]]},
         {"min": 1, "zone": [24, 1, 1, 15], "act": [["say", "Tu vois ? Je tiens parole. Parfois."]]},
@@ -409,7 +409,7 @@ def acte1():
     # 10 — la statue
     n = Niveau("La statue", "histoire", decor="pillars")
     n.depart(4); n.dit("Fin de l'acte 1. Je t'ai préparé une petite fête.", max=0)
-    n.dit("Encore toi ! Tu es mon meilleur client.", min=1)
+    n.dit("Encore toi ! Tu es tenace, mon petit Max.", min=1)
     n.plat(6); n.t([["invert", 300], ["say", "Cadeau : je t'inverse les commandes !"]], n.Z(n.x - 2))
     n.plat(3); n.pics(1); n.plat(6)
     n.dit("La crypte t'attend. Elle sent un peu le renfermé.", n.x - 2)
@@ -443,7 +443,7 @@ def acte2():
     L.append(n.fini())
 
     n = Niveau("Les sarcophages", "exploration", ammo=(3, 2))
-    n.depart(4); n.dit("Trois balles pour toute une famille de momies. Économise.", max=0)
+    n.depart(4); n.dit("Toute une famille de momies. Saute-leur dessus, si tu l'oses.", max=0)
     n.plat(8, ennemi="mm"); n.monte(1); n.plat(6, ennemi="ms"); n.fosse(2)
     n.plat(6, ennemi="m", objet="a"); n.plat(3); n.descend(1); n.plat(3); n.mur_fissure(); n.plat(3); n.porte(4)
     L.append(n.fini())
@@ -457,9 +457,9 @@ def acte2():
     L.append(n.fini())
 
     n = Niveau("Le scribe", "histoire", decor="glyphs")
-    n.depart(4); n.dit("Ici, le scribe a écrit mon histoire. Il est mort de rire.", max=0)
-    n.plat(6); n.dit("En vrai, il est tombé dans un piège. Mais il riait.", n.x - 2)
-    n.plat(8); n.dit("Avant, j'étais le dieu des chaussettes perdues. J'ai été promu.", n.x - 3)
+    n.depart(4); n.dit("Un scribe a gravé ici le chemin du trésor. Je l'ai un peu raturé.", max=0)
+    n.plat(6); n.dit("Il a aussi gravé : « Lecoquin est un tricheur ». Calomnie !", n.x - 2)
+    n.plat(8); n.dit("J'étais professeur, avant. Renvoyé pour « tricherie ». Pff.", n.x - 3)
     n.plat(4); x = n.x; n.porte(5)
     n.t([["door", n.porte_x + 1, n.y], ["say", "Pardon, réflexe."]], n.Z(x), max=0)
     L.append(n.fini())
@@ -493,7 +493,7 @@ def acte2():
     n.plat(3); n.porte(4)
     L.append(n.fini())
 
-    n = Niveau("Le pharaon farceur", "histoire", decor="glyphs")
+    n = Niveau("Le pharaon déguisé", "histoire", decor="glyphs")
     n.depart(4); n.dit("Fin de l'acte 2. Le pharaon voulait te dire au revoir.", max=0)
     n.plat(6); n.dit("En fait, le pharaon, c'est moi avec un faux nez.", n.x - 2)
     n.plat(5); x = n.x; n.plat(6)
@@ -534,7 +534,7 @@ def acte3():
     L.append(n.fini())
 
     n = Niveau("La poursuite", "action", sol=5, h=20)
-    n.depart(4); n.dit("Ce rocher a un nom : Gérard. Dis bonjour à Gérard.", max=0)
+    n.depart(4); n.dit("Mon rocher a un nom : Gérard. Dis bonjour à Gérard.", max=0)
     n.plat(6); n.rocher(1, 2, 1, 1.5, zone=n.Z(6))
     n.descend(2); n.plat(5); n.fosse(1, "vide"); n.plat(4); n.pics(1); n.plat(4)
     n.descend(2); n.plat(5); n.fosse(1, "vide"); n.plat(5)
@@ -665,15 +665,15 @@ def acte4():
     L.append(n.fini())
 
     n = Niveau("Les gardiens", "exploration", ammo=(6, 2))
-    n.depart(4); n.dit("Mes gardiens d'élite. Ils sont nuls, mais nombreux.", max=0)
+    n.depart(4); n.dit("J'ai réveillé les gardiens du temple. Ils sont nuls, mais nombreux.", max=0)
     n.plat(8, ennemi="mm"); n.fosse(2); n.plat(6, ennemi="ss", objet="a"); n.monte(2)
     n.plat(6, ennemi="mb"); n.mur_fissure(); n.plat(5, ennemi="ms"); n.descend(2); n.plat(6, ennemi="mm", objet="t")
     n.mur_fissure(); n.plat(3); n.porte(4)
     L.append(n.fini())
 
-    n = Niveau("Le seuil du dieu", "histoire", decor="water")
-    n.depart(4); n.dit("Fin de l'acte 4. Derrière cette porte, mon sanctuaire.", max=0)
-    n.plat(8); n.dit("Personne n'est jamais allé aussi loin. Sauf Gérard.", n.x - 3)
+    n = Niveau("Le seuil du trésor", "histoire", decor="water")
+    n.depart(4); n.dit("Fin de l'acte 4. Derrière cette porte, le sanctuaire de l'Œil de Jade.", max=0)
+    n.plat(8); n.dit("Personne n'est jamais allé aussi loin. À part moi. Et Gérard.", n.x - 3)
     n.plat(5); x = n.x; n.plat(4)
     n.t([["spikes", x + 2, n.y, 2, 1], ["say", "Ah non, pas ça ! Bon, saute."]], n.Z(x))
     n.plat(4); n.porte(4)
@@ -687,13 +687,13 @@ def acte4():
 def acte5():
     L = []
     n = Niveau("L'entrée sacrée", "exploration", ammo=(6, 2), arrowRate=90)
-    n.depart(4); n.dit("Mon sanctuaire. Enlève ton chapeau. Non, garde-le, c'est drôle.", max=0)
+    n.depart(4); n.dit("Le sanctuaire ! Enlève ton chapeau. Non, garde-le, il est ridicule.", max=0)
     n.plat(6, ennemi="m"); n.fleches(5, 1); n.fosse(2); n.plat(4, ennemi="b")
     n.ressort(4); n.plat(5, objet="t"); n.mur_fissure(); n.descend(3); n.plat(5, ennemi="ms")
     n.pics(2); n.plat(3); n.porte(4)
     L.append(n.fini())
 
-    n = Niveau("Le dieu s'amuse", "trahison")
+    n = Niveau("Lecoquin s'amuse", "trahison")
     n.depart(4); n.dit("Je vais déplacer la porte. Plusieurs fois. Parce que je peux.", max=0)
     n.plat(6); x1 = n.x; n.plat(4); n.pics(2); n.plat(6); x2 = n.x; n.plat(5); n.fosse(2, "vide"); n.plat(4); x3 = n.x
     n.porte(4)
@@ -704,7 +704,7 @@ def acte5():
     L.append(n.fini())
 
     n = Niveau("Les épreuves", "exploration", h=22, sol=12, ammo=(6, 2), arrowRate=85)
-    n.depart(3); n.dit("Trois épreuves : sauter, tirer, exploser. Comme un mardi.", max=0)
+    n.depart(3); n.dit("Trois épreuves : sauter, assommer, exploser. Comme un mardi.", max=0)
     n.plateformes([(2, 3, 0), (3, 3, -1), (2, 3, 0)])
     n.plat(5, ennemi="m"); n.fleches(5, 2); n.plat(4, ennemi="b"); n.ressort(4); n.plat(5, objet="t")
     n.mur_fissure(); n.plat(3); n.sol_fissure(3, 3); n.plat(5, ennemi="ss"); n.porte(4)
@@ -720,9 +720,9 @@ def acte5():
 
     n = Niveau("La confidence", "histoire", decor="pillars")
     n.depart(4); n.dit("Je peux te dire un secret ?", max=0)
-    n.plat(6); n.dit("Je n'ai pas d'amis. Juste des visiteurs qui tombent.", n.x - 3)
-    n.plat(6); n.dit("Alors je fais des pièges. C'est ma façon de dire bonjour.", n.x - 3)
-    n.plat(5); n.dit("Bonjour.", n.x - 2)
+    n.plat(6); n.dit("Je n'ai jamais rien trouvé tout seul. Toujours en suivant quelqu'un.", n.x - 3)
+    n.plat(6); n.dit("Alors cette fois, je voulais être le premier. Quitte à tricher un peu.", n.x - 3)
+    n.plat(5); n.dit("Beaucoup.", n.x - 2)
     n.plat(4); n.porte(4)
     L.append(n.fini())
 
@@ -745,7 +745,7 @@ def acte5():
     L.append(n.fini())
 
     n = Niveau("L'armée", "exploration", ammo=(8, 2), arrowRate=80)
-    n.depart(4); n.dit("Toute mon armée est là. Ils ont mis leurs plus beaux bandages.", max=0)
+    n.depart(4); n.dit("Tous les gardiens du temple sont là. Ils ont mis leurs plus beaux bandages.", max=0)
     n.plat(8, ennemi="mms"); n.fleches(5, 1); n.plat(6, ennemi="bm", objet="a"); n.fosse(2)
     n.plat(7, ennemi="smm"); n.mur_fissure(); n.plat(6, ennemi="bs", objet="a"); n.fleches(5, 1)
     n.plat(5, ennemi="mm"); n.porte(4)
@@ -761,13 +761,13 @@ def acte5():
     L.append(n.fini())
 
     # 50 — finale : détruire les trois idoles pour faire apparaître la porte
-    n = Niveau("Trickster-Ka", "histoire", ammo=(6, 3), decor="eye", doorHidden=True)
-    n.depart(4); n.dit("Tu es venu jusqu'à moi. Très bien. Faisons une farce… à moi.", max=0)
-    n.dit("Détruis mes trois idoles fissurées. Je te parie que tu n'oses pas.", 6)
+    n = Niveau("L'Œil de Jade", "histoire", ammo=(6, 3), decor="eye", doorHidden=True)
+    n.depart(4); n.dit("Le coffre de l'Œil de Jade est fermé par trois sceaux de pierre.", max=0)
+    n.dit("J'ai oublié ma dynamite. Toi, non ? Zut, zut et zut.", 6)
     n.plat(6); i1 = n.mur_fissure(1); n.plat(3, objet="t"); n.fosse(2)
     n.plat(5, ennemi="m"); i2 = n.mur_fissure(1); n.plat(4); n.pics(1); n.plat(3, objet="t")
     n.plat(4, ennemi="b"); i3 = n.mur_fissure(1); n.plat(4); n.porte(4)
-    n.t([["showdoor"], ["say", "Ha ! Tu m'as eu. Je crois que… je m'amuse. Merci."], ["shake", 10]], allB=True)
+    n.t([["showdoor"], ["say", "Non ! Mon trésor ! Bon… on partage ? Non ? Bien joué, Max."], ["shake", 10]], allB=True)
     L.append(n.fini())
     return L
 
@@ -906,10 +906,6 @@ def verifier(niveaux):
         tnt_dispo = lv["ammo"][1] + txt.count("t")
         if lv.get("_tnt", 0) > tnt_dispo:
             print(f"✗ {i+1:2d} {lv['name']}: dynamite {tnt_dispo} < {lv['_tnt']} nécessaires"); erreurs += 1
-        ennemis = sum(txt.count(c) for c in "ms")
-        balles = lv["ammo"][0] + 3 * txt.count("a")
-        if ennemis > balles + 2 * max(0, tnt_dispo - lv.get("_tnt", 0)):
-            print(f"! {i+1:2d} {lv['name']}: {ennemis} ennemis pour {balles} balles")
         for morts in range(4):
             g, porte = appliquer(lv, morts)
             ok, pourquoi = accessible(g, porte)

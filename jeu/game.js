@@ -42,7 +42,8 @@
     bandage: "#d8cba6", bandageDark: "#a3956f", mummyEye: "#9cf06b",
     snake: "#5d9a3a", snakeDark: "#335f20", snakeBelly: "#d9c14a",
     bat: "#3b2a3f", batWing: "#5a4160", batEye: "#ff5a4a",
-    wood: "#a07443", metal: "#5d636b",
+    wood: "#a07443", metal: "#5d636b", club: "#8a5a2b", clubDark: "#5a3818", gold: "#f2c14e",
+    rivalSuit: "#e9e2cf", rivalShade: "#bfb59a", rivalHelmet: "#efe2bd", rivalScarf: "#b8322a", rivalHair: "#3a2a1c",
   };
   let P = PALETTES.jungle;
 
@@ -54,16 +55,23 @@
   };
 
   const TAUNTS = [
-    "Aïe.",
-    "Le temple te remercie pour ta contribution.",
+    "Aïe. Pendant ce temps, j'avance !",
     "Tu y étais presque. Non, en fait.",
-    "Encore ! Encore !",
-    "Je note ça dans mon carnet de farces.",
+    "Je note ça dans mon carnet de fouilles.",
     "Tu sais que tu peux sauter, hein ?",
-    "Magnifique. Refais-le.",
+    "Magnifique. Refais-le, j'ai besoin de temps.",
     "Gérard te salue.",
     "C'était voulu ? Dis-moi que c'était voulu.",
     "Ton chapeau a mieux atterri que toi.",
+    "L'Œil de Jade me remercie.",
+    "Prends ton temps, surtout.",
+  ];
+  const RIVAL_DOOR = [
+    "Trop lent, Max ! À la salle suivante !",
+    "Après moi, cher confrère !",
+    "Le trésor m'attend. Toi, les pièges t'attendent.",
+    "Bon courage ! Ha ha !",
+    "Je te laisse mes pièges. Cadeau.",
   ];
 
   /* ================= Canvas, mise à l'échelle ================= */
@@ -192,6 +200,8 @@
     god: () => tone(180, 0.18, "triangle", 0.05, 40),
     kill: () => tone(200, 0.15, "square", 0.05, -150),
     arrow: () => tone(1800, 0.04, "triangle", 0.03, -1200),
+    swing: () => tone(260, 0.09, "triangle", 0.05, -140),
+    bonk: () => { tone(150, 0.08, "square", 0.07, 80); setTimeout(() => tone(900, 0.12, "sine", 0.04, 300), 60); },
     invert: () => { tone(300, 0.15, "sine", 0.06, 300); setTimeout(() => tone(600, 0.15, "sine", 0.06, -300), 120); },
   };
 
@@ -208,7 +218,7 @@
     mode: "title", // title | card | play | dead | win | end
     level: 0,
     deathsByRoom: LEVELS.map(() => 0),
-    ammo: { bullets: 6, tnt: 1 },
+    ammo: { tnt: 1 }, coins: 0, coinsTotal: 0,
     timer: 0, paused: false, invert: 0, homeT: 0,
   };
   let R = null;
@@ -223,7 +233,7 @@
       def, index, deaths: game.deathsByRoom[index], tiles,
       shakeTiles: new Map(), spikeAnim: new Map(), springAnim: new Map(), wobble: new Set(),
       player: null, door: null, shooters: [],
-      enemies: [], pickups: [], bullets: [], arrows: [], dynamites: [], boulders: [], blocks: [],
+      enemies: [], pickups: [], arrows: [], dynamites: [], boulders: [], blocks: [], rival: null,
       particles: [], fired: new Set(), say: null, hint: null, shake: 0, t: 0, bCount: 0,
     };
     for (let y = 0; y < ROWS; y++) {
@@ -234,18 +244,20 @@
         else if (c === "m") { room.enemies.push({ kind: "m", x: x * T + 2, y: y * T + 1, w: 12, h: 15, vx: -0.45, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "s") { room.enemies.push({ kind: "s", x: x * T + 2, y: y * T + 9, w: 12, h: 7, vx: -0.9, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "b") { room.enemies.push({ kind: "b", x: x * T + 3, y: y * T + 4, by: y * T + 4, w: 10, h: 7, vx: 0.7, x0: x * T - 48, x1: x * T + 56, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
-        else if (c === "a" || c === "t") { room.pickups.push({ kind: c === "a" ? "bullets" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
+        else if (c === "a" || c === "t") { room.pickups.push({ kind: c === "a" ? "coin" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
         else if (c === "^" || c === "v") room.spikeAnim.set(x + "," + y, 1);
         else if (c === "<" || c === ">") room.shooters.push({ x: c === "<" ? x * T : x * T + T, y: y * T + 6, dir: c === "<" ? -1 : 1, t: (x * 7 + y * 13) % 60 });
         else if (c === "B") room.bCount++;
       }
     }
     if (def.doorStart && room.door) { room.door.x = def.doorStart[0] * T + 2; room.door.y = def.doorStart[1] * T - 6; }
+    // le professeur Lecoquin attend à la porte, puis file devant le joueur
+    if (room.door && !def.doorHidden && !def.doorStart) room.rival = { x: room.door.x - 22, y: room.door.y + 7, w: 10, h: 15, state: "wait", t: 0, face: -1 };
     return room;
   }
 
   function makePlayer(tx, ty) {
-    return { x: tx * T + 3, y: ty * T + 1, w: 10, h: 15, vx: 0, vy: 0, face: 1, grounded: false, coyote: 0, buffer: 0, alive: true, anim: 0, spring: false };
+    return { x: tx * T + 3, y: ty * T + 1, w: 10, h: 15, vx: 0, vy: 0, face: 1, grounded: false, coyote: 0, buffer: 0, alive: true, anim: 0, spring: false, club: 0 };
   }
 
   /* ================= Tuiles ================= */
@@ -367,6 +379,7 @@
     updateEnemies();
     updateShooters();
     updateProjectiles();
+    updateRival();
     updateDynamites();
     updateBoulders();
     updateBlocks();
@@ -414,12 +427,14 @@
       }
     }
 
-    if (pressed.fire) {
-      if (game.ammo.bullets > 0) {
-        game.ammo.bullets--;
-        R.bullets.push({ x: p.x + (p.face > 0 ? p.w : -4), y: p.y + 9, w: 4, h: 2, vx: p.face * 5, life: 90 });
-        sfx.shoot();
-      } else { sfx.empty(); game.flash = { what: "bullets", t: 30 }; }
+    // coup de massue : assomme ce qui se trouve juste devant
+    if (pressed.fire && p.club <= 0) { p.club = 18; sfx.swing(); }
+    if (p.club > 0) {
+      p.club--;
+      if (p.club >= 6 && p.club <= 13) {
+        const hit = { x: p.face > 0 ? p.x + p.w - 2 : p.x - 14, y: p.y - 2, w: 16, h: 17 };
+        for (const e of R.enemies) if (e.alive && !e.stun && overlap(hit, e)) stunEnemy(e, p.face);
+      }
     }
     if (pressed.tnt) {
       if (game.ammo.tnt > 0 && R.dynamites.length < 2) {
@@ -432,7 +447,7 @@
     for (const it of R.pickups) {
       if (!it.taken && overlap(p, it)) {
         it.taken = true;
-        if (it.kind === "bullets") game.ammo.bullets += 3; else game.ammo.tnt += 1;
+        if (it.kind === "coin") { game.coins++; game.coinsTotal++; } else game.ammo.tnt += 1;
         sfx.pick();
         burst(it.x + 4, it.y + 4, C.hat, 8);
       }
@@ -471,6 +486,12 @@
     for (const e of R.enemies) {
       if (!e.alive) continue;
       e.t += 0.1;
+      if (e.stun > 0) {
+        e.stun--;
+        if (e.kind !== "b") { e.vx = 0; e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall); moveBody(e); if (e.y > H + 20) e.alive = false; }
+        if (e.stun === 0) e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : 0.7);
+        continue;
+      }
       if (e.kind === "b") {
         e.x += e.vx;
         if (e.x < e.x0 || e.x + e.w > e.x1 || rectHitsSolid(e.x, e.y, e.w, e.h)) { e.x -= e.vx; e.vx = -e.vx; }
@@ -504,12 +525,6 @@
   }
 
   function updateProjectiles() {
-    for (const b of R.bullets) {
-      b.x += b.vx; b.life--;
-      if (rectHitsSolid(b.x, b.y, b.w, b.h) || b.x < -10 || b.x > W + 10) { b.life = 0; burst(b.x, b.y, C.text, 3, 0.6); }
-      for (const e of R.enemies) if (e.alive && b.life > 0 && overlap(b, e)) { e.alive = false; b.life = 0; killEnemy(e); }
-    }
-    R.bullets = R.bullets.filter((b) => b.life > 0);
     for (const a of R.arrows) {
       a.x += a.vx;
       if (rectHitsSolid(a.x, a.y, a.w, a.h) || a.x < -20 || a.x > W + 20) { a.dead = true; burst(a.x + 4, a.y + 1, C.wood, 3, 0.5); }
@@ -517,10 +532,35 @@
     R.arrows = R.arrows.filter((a) => !a.dead);
   }
 
-  function killEnemy(e) {
-    sfx.kill();
-    const col = e.kind === "m" ? C.bandage : e.kind === "s" ? C.snake : C.batWing;
-    burst(e.x + e.w / 2, e.y + e.h / 2, col, 14, 1.6);
+  // Assommé : l'ennemi ne bouge plus et devient inoffensif pendant ~4 secondes
+  function stunEnemy(e, dir) {
+    if (e.vx) e.dirBack = e.vx;
+    e.stun = 260;
+    if (e.kind !== "b") { e.vx = 0; e.vy = -2; e.x += (dir || 0) * 3; }
+    sfx.bonk();
+    R.shake = Math.max(R.shake, 2);
+    for (let i = 0; i < 6; i++) R.particles.push({ x: e.x + e.w / 2, y: e.y, vx: (Math.random() - 0.5) * 2, vy: -1 - Math.random(), s: 2, life: 22, color: C.gold, g: 0.08 });
+  }
+
+  // Le rival attend devant la porte ; quand le joueur approche, il file dedans en le narguant.
+  function updateRival() {
+    const r = R.rival, p = R.player;
+    if (!r || r.state === "gone") return;
+    r.t++;
+    const d = R.door;
+    if (r.state === "wait") {
+      r.face = p.x < r.x ? -1 : 1;
+      if (Math.abs(p.x - r.x) < 150 && Math.abs(p.y - r.y) < 70 && game.mode === "play") {
+        r.state = "run";
+        if (!R.say) R.say = { text: RIVAL_DOOR[(R.index + R.deaths) % RIVAL_DOOR.length], t: 0, dur: 140 };
+        sfx.flee();
+      }
+    } else if (r.state === "run") {
+      r.face = 1;
+      const tx = d.x + 1;
+      r.x += Math.sign(tx - r.x) * Math.min(2.6, Math.abs(tx - r.x));
+      if (Math.abs(tx - r.x) < 1) { r.state = "gone"; burst(d.x + 6, d.y + 12, C.rivalHelmet, 10, 1.2); }
+    }
   }
 
   function updateDynamites() {
@@ -547,7 +587,7 @@
             R.particles.push({ x: tx * T + 8, y: ty * T + 8, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.8) * 4, s: 3 + Math.random() * 3, life: 50, color: P.crack, g: 0.2 });
         }
       }
-    for (const e of R.enemies) if (e.alive && Math.hypot(e.x + 6 - cx, e.y + 7 - cy) < rad + 6) { e.alive = false; killEnemy(e); }
+    for (const e of R.enemies) if (e.alive && Math.hypot(e.x + 6 - cx, e.y + 7 - cy) < rad + 6) stunEnemy(e, Math.sign(e.x - cx));
     for (const b of R.boulders) if (Math.hypot(b.x + 14 - cx, b.y + 14 - cy) < rad + 12) { b.dead = true; burst(b.x + 14, b.y + 14, P.stoneTop, 18, 2.5); }
     R.boulders = R.boulders.filter((b) => !b.dead);
     for (let i = 0; i < 26; i++) {
@@ -627,7 +667,12 @@
       if (c === "^" && overlap(p, { x: tx * T + 2, y: ty * T + 7, w: 12, h: 9 })) return kill();
       if (c === "v" && overlap(p, { x: tx * T + 2, y: ty * T, w: 12, h: 9 })) return kill();
     }
-    for (const e of R.enemies) if (e.alive && overlap(p, { x: e.x + 1, y: e.y + 1, w: e.w - 2, h: e.h - 1 })) return kill();
+    for (const e of R.enemies) {
+      if (!e.alive || e.stun) continue;
+      if (!overlap(p, { x: e.x + 1, y: e.y + 1, w: e.w - 2, h: e.h - 1 })) continue;
+      if (p.vy > 0.5 && p.y + p.h - e.y < 10) { stunEnemy(e, 0); p.vy = -4.6; p.spring = false; continue; }
+      return kill();
+    }
     for (const a of R.arrows) if (overlap(p, a)) return kill();
     for (const b of R.boulders) {
       const cx = b.x + 14, cy = b.y + 14;
@@ -665,7 +710,8 @@
   function startLevel(i) {
     game.level = i;
     const am = LEVELS[i].ammo || [6, 1];
-    game.ammo = { bullets: am[0], tnt: am[1] };
+    game.ammo = { tnt: am[1] };
+    game.coins = 0;
     game.invert = 0;
     R = buildRoom(i);
     resize();
@@ -679,7 +725,8 @@
     if (!R) return;
     if (!fromDeath && game.mode === "play") { game.deathsByRoom[R.index]++; progress.deaths++; saveProgress(); }
     const am = LEVELS[game.level].ammo || [6, 1];
-    game.ammo = { bullets: am[0], tnt: am[1] };
+    game.ammo = { tnt: am[1] };
+    game.coins = 0;
     game.invert = 0;
     const keep = fromDeath ? R.say : null;
     R = buildRoom(game.level);
@@ -746,8 +793,8 @@
     for (const k2 of R.blocks) drawBlock(k2);
     for (const d of R.dynamites) drawDynamite(d);
     for (const b of R.boulders) drawBoulder(b);
-    for (const b of R.bullets) { ctx.fillStyle = C.text; ctx.fillRect(b.x, b.y, b.w, b.h); }
     for (const a of R.arrows) drawArrow(a);
+    if (R.rival && R.rival.state !== "gone") drawRival(R.rival);
     drawPlayer();
     drawTiles(true); // faux murs par-dessus le joueur
     drawParticles();
@@ -901,19 +948,60 @@
       ctx.fillStyle = C.text; ctx.fillRect(it.x + 1, it.y + 4 + bob, 6, 1);
       ctx.fillStyle = C.hat; ctx.fillRect(it.x + 3, it.y - 3 + bob, 1, 3);
     } else {
-      ctx.fillStyle = C.wood; ctx.fillRect(it.x - 1, it.y + 5 + bob, 10, 5);
-      ctx.fillStyle = C.hat;
-      for (let i = 0; i < 3; i++) ctx.fillRect(it.x + i * 3, it.y + 1 + bob, 2, 5);
+      // pièce d'or qui tourne
+      const w = Math.abs(Math.cos(R.t / 12 + it.x)) * 7 + 1;
+      ctx.fillStyle = "#b8862a"; ctx.beginPath(); ctx.ellipse(it.x + 4, it.y + 5 + bob, w / 2 + 0.5, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.gold; ctx.beginPath(); ctx.ellipse(it.x + 4, it.y + 5 + bob, w / 2, 4, 0, 0, Math.PI * 2); ctx.fill();
+      if (w > 4) { ctx.fillStyle = "#fff3c4"; ctx.fillRect(it.x + 3, it.y + 2 + bob, 1, 3); }
     }
   }
 
   function drawEnemy(e) {
-    const f = e.vx > 0 ? 1 : -1;
+    const f = (e.stun ? e.dirBack || e.vx : e.vx) > 0 ? 1 : -1;
     ctx.save();
+    if (e.stun) {
+      // assommé : écrasé et un peu penché
+      ctx.translate(e.x + e.w / 2, e.y + e.h); ctx.rotate(0.12 * f); ctx.scale(1.08, 0.78); ctx.translate(-(e.x + e.w / 2), -(e.y + e.h));
+    }
     if (f < 0) { ctx.translate(e.x * 2 + e.w, 0); ctx.scale(-1, 1); }
     if (e.kind === "m") drawMummy(e);
     else if (e.kind === "s") drawSnake(e);
     else drawBat(e);
+    ctx.restore();
+    if (e.stun) drawStars(e.x + e.w / 2, e.y - 3, e.stun);
+  }
+
+  function drawStars(cx, cy, t) {
+    for (let i = 0; i < 3; i++) {
+      const a = R.t / 9 + (i * Math.PI * 2) / 3;
+      const x = cx + Math.cos(a) * 7, y = cy + Math.sin(a) * 2.5;
+      ctx.globalAlpha = t < 60 ? (Math.floor(t / 6) % 2 ? 0.4 : 1) : 1;
+      ctx.fillStyle = C.gold;
+      ctx.fillRect(x - 0.5, y - 2, 1, 4); ctx.fillRect(x - 2, y - 0.5, 4, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Professeur Lecoquin : costume clair, casque colonial, écharpe rouge, moustache
+  function drawRival(r) {
+    const run = r.state === "run";
+    const ph = run ? Math.sin(r.t * 0.6) : 0, bob = run ? Math.abs(ph) : Math.sin(r.t / 10) * 0.4;
+    const x = Math.round(r.x), y = Math.round(r.y - bob);
+    ctx.save();
+    if (r.face < 0) { ctx.translate(x + 10, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
+    ctx.fillStyle = C.rivalShade; ctx.fillRect(2 + ph * 2, 10, 3, 3); ctx.fillRect(5 - ph * 2, 10, 3, 3);
+    ctx.fillStyle = C.boots; ctx.fillRect(2 + ph * 2, 13, 3, 2); ctx.fillRect(5 - ph * 2, 13, 4, 2);
+    ctx.fillStyle = C.rivalSuit; ctx.fillRect(1, 5, 8, 6);
+    ctx.fillStyle = C.rivalShade; ctx.fillRect(1, 9, 8, 1); ctx.fillRect(1, 5, 1, 6);
+    ctx.fillStyle = C.rivalScarf; ctx.fillRect(3, 5, 4, 2); ctx.fillRect(6, 7, 1, 2);
+    ctx.fillStyle = C.rivalSuit; ctx.fillRect(7, 6 + (run ? 0 : 1), 2, 3);
+    ctx.fillStyle = C.skin; ctx.fillRect(8, 9 + (run ? -1 : 0), 2, 1);
+    ctx.fillStyle = C.skin; ctx.fillRect(3, 1, 6, 4);
+    ctx.fillStyle = C.void; ctx.fillRect(7, 2, 1, 1);
+    ctx.fillStyle = C.gold; ctx.fillRect(6, 1, 3, 1); ctx.fillRect(8, 2, 1, 1); // monocle
+    ctx.fillStyle = C.rivalHair; ctx.fillRect(5, 4, 5, 1); ctx.fillRect(9, 4, 1, 2); // moustache
+    ctx.fillStyle = C.rivalHelmet; ctx.fillRect(1, -1, 10, 3); ctx.fillRect(2, -3, 8, 2); ctx.fillRect(4, -4, 4, 1);
+    ctx.fillStyle = C.rivalShade; ctx.fillRect(1, 1, 10, 1);
     ctx.restore();
   }
 
@@ -1044,6 +1132,16 @@
     const arm = run ? -ph * 1.5 : 0;
     ctx.fillStyle = C.jacket; ctx.fillRect(7 + (arm > 0 ? 1 : 0), 6, 2, 3);
     ctx.fillStyle = C.skin; ctx.fillRect(8 + (arm > 0 ? 1 : 0), 9 + Math.round(arm * 0.5), 2, 1);
+    if (p.club > 0) {
+      // massue : grand arc de haut en bas devant le héros
+      const k = 1 - p.club / 18, ang = -2.2 + k * 3.0;
+      ctx.save(); ctx.translate(9, 8); ctx.rotate(ang);
+      ctx.fillStyle = C.club; ctx.fillRect(0, -1, 9, 2);
+      ctx.fillStyle = C.clubDark; ctx.beginPath(); ctx.ellipse(10, 0, 3.4, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.club; ctx.fillRect(9, -1.5, 2, 1);
+      ctx.restore();
+      if (p.club >= 6 && p.club <= 13) { ctx.strokeStyle = "rgba(255,240,200,.5)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(9, 8, 12, -1.6, 0.6); ctx.stroke(); }
+    }
     ctx.fillStyle = C.skin; ctx.fillRect(3, 1, 6, 4);
     ctx.fillStyle = C.void; ctx.fillRect(7, 2, 1, 1);
     ctx.fillStyle = C.skinDark; ctx.fillRect(4, 4, 5, 1);
@@ -1077,9 +1175,9 @@
     let x = view.w - 112 - 52 / scale;
     const fl = game.flash && game.flash.t > 0 ? game.flash : null;
     if (fl) fl.t--;
-    ctx.fillStyle = fl && fl.what === "bullets" && fl.t % 8 < 4 ? C.danger : C.hat;
-    ctx.fillRect(x, 5, 2, 6); ctx.fillRect(x + 3, 5, 2, 6);
-    ctx.fillStyle = C.text; ctx.fillText(String(game.ammo.bullets), x + 9, 8);
+    ctx.fillStyle = C.gold; ctx.beginPath(); ctx.arc(x + 3, 7.5, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#b8862a"; ctx.fillRect(x + 2.5, 5.5, 1, 4);
+    ctx.fillStyle = C.text; ctx.fillText(String(game.coins), x + 9, 8);
     x += 34;
     ctx.fillStyle = fl && fl.what === "tnt" && fl.t % 8 < 4 ? C.text : C.danger; ctx.fillRect(x, 4, 4, 8);
     ctx.fillStyle = C.text; ctx.fillText(String(game.ammo.tnt), x + 9, 8);
@@ -1121,7 +1219,7 @@
       ctx.fillStyle = "rgba(6,10,8,0.86)"; ctx.fillRect(bx, by, bw, bh);
       ctx.fillStyle = C.god; ctx.fillRect(bx, by, 2, bh);
       ctx.font = `6px ${FONT_PIX}`; ctx.textAlign = "left"; ctx.textBaseline = "top";
-      ctx.fillText("TRICKSTER-KA", bx + 10, by + 4);
+      ctx.fillText("PROFESSEUR LECOQUIN", bx + 10, by + 4);
       ctx.font = `8px ${FONT_TXT}`; ctx.fillStyle = C.text;
       let left = shown;
       lines.forEach((ln, i) => { ctx.fillText(ln.slice(0, Math.max(0, left)), bx + 10, by + 13 + i * 11); left -= ln.length + 1; });
@@ -1369,12 +1467,12 @@
   }
 
   const QUOTES = [
-    "« Aucun aventurier n'a été maltraité pendant ce jeu. C'est faux. »",
+    "« L'Œil de Jade sera à moi, Max. J'ai piégé tout le temple. »",
     "« Le sol est solide. Enfin, la plupart du temps. »",
-    "« J'adore les visiteurs. Surtout quand ils tombent. »",
     "« Gérard, mon rocher, ne roule que pour toi. »",
     "« Il y a une porte au bout. Elle bouge un peu. »",
-    "« Ce temple se souvient de chacune de tes morts. Il les trouve drôles. »",
+    "« Tricher ? Moi ? Je préfère dire : prendre de l'avance. »",
+    "« Chaque fois que tu tombes, je fais un pas de plus vers le trésor. »",
   ];
   let quoteI = 0;
   function refreshHome() {
@@ -1384,7 +1482,7 @@
     btn.dataset.level = progress.finished ? 0 : u;
     document.getElementById("accueil-stats").textContent = u > 0 || progress.deaths
       ? `Niveau ${Math.min(u + 1, LEVELS.length)} sur ${LEVELS.length} · ${progress.deaths} mort${progress.deaths > 1 ? "s" : ""} au compteur`
-      : `${LEVELS.length} niveaux · 5 actes · un dieu farceur`;
+      : `${LEVELS.length} niveaux · 5 actes · un rival tricheur`;
   }
   setInterval(() => {
     if (overlays.titre.hidden) return;
@@ -1428,12 +1526,12 @@
   function fmtTime(frames) { const s = Math.floor(frames / 60); return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`; }
   function showEnd() {
     document.getElementById("fin-morts").textContent = String(progress.deaths);
-    document.getElementById("fin-temps").textContent = fmtTime(game.timer);
     const arr = game.deathsByRoom, mx = Math.max(...arr), worst = arr.indexOf(mx);
     document.getElementById("fin-pire").textContent = mx > 0 ? `${LEVELS[worst].name} (${mx})` : "aucune, bravo";
+    document.getElementById("fin-pieces").textContent = String(game.coinsTotal);
     document.getElementById("fin-mot").textContent = progress.deaths < 50
-      ? "« Moins de 50 morts ? Tu as triché. C'est mon métier, pas le tien. »"
-      : "« Merci pour toutes ces chutes. C'était le plus beau jour de ma vie de dieu. »";
+      ? "« Moins de 50 chutes ? Tu as triché. C'est mon métier, pas le tien ! » — Lecoquin"
+      : "« Bon, d'accord, tu as gagné. Mais j'ai déjà une piste pour un autre trésor… » — Lecoquin";
     showOverlay("fin");
   }
 
