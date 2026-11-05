@@ -124,6 +124,7 @@
     input[name] = down;
   }
   window.addEventListener("keydown", (e) => {
+    if (e.target && e.target.closest && e.target.closest("input, textarea")) return; // laisser taper dans le formulaire d'avis
     unlockAudio();
     if (e.code === "Escape" || e.code === "KeyP") { togglePause(); e.preventDefault(); return; }
     if (e.code === "KeyR" && game.mode === "play" && !game.paused) { restartRoom(); return; }
@@ -211,7 +212,7 @@
   };
 
   /* ================= Progression (navigateur du joueur) ================= */
-  const progress = { unlocked: 0, best: {}, deaths: 0 };
+  const progress = { unlocked: 0, best: {}, deaths: 0, stats: {}, tester: false };
   try {
     const s = JSON.parse(localStorage.getItem("temple-progres") || "null");
     if (s && typeof s.unlocked === "number") Object.assign(progress, s);
@@ -852,7 +853,9 @@
     p.alive = false;
     game.mode = "dead"; game.deadT = 0;
     game.deathsByRoom[R.index]++;
-    progress.deaths++; saveProgress();
+    progress.deaths++;
+    statOf(R.index).morts++;
+    saveProgress();
     sfx.death();
     R.shake = 6;
     burst(p.x + 5, p.y + 7, C.jacket, 12, 2.2);
@@ -872,6 +875,7 @@
 
   function startLevel(i) {
     game.level = i;
+    statOf(i).essais++; saveProgress();
     const am = LEVELS[i].ammo || [6, 1];
     game.ammo = { tnt: am[1] };
     game.coins = 0;
@@ -901,8 +905,12 @@
     showOverlay(null);
   }
 
+  function statOf(i) { return (progress.stats[i] = progress.stats[i] || { morts: 0, essais: 0, fini: 0, temps: 0 }); }
+
   function nextRoom() {
     const i = game.level;
+    const st = statOf(i);
+    st.fini++; st.temps = st.temps ? Math.min(st.temps, Math.round(R.t / 60)) : Math.round(R.t / 60);
     const d = game.deathsByRoom[i];
     if (progress.best[i] == null || d < progress.best[i]) progress.best[i] = d;
     progress.unlocked = Math.max(progress.unlocked, Math.min(LEVELS.length - 1, i + 1));
@@ -1924,6 +1932,8 @@
     titre: document.getElementById("ecran-titre"),
     niveaux: document.getElementById("ecran-niveaux"),
     options: document.getElementById("ecran-options"),
+    avis: document.getElementById("ecran-avis"),
+    stats: document.getElementById("ecran-stats"),
     quitter: document.getElementById("ecran-quitter"),
     pause: document.getElementById("ecran-pause"),
     fin: document.getElementById("ecran-fin"),
@@ -1992,7 +2002,7 @@
         const b = document.createElement("button");
         b.type = "button";
         b.className = "case";
-        const locked = i > progress.unlocked;
+        const locked = i > progress.unlocked && !progress.tester;
         b.disabled = locked;
         b.style.setProperty("--type", TYPES[lv.type].color);
         const best = progress.best[i];
@@ -2019,6 +2029,94 @@
       : "« Bon, d'accord, tu as gagné. Mais j'ai déjà une piste pour un autre trésor… » — Archibald";
     showOverlay("fin");
   }
+
+  /* ---------- Testeurs : avis, statistiques, mode testeur ---------- */
+  let avisDepuis = "titre";
+  function resumeStats() {
+    const lignes = [];
+    const ids = Object.keys(progress.stats).map(Number);
+    const finis = ids.filter((i) => progress.stats[i].fini > 0).length;
+    lignes.push(`Niveau atteint : ${Math.min(progress.unlocked + 1, LEVELS.length)}/${LEVELS.length} · niveaux finis : ${finis} · chutes : ${progress.deaths}${progress.tester ? " · mode testeur" : ""}`);
+    const pires = ids.filter((i) => progress.stats[i].morts > 0).sort((a, b) => progress.stats[b].morts - progress.stats[a].morts).slice(0, 5);
+    if (pires.length) lignes.push("Les plus durs : " + pires.map((i) => `n°${i + 1} ${LEVELS[i].name} (${progress.stats[i].morts} chute${progress.stats[i].morts > 1 ? "s" : ""}${progress.stats[i].fini ? "" : ", pas fini"})`).join(" ; "));
+    return lignes.join("\n");
+  }
+  function messageAvis() {
+    const ressenti = (document.querySelector('input[name="ressenti"]:checked') || {}).value || "";
+    const nom = document.getElementById("avis-nom").value.trim();
+    const texte = document.getElementById("avis-texte").value.trim();
+    const lv = R ? `n°${R.index + 1} ${R.def.name}` : `dernier niveau atteint n°${Math.min(progress.unlocked + 1, LEVELS.length)}`;
+    const appareil = `${isTouch ? "tactile" : "clavier"} · ${window.innerWidth}×${window.innerHeight} · ${navigator.userAgent.match(/iPhone|iPad|Android|Mac|Windows|Linux/)?.[0] || "?"}`;
+    return [
+      `🎮 Avis sur « Max et l'Œil de Jade »${nom ? " — " + nom : ""}`,
+      `Niveau : ${lv}`,
+      `Ressenti : ${ressenti}`,
+      texte ? `Message : ${texte}` : "",
+      resumeStats(),
+      `Appareil : ${appareil}`,
+    ].filter(Boolean).join("\n");
+  }
+  function ouvrirAvis() {
+    avisDepuis = game.mode === "title" ? "options" : "pause";
+    document.getElementById("avis-contexte").textContent = R
+      ? `Ton message parlera du niveau ${R.index + 1} (« ${R.def.name} »), avec tes statistiques.`
+      : "Ton message sera envoyé avec tes statistiques de partie.";
+    document.getElementById("avis-retour").hidden = true;
+    document.getElementById("avis-apercu").hidden = true;
+    showOverlay("avis");
+  }
+  function retourAvis(texte) {
+    const el = document.getElementById("avis-retour");
+    el.textContent = texte; el.hidden = false;
+  }
+  document.querySelectorAll("[data-avis]").forEach((b) => b.addEventListener("click", ouvrirAvis));
+  document.getElementById("btn-retour-avis").addEventListener("click", () => showOverlay(avisDepuis));
+  document.getElementById("form-avis").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const txt = messageAvis();
+    if (navigator.share) {
+      try { await navigator.share({ title: "Avis sur Max et l'Œil de Jade", text: txt }); retourAvis("Merci ! Ton avis est parti."); return; }
+      catch (err) { if (err && err.name === "AbortError") return; }
+    }
+    copier(txt, "Le partage n'est pas disponible ici : ton message est copié, colle-le dans un SMS ou un e-mail.");
+  });
+  document.getElementById("btn-copier").addEventListener("click", () => copier(messageAvis(), "Message copié ! Colle-le dans un SMS, WhatsApp ou un e-mail."));
+  function copier(txt, ok) {
+    const apercu = document.getElementById("avis-apercu");
+    const fallback = () => {
+      apercu.textContent = txt; apercu.hidden = false;
+      const r = document.createRange(); r.selectNodeContents(apercu);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      retourAvis("Sélectionne le texte ci-dessous et copie-le pour l'envoyer.");
+    };
+    try { navigator.clipboard.writeText(txt).then(() => retourAvis(ok), fallback); } catch (_) { fallback(); }
+  }
+
+  document.getElementById("btn-stats").addEventListener("click", () => {
+    const ids = Object.keys(progress.stats).map(Number);
+    const finis = ids.filter((i) => progress.stats[i].fini > 0).length;
+    const essais = ids.reduce((a, i) => a + progress.stats[i].essais, 0);
+    const tot = document.getElementById("stats-totaux");
+    tot.innerHTML = "";
+    [["Niveaux finis", `${finis} / ${LEVELS.length}`], ["Chutes", progress.deaths], ["Parties lancées", essais]].forEach(([k, v]) => {
+      const d = document.createElement("div"); const dt = document.createElement("dt"); const dd = document.createElement("dd");
+      dt.textContent = k; dd.textContent = String(v); d.append(dt, dd); tot.appendChild(d);
+    });
+    const ol = document.getElementById("stats-pires"); ol.innerHTML = "";
+    const pires = ids.filter((i) => progress.stats[i].morts > 0).sort((a, b) => progress.stats[b].morts - progress.stats[a].morts).slice(0, 8);
+    if (!pires.length) { const li = document.createElement("li"); li.textContent = "Aucune chute pour l'instant. Ça ne va pas durer."; ol.appendChild(li); }
+    pires.forEach((i) => {
+      const st = progress.stats[i], li = document.createElement("li");
+      li.textContent = `${i + 1}. ${LEVELS[i].name} — ${st.morts} chute${st.morts > 1 ? "s" : ""} `;
+      const sp = document.createElement("span"); sp.textContent = st.fini ? `(fini, meilleur temps ${st.temps} s)` : "(pas encore fini)"; li.appendChild(sp);
+      ol.appendChild(li);
+    });
+    showOverlay("stats");
+  });
+  document.getElementById("btn-retour-stats").addEventListener("click", () => showOverlay("options"));
+  const testeur = document.getElementById("mode-testeur");
+  testeur.checked = !!progress.tester;
+  testeur.addEventListener("change", () => { progress.tester = testeur.checked; saveProgress(); });
 
   document.getElementById("btn-jouer").addEventListener("click", (e) => playFrom(Number(e.currentTarget.dataset.level || 0)));
   document.getElementById("btn-niveaux").addEventListener("click", () => { buildLevelGrid(); showOverlay("niveaux"); });
@@ -2091,6 +2189,11 @@
     window.claude?.hot?.snapshot?.(() => ({ level: game.level, mode: game.mode, deathsByRoom: game.deathsByRoom }));
     requestAnimationFrame(frame);
   }
+  // version installée (GitHub Pages) : le jeu reste jouable hors ligne
+  if ("serviceWorker" in navigator && location.protocol === "https:" && !inFrame) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
   const start = (data) => boot(data || null);
   function go() { window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {}); }
   if (document.fonts && document.fonts.load) {

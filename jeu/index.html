@@ -84,6 +84,9 @@
     background: rgba(13,9,6,.88); overflow-y: auto; touch-action: pan-y;
   }
   .carte { width: min(100%, 580px); display: grid; gap: 14px; }
+  /* un panneau plus haut que l'écran reste défilable depuis le haut */
+  .panneau:not(.accueil) { place-items: start center; }
+  .panneau:not(.accueil) > .carte { margin-block: auto; }
   .surtitre { font-family: var(--f-pix); font-size: 12px; letter-spacing: .14em; color: var(--terne); margin: 0; }
   h2 { font-family: var(--f-titre); font-weight: 400; font-size: 30px; margin: 0; color: var(--or); letter-spacing: .01em; }
   .recit { margin: 0; color: var(--terne); line-height: 1.55; font-size: 15px; max-width: 60ch; }
@@ -174,6 +177,20 @@
   .stats dt { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--terne); }
   .stats dd { margin: 4px 0 0; font-family: var(--f-pix); font-size: 15px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .citation { margin: 0; color: var(--or); font-size: 16px; font-family: var(--f-carnet); }
+  .interrupteur { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--parchemin); cursor: pointer; }
+  .interrupteur input { width: 20px; height: 20px; accent-color: var(--or); }
+  .choix { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .choix legend { font-size: 13px; color: var(--terne); margin-bottom: 6px; padding: 0; }
+  .choix label { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid rgba(236,220,180,.3); border-radius: 999px; font-size: 14px; cursor: pointer; }
+  .choix label:has(input:checked) { border-color: var(--or); background: rgba(226,166,64,.16); }
+  .choix input { accent-color: var(--or); }
+  .champ { display: grid; gap: 6px; font-size: 13px; color: var(--terne); }
+  .champ textarea, .champ input { font: 15px var(--f-txt); color: var(--texte); background: rgba(0,0,0,.35); border: 1px solid rgba(236,220,180,.3); border-radius: 4px; padding: 10px; -webkit-user-select: text; user-select: text; touch-action: auto; }
+  .champ textarea:focus, .champ input:focus { outline: 2px solid var(--or); outline-offset: 1px; }
+  .apercu { margin: 0; white-space: pre-wrap; font: 12px var(--f-txt); color: var(--parchemin); background: rgba(0,0,0,.35); padding: 10px; border-radius: 4px; max-height: 30vh; overflow: auto; -webkit-user-select: text; user-select: text; }
+  .sous-titre { margin: 4px 0 0; font-family: var(--f-titre); font-weight: 400; font-size: 17px; color: var(--parchemin); }
+  .classement { margin: 0; padding-left: 22px; display: grid; gap: 4px; font-size: 14px; color: var(--parchemin); font-variant-numeric: tabular-nums; }
+  .classement li span { color: var(--terne); }
 
   #tourner {
     position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; text-align: center;
@@ -229,9 +246,15 @@
     </div>
     <div class="actions">
       <button id="btn-niveaux" class="bouton" type="button">Carte des niveaux</button>
+      <button class="bouton discret" type="button" data-avis>Donner mon avis</button>
+      <button id="btn-stats" class="bouton discret" type="button">Mes statistiques</button>
       <button class="bouton discret" type="button" data-son>Son : activé</button>
       <button class="bouton discret" type="button" data-plein>Plein écran</button>
     </div>
+    <label class="interrupteur" for="mode-testeur">
+      <input type="checkbox" id="mode-testeur">
+      <span>Mode testeur : les 100 niveaux sont débloqués</span>
+    </label>
     <p class="astuce" id="astuce-plein" hidden></p>
     <p class="recit">Saute sur les ennemis ou assomme-les d'un coup de massue. La dynamite ouvre les murs fissurés. Ramasse les pièces d'or et arrive à l'Œil de Jade avant le professeur Archibald.</p>
     <p class="clavier"><kbd>←</kbd> <kbd>→</kbd> courir · <kbd>↑</kbd> sauter · <kbd>X</kbd> massue · <kbd>C</kbd> dynamite · <kbd>R</kbd> recommencer · <kbd>Échap</kbd> pause</p>
@@ -267,6 +290,47 @@
   </div>
 </section>
 
+<section id="ecran-avis" class="panneau" hidden>
+  <form class="carte" id="form-avis">
+    <div class="entete">
+      <h2>Ton avis</h2>
+      <button id="btn-retour-avis" class="bouton discret" type="button">Retour</button>
+    </div>
+    <p class="recit" id="avis-contexte">Merci de tester le jeu ! Ton message sera envoyé avec ton niveau et tes statistiques.</p>
+    <fieldset class="choix">
+      <legend>Ce niveau, c'était…</legend>
+      <label><input type="radio" name="ressenti" value="Trop facile" id="r-facile"> Trop facile</label>
+      <label><input type="radio" name="ressenti" value="Bien dosé" id="r-bien" checked> Bien dosé</label>
+      <label><input type="radio" name="ressenti" value="Trop dur" id="r-dur"> Trop dur</label>
+      <label><input type="radio" name="ressenti" value="Bug" id="r-bug"> Un bug</label>
+    </fieldset>
+    <label class="champ" for="avis-texte">Ton message
+      <textarea id="avis-texte" rows="4" placeholder="Ce qui t'a plu, ce qui t'a énervé, ce qui ne marchait pas…"></textarea>
+    </label>
+    <label class="champ" for="avis-nom">Ton prénom (facultatif)
+      <input type="text" id="avis-nom" autocomplete="given-name">
+    </label>
+    <div class="actions">
+      <button id="btn-partager" class="bouton" type="submit">Envoyer</button>
+      <button id="btn-copier" class="bouton discret" type="button">Copier le message</button>
+    </div>
+    <p class="astuce" id="avis-retour" hidden></p>
+    <pre class="apercu" id="avis-apercu" hidden></pre>
+  </form>
+</section>
+
+<section id="ecran-stats" class="panneau" hidden>
+  <div class="carte">
+    <div class="entete">
+      <h2>Mes statistiques</h2>
+      <button id="btn-retour-stats" class="bouton discret" type="button">Retour</button>
+    </div>
+    <dl class="stats" id="stats-totaux"></dl>
+    <h3 class="sous-titre">Les niveaux où tu tombes le plus</h3>
+    <ol class="classement" id="stats-pires"></ol>
+  </div>
+</section>
+
 <section id="ecran-pause" class="panneau" hidden>
   <div class="carte">
     <h2>Pause</h2>
@@ -275,6 +339,7 @@
       <button id="btn-reprendre" class="bouton" type="button">Reprendre</button>
       <button id="btn-recommencer" class="bouton discret" type="button">Recommencer</button>
       <button id="btn-accueil" class="bouton discret" type="button">Accueil</button>
+      <button class="bouton discret" type="button" data-avis>Donner mon avis</button>
       <button class="bouton discret" type="button" data-plein>Plein écran</button>
       <button class="bouton discret" type="button" data-son>Son : activé</button>
     </div>
