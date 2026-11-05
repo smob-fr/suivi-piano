@@ -18,7 +18,7 @@
     gravity: 0.35, maxFall: 6.5,
     run: 1.8, accel: 0.35,
     jump: -5.2, jumpCut: -2, spring: -7.8,
-    coyote: 6, buffer: 7,
+    coyote: 8, buffer: 10,   // tolérances : saut accepté un peu après le bord, ou un peu avant d'atterrir
   };
 
   const PALETTES = {
@@ -92,12 +92,24 @@
   const CAM_EXT = { x: 16, top: 24, bottom: 70 };
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // Résolution : au plus 2 pixels par point (3 sur certains téléphones coûtait cher),
+  // abaissée automatiquement si le téléphone peine (voir frame()).
+  let maxDpr = 2;
+  let lastSize = "";
   function resize() {
-    const wrap = stage.parentElement.getBoundingClientRect();
+    const r = stage.parentElement.getBoundingClientRect();
+    const vv = window.visualViewport;
+    // Sur Android, après une rotation ou un passage en plein écran, la taille réelle arrive en retard :
+    // on prend la plus petite des mesures disponibles pour ne jamais déborder de l'écran.
+    const wrap = {
+      width: Math.min(r.width || innerWidth, innerWidth, vv ? vv.width : Infinity),
+      height: Math.min(r.height || innerHeight, innerHeight, vv ? vv.height : Infinity),
+    };
+    lastSize = `${Math.round(wrap.width)}x${Math.round(wrap.height)}`;
     const fit = Math.min(wrap.width / W, wrap.height / H);
     const zoom = Math.min(wrap.width / VIEW_TARGET.w, wrap.height / VIEW_TARGET.h);
     scale = Math.max(0.5, isTouch || fit < 1.6 ? Math.max(fit, zoom) : fit);
-    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
     const cw = Math.floor(wrap.width), ch = Math.floor(wrap.height);
     stage.style.width = cw + "px";
     stage.style.height = ch + "px";
@@ -122,6 +134,11 @@
   function setInput(name, down) {
     if (down && !input[name] && name in pressed) pressed[name] = true;
     input[name] = down;
+    // saut immédiat dès l'appui (sans attendre l'image suivante)
+    if (name === "jump" && down && R && game.mode === "play" && !game.paused) {
+      const p = R.player;
+      if (p && p.alive && (p.grounded || p.coyote > 0)) { p.vy = PHYS.jump; p.coyote = 0; p.buffer = 0; pressed.jump = false; p.grounded = false; sfx.jump(); }
+    }
   }
   window.addEventListener("keydown", (e) => {
     if (e.target && e.target.closest && e.target.closest("input, textarea")) return; // laisser taper dans le formulaire d'avis
@@ -2170,9 +2187,22 @@
 
   /* ================= Boucle ================= */
   let last = performance.now(), acc = 0;
+  let frameN = 0, slowAvg = 16;
   function frame(now) {
-    acc += Math.min(0.1, (now - last) / 1000);
+    const dt = now - last;
+    acc += Math.min(0.1, dt / 1000);
     last = now;
+    // recadrage : vérifie régulièrement que la taille de l'écran n'a pas changé
+    if (++frameN % 15 === 0) {
+      const r = stage.parentElement.getBoundingClientRect(), vv = window.visualViewport;
+      const sz = `${Math.round(Math.min(r.width || innerWidth, innerWidth, vv ? vv.width : Infinity))}x${Math.round(Math.min(r.height || innerHeight, innerHeight, vv ? vv.height : Infinity))}`;
+      if (sz !== lastSize) resize();
+    }
+    // téléphone lent : on baisse la résolution pour garder des commandes réactives
+    if (game.mode === "play" && dt > 0 && dt < 200) {
+      slowAvg = slowAvg * 0.97 + dt * 0.03;
+      if (slowAvg > 24 && maxDpr > 1) { maxDpr = Math.max(1, maxDpr - 0.5); slowAvg = 16; resize(); }
+    }
     while (acc >= STEP) { update(); acc -= STEP; }
     render();
     requestAnimationFrame(frame);
@@ -2180,6 +2210,9 @@
 
   function boot(saved) {
     window.addEventListener("resize", resize);
+    window.addEventListener("orientationchange", () => { resize(); setTimeout(resize, 250); setTimeout(resize, 700); });
+    if (window.visualViewport) visualViewport.addEventListener("resize", resize);
+    if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(stage.parentElement);
     resize();
     if (saved && typeof saved.level === "number" && saved.mode && saved.mode !== "title" && saved.mode !== "end") {
       game.deathsByRoom = saved.deathsByRoom || game.deathsByRoom;

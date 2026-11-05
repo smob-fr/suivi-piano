@@ -68,9 +68,13 @@
     background: rgba(6,8,6,.28); display: grid; place-items: center;
     font-family: var(--f-pix); font-size: 11px; letter-spacing: .06em; color: rgba(241,230,204,.85);
     touch-action: none; transition: background .06s, transform .06s;
+    position: relative;
   }
+  /* zone de toucher plus large que le bouton dessiné : un appui un peu à côté compte quand même */
+  .touche::after { content: ""; position: absolute; inset: -10px; border-radius: 50%; }
+  .touche.saut::after { inset: -22px; }
   .touche.on { background: rgba(226,166,64,.35); border-color: var(--or); transform: scale(.94); }
-  .touche.saut { width: 72px; height: 72px; }
+  .touche.saut { width: 80px; height: 80px; }
   .touche.tnt { color: var(--sang); }
   .fleche { width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; }
   .fleche.g { border-right: 16px solid currentColor; margin-right: 4px; }
