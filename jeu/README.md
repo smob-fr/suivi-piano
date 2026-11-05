@@ -70,7 +70,8 @@ pièges, pour 0 à 3 morts.
 
 Légende des cartes : `#` pierre · `B` mur fissuré · `^` pics · `v` pics au plafond · `P` départ ·
 `D` porte · `J` ressort · `x` fausse dalle · `F` faux mur · `<` `>` lance-flèches · `m` momie ·
-`s` serpent · `b` chauve-souris · `a` pièce d'or · `t` dynamite · `c` planche clignotante ·
+`s` serpent · `b` chauve-souris · `a` pièce d'or · `$` trésor secret · `|` corde · `(` `)` lance-flèches empoisonnées ·
+`t` dynamite · `c` planche clignotante ·
 `o` plateforme fantôme · `g` sol glissant · `G` grille · `_` dalle à pression.
 Les plateformes mobiles, écraseurs, courants d'air et le Max-miroir sont décrits à part (`movers`,
 `crushers`, `winds`, `mirror`).

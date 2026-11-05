@@ -153,7 +153,7 @@
     // saut immédiat dès l'appui (sans attendre l'image suivante)
     if (name === "jump" && down && R && game.mode === "play" && !game.paused) {
       const p = R.player;
-      if (p && p.alive && (p.grounded || p.coyote > 0)) { p.vy = PHYS.jump; p.coyote = 0; p.buffer = 0; pressed.jump = false; p.grounded = false; sfx.jump(); }
+      if (p && p.alive && !p.climb && (p.grounded || p.coyote > 0)) { p.vy = PHYS.jump; p.coyote = 0; p.buffer = 0; pressed.jump = false; p.grounded = false; sfx.jump(); }
     }
   }
   window.addEventListener("keydown", (e) => {
@@ -168,11 +168,32 @@
   });
   window.addEventListener("keyup", (e) => { const n = keyMap[e.code]; if (n) setInput(n, false); });
   window.addEventListener("blur", releaseAll);
-  function releaseAll() { for (const k in input) input[k] = false; document.querySelectorAll(".touche.on").forEach((b) => b.classList.remove("on")); }
+  function releaseAll() {
+    for (const k in input) input[k] = false;
+    pointerOwner.clear();
+    document.querySelectorAll(".touche.on").forEach((b) => b.classList.remove("on"));
+  }
 
+  // Commandes tactiles : on note quel doigt (pointeur) appuie sur quel bouton.
+  // Un relâchement perdu (écran qui s'ouvre sous le doigt, geste système…) laissait un bouton
+  // « enfoncé » pour toujours : le saut ne détectait plus les nouveaux appuis. D'où la latence.
   const pointerOwner = new Map();
+  const btnEls = {};
+  function relacher(id) {
+    const name = pointerOwner.get(id);
+    if (!name) return;
+    pointerOwner.delete(id);
+    if (![...pointerOwner.values()].includes(name)) { setInput(name, false); btnEls[name] && btnEls[name].classList.remove("on"); }
+  }
+  // filets de sécurité : tout relâchement, n'importe où, libère le doigt ; plus aucun doigt à l'écran = tout est relâché
+  ["pointerup", "pointercancel"].forEach((ev) => window.addEventListener(ev, (e) => relacher(e.pointerId), true));
+  ["touchend", "touchcancel"].forEach((ev) => window.addEventListener(ev, (e) => {
+    if (e.touches && e.touches.length === 0 && pointerOwner.size) { for (const id of [...pointerOwner.keys()]) relacher(id); }
+  }, true));
+  document.addEventListener("visibilitychange", () => { if (document.hidden) releaseAll(); });
   document.querySelectorAll("[data-btn]").forEach((el) => {
     const name = el.dataset.btn;
+    btnEls[name] = el;
     const down = (e) => {
       e.preventDefault();
       unlockAudio();
@@ -181,11 +202,7 @@
       setInput(name, true);
       el.classList.add("on");
     };
-    const up = (e) => {
-      if (pointerOwner.get(e.pointerId) !== name) return;
-      pointerOwner.delete(e.pointerId);
-      if (![...pointerOwner.values()].includes(name)) { setInput(name, false); el.classList.remove("on"); }
-    };
+    const up = (e) => { if (pointerOwner.get(e.pointerId) === name) relacher(e.pointerId); };
     el.addEventListener("pointerdown", down);
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
@@ -283,7 +300,7 @@
         else if (c === "m") { room.enemies.push({ kind: "m", x: x * T + 2, y: y * T + 1, w: 12, h: 15, vx: -0.45, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "s") { room.enemies.push({ kind: "s", x: x * T + 2, y: y * T + 9, w: 12, h: 7, vx: -0.9, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "b") { room.enemies.push({ kind: "b", x: x * T + 3, y: y * T + 4, by: y * T + 4, w: 10, h: 7, vx: 0.7, x0: x * T - 48, x1: x * T + 56, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
-        else if (c === "a" || c === "t") { room.pickups.push({ kind: c === "a" ? "coin" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
+        else if (c === "a" || c === "t" || c === "$") { room.pickups.push({ kind: c === "a" ? "coin" : c === "$" ? "gem" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
         else if (c === "^" || c === "v") room.spikeAnim.set(x + "," + y, 1);
         else if (c === "<" || c === ">" || c === "(" || c === ")") {
           const left = c === "<" || c === "(";
@@ -296,7 +313,8 @@
     room.decor = genDecor(room, act ? act.palette : "jungle");
     for (const [cx, cy] of def.coins || []) room.pickups.push({ kind: "coin", x: cx * T + 4, y: cy * T + 6, w: 8, h: 10, taken: false });
     const pris = (progress.coinsPris || {})[index] || [];
-    room.pickups.forEach((it, k) => { it.id = k; if (it.kind === "coin" && pris.includes(k)) it.taken = true; });
+    room.pickups.forEach((it, k) => { it.id = k; if ((it.kind === "coin" || it.kind === "gem") && pris.includes(k)) it.taken = true; });
+    room.secrets = room.pickups.filter((it) => it.kind === "gem").length;
     room.dark = !!def.dark;
     room.assist = Math.min(3, Math.floor(room.deaths / 3));   // 0 à 3
     room.slow = 1 - 0.12 * room.assist;                       // vitesse des pièges
@@ -551,6 +569,28 @@
     // vent : pousse Max sur le côté
     for (const w of R.winds) if (p.x + p.w / 2 > w.x0 && p.x + p.w / 2 < w.x1) p.x += w.f;
 
+    // cordes : SAUT maintenu = grimper, relâché = glisser doucement, ◀ ▶ = sauter de côté
+    const rx = Math.floor((p.x + p.w / 2) / T);
+    const surCorde = tileAt(rx, Math.floor((p.y + p.h / 2) / T)) === "|" || tileAt(rx, Math.floor((p.y + 3) / T)) === "|";
+    if (p.ropeCd > 0) p.ropeCd--;
+    if (!p.climb && surCorde && !(p.ropeCd > 0) && (input.jump || !p.grounded) && p.vy > -4) {
+      p.climb = true; p.buffer = 0; p.spring = false;
+      if (!progress.cordeVue) { progress.cordeVue = true; saveProgress(); R.hint = { text: "Maintiens SAUT pour grimper, lâche pour redescendre, ◀ ▶ pour sauter de côté", t: 0, dur: 240 }; }
+    }
+    if (p.climb && (!surCorde || dir)) {
+      p.climb = false;
+      if (dir && surCorde) { p.ropeCd = 18; p.vx = dir * PHYS.run; p.vy = -4.4; sfx.jump(); }
+    }
+    if (p.climb) {
+      p.vx = 0;
+      p.x += (rx * T + 3 - p.x) * 0.4;
+      const tete = tileAt(rx, Math.floor((p.y + 2) / T)) === "|";
+      p.vy = input.jump ? (tete ? -1.4 : 0) : 0.8;
+      p.coyote = 0;
+      moveBody(p);
+      if (p.grounded && !input.jump) p.climb = false;
+      p.anim += 0.12;
+    } else {
     p.coyote = p.grounded ? PHYS.coyote : p.coyote - 1;
     if (pressed.jump) p.buffer = PHYS.buffer; else p.buffer--;
     if (p.buffer > 0 && p.coyote > 0) { p.vy = PHYS.jump; p.buffer = 0; p.coyote = 0; sfx.jump(); }
@@ -561,6 +601,7 @@
     moveBody(p);
     landOnMovers(p, prevBottom);
     p.anim += Math.abs(p.vx) * 0.25;
+    }
 
     if (p.grounded) {
       const fy = Math.floor((p.y + p.h + 1) / T);
@@ -597,7 +638,17 @@
     for (const it of R.pickups) {
       if (!it.taken && overlap(p, it)) {
         it.taken = true;
-        if (it.kind === "coin") {
+        if (it.kind === "gem") {
+          progress.pieces = (progress.pieces || 0) + 10;
+          progress.secrets = (progress.secrets || 0) + 1;
+          const cp = (progress.coinsPris = progress.coinsPris || {});
+          (cp[R.index] = cp[R.index] || []).push(it.id);
+          saveProgress();
+          sfx.door(); R.shake = Math.max(R.shake, 2);
+          burst(it.x + 4, it.y + 4, C.jade, 20, 2);
+          R.hint = { text: "Trésor secret ! +10 pièces d'or", t: 0, dur: 180 };
+          R.say = { text: "Hé ! Ce trésor était caché pour moi ! Comment tu l'as trouvé ?", t: 0, dur: 150 };
+        } else if (it.kind === "coin") {
           game.coins++; game.coinsTotal++;
           progress.pieces = (progress.pieces || 0) + 1;
           const cp = (progress.coinsPris = progress.coinsPris || {});
@@ -1616,6 +1667,15 @@
       let ox = 0, oy = 0;
       if (R.shakeTiles.get(x + "," + y) || R.wobble.has(x + "," + y)) { ox = (Math.random() - 0.5) * 2; oy = (Math.random() - 0.5) * 1.5; }
       const px = x * T + ox, py = y * T + oy;
+      if (c === "|") {
+        const haut = tileAt(x, y - 1) !== "|", sway = Math.sin(R.t / 45 + x) * 0.8;
+        ctx.strokeStyle = "#9a7444"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(px + 8, py); ctx.lineTo(px + 8 + sway, py + T); ctx.stroke();
+        ctx.fillStyle = "#6e5030";
+        for (let k = 3; k < T; k += 6) ctx.fillRect(px + 7 + sway * k / T, py + k, 3, 2);
+        if (haut) { ctx.fillStyle = C.wood; ctx.fillRect(px + 3, py - 2, 11, 3); ctx.fillStyle = C.metal; ctx.fillRect(px + 7, py - 4, 3, 3); }
+        continue;
+      }
       if (c === "#" || c === "x") drawStone(px, py, x, y);
       else if (c === "g") {
         drawStone(px, py, x, y);
@@ -1719,6 +1779,15 @@
   }
 
   function drawPickup(it) {
+    if (it.kind === "gem") {
+      const bob = Math.sin(R.t / 12 + it.x) * 1.5, cx = it.x + 4, cy = it.y + 4 + bob;
+      const g = 0.5 + 0.5 * Math.sin(R.t / 8);
+      ctx.fillStyle = `rgba(63,208,138,${0.18 + g * 0.18})`; ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.jade; ctx.beginPath(); ctx.moveTo(cx, cy - 6); ctx.lineTo(cx + 5, cy - 1); ctx.lineTo(cx, cy + 6); ctx.lineTo(cx - 5, cy - 1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = C.jadeDark; ctx.beginPath(); ctx.moveTo(cx, cy + 6); ctx.lineTo(cx + 5, cy - 1); ctx.lineTo(cx, cy + 1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#d9ffe9"; ctx.fillRect(cx - 2, cy - 3, 2, 2);
+      return;
+    }
     const bob = Math.sin(R.t / 10 + it.x) * 1.5;
     if (it.kind === "tnt") {
       ctx.fillStyle = C.danger; ctx.fillRect(it.x + 1, it.y + bob, 6, 10);
@@ -2092,6 +2161,11 @@
       ctx.fillStyle = C.text; ctx.fillText("DÉFI", bx + dw / 2, VH2 + 21.5);
     }
     if (R.def.dark) { ctx.fillStyle = C.dim; ctx.font = `8px ${FONT_TXT}`; ctx.fillText("Salle plongée dans le noir", VW2, VH2 + 58); ctx.font = `8px ${FONT_PIX}`; }
+    if (R.secrets) {
+      const trouves = ((progress.coinsPris || {})[R.index] || []).filter((id) => R.pickups[id] && R.pickups[id].kind === "gem").length;
+      ctx.fillStyle = C.jade; ctx.font = `8px ${FONT_TXT}`;
+      ctx.fillText(trouves >= R.secrets ? "Trésor secret trouvé ★" : "Un trésor secret se cache ici…", VW2, VH2 + 70);
+    }
     if (game.deathsByRoom[R.index] === 0 && progress.best[R.index] != null) {
       ctx.fillStyle = C.dim; ctx.font = `8px ${FONT_TXT}`;
       ctx.fillText(`Ton record : ${progress.best[R.index]} mort${progress.best[R.index] > 1 ? "s" : ""}`, VW2, VH2 + 44);
@@ -2396,7 +2470,7 @@
     const lignes = [];
     const ids = Object.keys(progress.stats).map(Number);
     const finis = ids.filter((i) => progress.stats[i].fini > 0).length;
-    lignes.push(`Niveau atteint : ${Math.min(progress.unlocked + 1, LEVELS.length)}/${LEVELS.length} · niveaux finis : ${finis} · chutes : ${progress.deaths}${progress.passes ? ` · niveaux passés en vidéo : ${progress.passes}` : ""}${progress.tester ? " · mode testeur" : ""}`);
+    lignes.push(`Niveau atteint : ${Math.min(progress.unlocked + 1, LEVELS.length)}/${LEVELS.length} · niveaux finis : ${finis} · chutes : ${progress.deaths}${progress.secrets ? ` · trésors secrets : ${progress.secrets}` : ""}${progress.passes ? ` · niveaux passés en vidéo : ${progress.passes}` : ""}${progress.tester ? " · mode testeur" : ""}`);
     const pires = ids.filter((i) => progress.stats[i].morts > 0).sort((a, b) => progress.stats[b].morts - progress.stats[a].morts).slice(0, 5);
     if (pires.length) lignes.push("Les plus durs : " + pires.map((i) => `n°${i + 1} ${LEVELS[i].name} (${progress.stats[i].morts} chute${progress.stats[i].morts > 1 ? "s" : ""}${progress.stats[i].fini ? "" : ", pas fini"})`).join(" ; "));
     return lignes.join("\n");
@@ -2586,5 +2660,10 @@
     ]).catch(() => {}).finally(go);
   } else go();
 
-  window.__temple = { game, get room() { return R; }, LEVELS, input, pressed, startLevel, playFrom, progress };
+  function mesurePerf(n = 120) {
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) { update(); render(); }
+    return (performance.now() - t0) / n;
+  }
+  window.__temple = { mesurePerf, game, get room() { return R; }, LEVELS, input, pressed, startLevel, playFrom, progress };
 })();
