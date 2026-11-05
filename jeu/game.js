@@ -1,37 +1,50 @@
-/* Le Temple qui Triche — prototype (acte 1, 5 salles)
- * Moteur maison sur <canvas>, sans dépendance.
- * Grille de 30 × 17 tuiles de 16 px (480 × 272 unités de jeu).
+/* Le Temple qui Triche — 5 actes, 50 niveaux.
+ * Moteur maison sur <canvas>, sans dépendance. Les niveaux viennent de levels.js
+ * (généré par outils/niveaux.py).
  */
 (() => {
   "use strict";
 
+  const LEVELS = window.TEMPLE_LEVELS || [];
+  const ACTS = window.TEMPLE_ACTS || [];
+
   /* ================= Constantes ================= */
-  const T = 16, COLS = 30, ROWS = 17;
-  const W = COLS * T, H = ROWS * T;
+  const T = 16;
+  let COLS = 30, ROWS = 17, W = COLS * T, H = ROWS * T;
   const STEP = 1 / 60;
+  const VIEW_TARGET = { w: 416, h: 208 }; // zoom sur mobile : ~26 × 13 cases visibles
 
   const PHYS = {
     gravity: 0.35, maxFall: 6.5,
     run: 1.8, accel: 0.35,
-    jump: -5.2, jumpCut: -2,
+    jump: -5.2, jumpCut: -2, spring: -7.8,
     coyote: 6, buffer: 7,
   };
 
+  const PALETTES = {
+    jungle:     { bg: "#0d1512", bg2: "#13201b", stone: "#3a5649", stoneTop: "#5f8471", stoneDark: "#25372f", crack: "#9a8656", crackDark: "#5e5232", deco: "#1f3d2c" },
+    crypte:     { bg: "#16100a", bg2: "#211710", stone: "#7a5d36", stoneTop: "#a8834f", stoneDark: "#4e3a21", crack: "#cdb27c", crackDark: "#7c6440", deco: "#3a2a17" },
+    mines:      { bg: "#0e1014", bg2: "#171b22", stone: "#474c58", stoneTop: "#6a7283", stoneDark: "#2c3038", crack: "#9a8660", crackDark: "#584b33", deco: "#4a3522" },
+    cascades:   { bg: "#081316", bg2: "#0e2126", stone: "#2f5560", stoneTop: "#4f8796", stoneDark: "#1c373e", crack: "#a39167", crackDark: "#655a3e", deco: "#3d7f93" },
+    sanctuaire: { bg: "#0f0b15", bg2: "#1a1329", stone: "#4b3a63", stoneTop: "#73598f", stoneDark: "#2d2240", crack: "#b99c60", crackDark: "#75623c", deco: "#d9a441" },
+  };
+
   const C = {
-    bg: "#0d1512", bg2: "#13201b",
-    stone: "#3a5649", stoneTop: "#5f8471", stoneDark: "#25372f",
-    crack: "#9a8656", crackDark: "#5e5232",
     danger: "#e5483c", dangerDark: "#8c241d",
-    player: "#efe8d8", hat: "#d9a441",
+    hat: "#d9a441",
     fedora: "#7a4b27", fedoraBand: "#3b2414", fedoraTop: "#93603a",
-    skin: "#e2a777", jacket: "#6b3d1f", jacketHi: "#8a5530",
+    skin: "#e2a777", skinDark: "#b9805a", jacket: "#6b3d1f", jacketHi: "#8a5530",
     shirt: "#cdb67e", pants: "#5a5240", boots: "#2e1f15",
     satchel: "#a07a45", whip: "#3d2716", void: "#070b09",
-    enemy: "#7c8c84", eye: "#e5483c",
     door: "#d9a441", doorIn: "#060a08",
-    god: "#d9a441", hint: "#bfd3c8",
-    text: "#efe8d8", dim: "#7f978b",
+    god: "#d9a441", hint: "#d8e4dc",
+    text: "#efe8d8", dim: "#8aa398",
+    bandage: "#d8cba6", bandageDark: "#a3956f", mummyEye: "#9cf06b",
+    snake: "#5d9a3a", snakeDark: "#335f20", snakeBelly: "#d9c14a",
+    bat: "#3b2a3f", batWing: "#5a4160", batEye: "#ff5a4a",
+    wood: "#a07443", metal: "#5d636b",
   };
+  let P = PALETTES.jungle;
 
   const TYPES = {
     exploration: { label: "Exploration", color: "#6fb58f" },
@@ -39,167 +52,6 @@
     action: { label: "Action", color: "#e3913b" },
     histoire: { label: "Histoire", color: "#b49ae6" },
   };
-
-  /* ================= Salles =================
-   * Légende : # pierre · B mur fissuré (dynamite) · ^ pics · P départ
-   *           D porte · e gardien · a balles (+3) · t dynamite (+1)
-   * Déclencheurs : zone [x, y, w, h] en tuiles (absente = au début de la salle),
-   *   min / max = nombre de morts dans la salle, air = seulement en saut.
-   */
-  const ROOMS = [
-    {
-      name: "Le seuil", type: "exploration",
-      map: [
-        "##############################",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................#....#",
-        "#.......................B....#",
-        "#.......................B....#",
-        "#.......................B....#",
-        "#.......t...............B....#",
-        "#.P...####^^####...e....B..D.#",
-        "##############################",
-      ],
-      triggers: [
-        { max: 0, act: [["say", "Bienvenue dans mon temple, petit aventurier."]] },
-        { min: 1, act: [["say", "Déjà ? On n'a même pas commencé."]] },
-        { zone: [4, 1, 1, 15], act: [["hint", "Saute par-dessus les pics"]] },
-        { zone: [9, 1, 1, 15], act: [["hint", "Ramasse la dynamite"]] },
-        { zone: [15, 1, 1, 15], act: [["hint", "Tire sur le gardien"]] },
-        { zone: [21, 1, 1, 15], act: [["hint", "Pose la dynamite contre le mur fissuré, puis recule"]] },
-      ],
-    },
-    {
-      name: "Le couloir honnête", type: "trahison",
-      map: [
-        "##############################",
-        "##############################",
-        "##############################",
-        "##############################",
-        "##############################",
-        "##############################",
-        "##############################",
-        "##############################",
-        "##############################",
-        "##############################",
-        "##############################",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#.P.........................D#",
-        "##############################",
-      ],
-      triggers: [
-        { max: 0, act: [["say", "Un simple couloir. Rien de suspect."]] },
-        { min: 1, max: 2, act: [["say", "Tu reviens ? J'ai un peu changé la déco."]] },
-        { min: 3, act: [["say", "Indice : la porte a peur de toi."]] },
-        { max: 0, zone: [8, 11, 1, 5], act: [["collapse", 10, 16, 4, 1, 0]] },
-        { min: 1, zone: [10, 11, 2, 5], act: [["collapse", 13, 16, 3, 1, 0], ["say", "Pas la même blague deux fois."]] },
-        { zone: [22, 11, 1, 5], act: [["door", 2, 15], ["say", "Oups. La porte avait froid aux pieds."]] },
-      ],
-    },
-    {
-      name: "La salle des gardes", type: "exploration",
-      map: [
-        "##############################",
-        "#........##..................#",
-        "#........##..................#",
-        "#........##..................#",
-        "#.Pa.....##..................#",
-        "#######..##..................#",
-        "#........##..................#",
-        "#............................#",
-        "#........t.....e.............#",
-        "#....################........#",
-        "#............................#",
-        "#....................#BBBB####",
-        "#....................#....####",
-        "#....................#....####",
-        "#....................#....####",
-        "#^^^^^^^^^^^^^^^^^^^^#..D.####",
-        "##############################",
-      ],
-      triggers: [
-        { max: 0, act: [["say", "Mes gardes ne dorment jamais. Enfin, presque."]] },
-        { min: 2, act: [["say", "Le toit de la porte a l'air fragile, non ?"]] },
-        { zone: [9, 8, 1, 1], act: [["fall", 9, 6, 2, 1, 28], ["hint", "Ça tremble au-dessus…"]] },
-        { zone: [21, 1, 7, 10], act: [["hint", "La porte est en dessous…"]] },
-      ],
-    },
-    {
-      name: "La course", type: "action",
-      map: [
-        "##############################",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#..P.......^^................#",
-        "##########################...#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#...##########################",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#..........................D.#",
-        "##############################",
-      ],
-      triggers: [
-        { max: 0, act: [["say", "Tu aimes le sport ?"]] },
-        { min: 1, act: [["spikes", 10, 9, 2, 1]] },
-        { min: 1, max: 2, act: [["say", "Cette fois, je te montre les pics. Je suis bon joueur."]] },
-        { min: 3, act: [["say", "Je ralentis le rocher. Ne le dis à personne."]] },
-        { max: 2, zone: [6, 1, 1, 4], act: [["boulder", 1, 2, 1, 1.5], ["shake", 6]] },
-        { min: 3, zone: [6, 1, 1, 4], act: [["boulder", 1, 2, 1, 1.15], ["shake", 6]] },
-        { max: 0, zone: [13, 6, 1, 4], act: [["spikes", 10, 9, 2, 1]] },
-        { zone: [14, 11, 1, 5], act: [["collapse", 17, 16, 2, 1, 16]] },
-      ],
-    },
-    {
-      name: "Le sanctuaire", type: "histoire",
-      map: [
-        "##############################",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#............................#",
-        "#.P........................D.#",
-        "##############################",
-      ],
-      decor: "pillars",
-      triggers: [
-        { max: 0, act: [["say", "Tu es arrivé jusqu'ici ? Impressionnant."]] },
-        { min: 1, act: [["say", "Bon. Celle-là, c'était un piège. Mais c'est fini, juré."]] },
-        { max: 0, zone: [7, 1, 1, 15], act: [["say", "Je suis Trickster-Ka, dieu des farces. Ce temple est mon terrain de jeu."]] },
-        { max: 0, zone: [14, 1, 1, 15], act: [["say", "Cette salle n'a aucun piège. Promis."]] },
-        { max: 0, zone: [19, 1, 1, 15], act: [["collapse", 21, 16, 4, 1, 0]] },
-        { min: 1, zone: [19, 1, 1, 15], act: [["say", "…"]] },
-        { min: 1, zone: [24, 1, 1, 15], act: [["say", "Tu vois ? Je tiens parole. Parfois."]] },
-      ],
-    },
-  ];
 
   const TAUNTS = [
     "Aïe.",
@@ -209,9 +61,12 @@
     "Je note ça dans mon carnet de farces.",
     "Tu sais que tu peux sauter, hein ?",
     "Magnifique. Refais-le.",
+    "Gérard te salue.",
+    "C'était voulu ? Dis-moi que c'était voulu.",
+    "Ton chapeau a mieux atterri que toi.",
   ];
 
-  /* ================= Canvas & mise à l'échelle ================= */
+  /* ================= Canvas, mise à l'échelle ================= */
   const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
   document.body.classList.toggle("tactile", isTouch);
 
@@ -219,25 +74,24 @@
   const ctx = canvas.getContext("2d");
   const stage = document.getElementById("scene");
   let scale = 1, dpr = 1;
-  const view = { w: W, h: H };       // taille visible, en unités de jeu
-  const cam = { x: 0, y: 0 };        // coin haut-gauche de la vue
-  const CAM_EXT = { x: 16, top: 24, bottom: 76 }; // marges autorisées hors de la salle
+  const view = { w: W, h: H };
+  const cam = { x: 0, y: 0 };
+  const CAM_EXT = { x: 16, top: 24, bottom: 70 };
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // Sur téléphone, on zoome : la vue montre ~22 × 11 tuiles et suit le joueur.
-  // Sur grand écran, la salle entière tient à l'écran.
   function resize() {
     const wrap = stage.parentElement.getBoundingClientRect();
     const fit = Math.min(wrap.width / W, wrap.height / H);
-    const zoom = Math.min(wrap.width / 352, wrap.height / 176);
+    const zoom = Math.min(wrap.width / VIEW_TARGET.w, wrap.height / VIEW_TARGET.h);
     scale = Math.max(0.5, isTouch || fit < 1.6 ? Math.max(fit, zoom) : fit);
     dpr = Math.min(window.devicePixelRatio || 1, 3);
     const cw = Math.floor(wrap.width), ch = Math.floor(wrap.height);
-    view.w = cw / scale; view.h = ch / scale;
-    if (R) updateCamera(true);
     stage.style.width = cw + "px";
     stage.style.height = ch + "px";
     canvas.width = Math.floor(cw * dpr);
     canvas.height = Math.floor(ch * dpr);
+    view.w = cw / scale; view.h = ch / scale;
+    if (R) updateCamera(true);
     checkOrientation();
   }
 
@@ -258,22 +112,16 @@
   window.addEventListener("keydown", (e) => {
     unlockAudio();
     if (e.code === "Escape" || e.code === "KeyP") { togglePause(); e.preventDefault(); return; }
-    if (e.code === "KeyR" && game.mode === "play") { restartRoom(); return; }
+    if (e.code === "KeyR" && game.mode === "play" && !game.paused) { restartRoom(); return; }
     if (e.code === "KeyM") { toggleMute(); return; }
-    if ((e.code === "Enter" || e.code === "Space") && (game.mode === "title" || game.mode === "end")) {
-      startGame(); e.preventDefault(); return;
-    }
+    if (e.code === "Enter" && game.mode === "title" && !overlays.titre.hidden) { playFrom(Number(document.getElementById("btn-jouer").dataset.level || 0)); return; }
     const n = keyMap[e.code];
-    if (n) { setInput(n, true); e.preventDefault(); }
+    if (n && (game.mode === "play" || game.mode === "card")) { setInput(n, true); e.preventDefault(); }
   });
-  window.addEventListener("keyup", (e) => {
-    const n = keyMap[e.code];
-    if (n) setInput(n, false);
-  });
+  window.addEventListener("keyup", (e) => { const n = keyMap[e.code]; if (n) setInput(n, false); });
   window.addEventListener("blur", releaseAll);
-  function releaseAll() { for (const k in input) input[k] = false; }
+  function releaseAll() { for (const k in input) input[k] = false; document.querySelectorAll(".touche.on").forEach((b) => b.classList.remove("on")); }
 
-  // Boutons tactiles : chaque pointeur est suivi, plusieurs doigts à la fois.
   const pointerOwner = new Map();
   document.querySelectorAll("[data-btn]").forEach((el) => {
     const name = el.dataset.btn;
@@ -288,10 +136,7 @@
     const up = (e) => {
       if (pointerOwner.get(e.pointerId) !== name) return;
       pointerOwner.delete(e.pointerId);
-      if (![...pointerOwner.values()].includes(name)) {
-        setInput(name, false);
-        el.classList.remove("on");
-      }
+      if (![...pointerOwner.values()].includes(name)) { setInput(name, false); el.classList.remove("on"); }
     };
     el.addEventListener("pointerdown", down);
     el.addEventListener("pointerup", up);
@@ -300,8 +145,7 @@
     el.addEventListener("contextmenu", (e) => e.preventDefault());
   });
 
-
-  /* ================= Son (WebAudio, synthèse simple) ================= */
+  /* ================= Son ================= */
   let audio = null, muted = false;
   try { muted = localStorage.getItem("temple-muet") === "1"; } catch (_) {}
   function unlockAudio() {
@@ -333,6 +177,7 @@
   }
   const sfx = {
     jump: () => tone(330, 0.12, "square", 0.05, 260),
+    spring: () => tone(220, 0.25, "triangle", 0.08, 700),
     shoot: () => tone(900, 0.07, "square", 0.04, -600),
     empty: () => tone(120, 0.06, "square", 0.04),
     pick: () => { tone(660, 0.06, "square", 0.05); setTimeout(() => tone(990, 0.08, "square", 0.05), 60); },
@@ -345,53 +190,61 @@
     spike: () => tone(1400, 0.05, "square", 0.04, -900),
     god: () => tone(180, 0.18, "triangle", 0.05, 40),
     kill: () => tone(200, 0.15, "square", 0.05, -150),
+    arrow: () => tone(1800, 0.04, "triangle", 0.03, -1200),
+    invert: () => { tone(300, 0.15, "sine", 0.06, 300); setTimeout(() => tone(600, 0.15, "sine", 0.06, -300), 120); },
   };
 
-  /* ================= État du jeu ================= */
+  /* ================= Progression (navigateur du joueur) ================= */
+  const progress = { unlocked: 0, best: {}, deaths: 0 };
+  try {
+    const s = JSON.parse(localStorage.getItem("temple-progres") || "null");
+    if (s && typeof s.unlocked === "number") Object.assign(progress, s);
+  } catch (_) {}
+  function saveProgress() { try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {} }
+
+  /* ================= État ================= */
   const game = {
     mode: "title", // title | card | play | dead | win | end
-    roomIndex: 0,
-    deathsByRoom: ROOMS.map(() => 0),
-    totalDeaths: 0,
+    level: 0,
+    deathsByRoom: LEVELS.map(() => 0),
     ammo: { bullets: 6, tnt: 1 },
-    entryAmmo: { bullets: 6, tnt: 1 },
-    timer: 0, startTime: 0, endTime: 0,
-    paused: false,
+    timer: 0, paused: false, invert: 0, homeT: 0,
   };
-  let R = null; // salle en cours
+  let R = null;
 
   function buildRoom(index) {
-    const def = ROOMS[index];
-    const deaths = game.deathsByRoom[index];
+    const def = LEVELS[index];
+    const act = ACTS[def.act] || ACTS[0];
+    P = PALETTES[act ? act.palette : "jungle"] || PALETTES.jungle;
     const tiles = def.map.map((row) => row.split(""));
+    ROWS = tiles.length; COLS = tiles[0].length; W = COLS * T; H = ROWS * T;
     const room = {
-      def, index, deaths, tiles,
-      shakeTiles: new Map(), // "x,y" -> frames restantes avant chute
-      spikeAnim: new Map(),  // "x,y" -> progression 0..1
-      player: null, door: null,
-      enemies: [], pickups: [], bullets: [], dynamites: [], boulders: [], blocks: [],
-      particles: [], fired: new Set(), wobble: new Set(),
-      say: null, hint: null, shake: 0, t: 0,
+      def, index, deaths: game.deathsByRoom[index], tiles,
+      shakeTiles: new Map(), spikeAnim: new Map(), springAnim: new Map(), wobble: new Set(),
+      player: null, door: null, shooters: [],
+      enemies: [], pickups: [], bullets: [], arrows: [], dynamites: [], boulders: [], blocks: [],
+      particles: [], fired: new Set(), say: null, hint: null, shake: 0, t: 0, bCount: 0,
     };
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
         const c = tiles[y][x];
         if (c === "P") { room.player = makePlayer(x, y); tiles[y][x] = "."; }
-        else if (c === "D") { room.door = { x: x * T + 2, y: y * T - 6, w: 12, h: 22, tx: null, ty: null, moving: false }; tiles[y][x] = "."; }
-        else if (c === "e") { room.enemies.push({ x: x * T + 2, y: y * T + 2, w: 12, h: 14, vx: -0.6, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
+        else if (c === "D") { room.door = { x: x * T + 2, y: y * T - 6, w: 12, h: 22, tx: null, ty: null, moving: false, hidden: !!def.doorHidden }; tiles[y][x] = "."; }
+        else if (c === "m") { room.enemies.push({ kind: "m", x: x * T + 2, y: y * T + 1, w: 12, h: 15, vx: -0.45, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
+        else if (c === "s") { room.enemies.push({ kind: "s", x: x * T + 2, y: y * T + 9, w: 12, h: 7, vx: -0.9, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
+        else if (c === "b") { room.enemies.push({ kind: "b", x: x * T + 3, y: y * T + 4, by: y * T + 4, w: 10, h: 7, vx: 0.7, x0: x * T - 48, x1: x * T + 56, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "a" || c === "t") { room.pickups.push({ kind: c === "a" ? "bullets" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
-        else if (c === "^") room.spikeAnim.set(x + "," + y, 1);
+        else if (c === "^" || c === "v") room.spikeAnim.set(x + "," + y, 1);
+        else if (c === "<" || c === ">") room.shooters.push({ x: c === "<" ? x * T : x * T + T, y: y * T + 6, dir: c === "<" ? -1 : 1, t: (x * 7 + y * 13) % 60 });
+        else if (c === "B") room.bCount++;
       }
     }
+    if (def.doorStart && room.door) { room.door.x = def.doorStart[0] * T + 2; room.door.y = def.doorStart[1] * T - 6; }
     return room;
   }
 
   function makePlayer(tx, ty) {
-    return {
-      x: tx * T + 3, y: ty * T + 1, w: 10, h: 15,
-      vx: 0, vy: 0, face: 1, grounded: false,
-      coyote: 0, buffer: 0, alive: true, anim: 0,
-    };
+    return { x: tx * T + 3, y: ty * T + 1, w: 10, h: 15, vx: 0, vy: 0, face: 1, grounded: false, coyote: 0, buffer: 0, alive: true, anim: 0, spring: false };
   }
 
   /* ================= Tuiles ================= */
@@ -401,19 +254,15 @@
     if (y >= ROWS) return ".";
     return R.tiles[y][x];
   }
-  const isSolid = (c) => c === "#" || c === "B";
+  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">";
+  const looksStone = (c) => c === "#" || c === "x" || c === "F" || c === "<" || c === ">";
   function solidAt(px, py) { return isSolid(tileAt(Math.floor(px / T), Math.floor(py / T))); }
-
   function rectHitsSolid(x, y, w, h) {
     const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.01) / T);
     const y0 = Math.floor(y / T), y1 = Math.floor((y + h - 0.01) / T);
-    for (let ty = y0; ty <= y1; ty++)
-      for (let tx = x0; tx <= x1; tx++)
-        if (isSolid(tileAt(tx, ty))) return true;
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (isSolid(tileAt(tx, ty))) return true;
     return false;
   }
-
-  // Déplacement par axe avec résolution contre la grille. Renvoie {hitX, hitY}.
   function moveBody(b) {
     let hitX = false, hitY = false;
     b.x += b.vx;
@@ -431,7 +280,6 @@
     }
     return { hitX, hitY };
   }
-
   const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
   /* ================= Déclencheurs ================= */
@@ -441,12 +289,12 @@
       if (R.fired.has(i)) return;
       if (tr.min != null && R.deaths < tr.min) return;
       if (tr.max != null && R.deaths > tr.max) return;
-      if (!tr.zone) { if (!atStart) return; }
+      if (tr.allB) { if (atStart || R.bCount > 0) return; }
+      else if (!tr.zone) { if (!atStart) return; }
       else {
         if (atStart) return;
         const [zx, zy, zw, zh] = tr.zone;
-        const z = { x: zx * T, y: zy * T, w: zw * T, h: zh * T };
-        if (!p.alive || !overlap(p, z)) return;
+        if (!p.alive || !overlap(p, { x: zx * T, y: zy * T, w: zw * T, h: zh * T })) return;
         if (tr.air && p.grounded) return;
       }
       R.fired.add(i);
@@ -454,77 +302,70 @@
     });
   }
 
+  function setTiles(x, y, w, h, ch, anim) {
+    for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) {
+      if (ty < 0 || ty >= ROWS || tx < 0 || tx >= COLS) continue;
+      R.tiles[ty][tx] = ch;
+      if (ch === "^" || ch === "v") R.spikeAnim.set(tx + "," + ty, anim ? 0 : 1);
+    }
+  }
+
   function doAction(a) {
     const [kind, ...v] = a;
     switch (kind) {
       case "say": R.say = { text: v[0], t: 0, dur: 150 + v[0].length * 3 }; sfx.god(); break;
-      case "hint": R.hint = { text: v[0], t: 0, dur: 200 }; break;
+      case "hint": R.hint = { text: v[0], t: 0, dur: 220 }; break;
       case "shake": R.shake = Math.max(R.shake, v[0]); break;
       case "collapse": {
         const [x, y, w, h, delay] = v;
-        for (let ty = y; ty < y + h; ty++)
-          for (let tx = x; tx < x + w; tx++) {
-            if (delay > 0) R.shakeTiles.set(tx + "," + ty, delay);
-            else dropTile(tx, ty);
-          }
+        for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) {
+          if (delay > 0) R.shakeTiles.set(tx + "," + ty, delay); else dropTile(tx, ty);
+        }
         if (delay <= 0) { sfx.crumble(); R.shake = Math.max(R.shake, 4); }
         break;
       }
-      case "spikes": {
-        const [x, y, w, h] = v;
-        for (let ty = y; ty < y + h; ty++)
-          for (let tx = x; tx < x + w; tx++) {
-            R.tiles[ty][tx] = "^";
-            R.spikeAnim.set(tx + "," + ty, R.t === 0 ? 1 : 0);
-          }
-        if (R.t > 0) sfx.spike();
-        break;
-      }
-      case "door": {
-        const d = R.door;
-        d.tx = v[0] * T + 2; d.ty = v[1] * T - 6; d.moving = true;
-        sfx.flee();
-        break;
-      }
-      case "boulder": {
-        const [x, y, dir, speed] = v;
-        R.boulders.push({ x: x * T, y: y * T, w: 28, h: 28, vx: dir * speed, vy: 0, dir, speed, rot: 0, grounded: false });
-        break;
-      }
+      case "spikes": setTiles(v[0], v[1], v[2], v[3], v[4] || "^", R.t > 0); if (R.t > 0) sfx.spike(); break;
+      case "set": setTiles(v[0], v[1], v[2], v[3], v[4], false); break;
+      case "door": { const d = R.door; d.tx = v[0] * T + 2; d.ty = v[1] * T - 6; d.moving = true; sfx.flee(); break; }
+      case "showdoor": { R.door.hidden = false; burst(R.door.x + 6, R.door.y + 10, C.door, 24, 2); sfx.door(); break; }
+      case "boulder": { const [x, y, dir, speed] = v; R.boulders.push({ x: x * T, y: y * T, w: 28, h: 28, vx: dir * speed, vy: 0, dir, speed, rot: 0 }); break; }
       case "fall": {
         const [x, y, w, h, delay] = v;
         R.blocks.push({ x: x * T, y: y * T, w: w * T, h: h * T, vy: 0, delay, tiles: [x, y, w, h], falling: false });
         for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) R.wobble.add(tx + "," + ty);
         break;
       }
+      case "invert": game.invert = v[0]; sfx.invert(); R.shake = Math.max(R.shake, 3); break;
     }
   }
 
   function dropTile(tx, ty) {
-    if (tileAt(tx, ty) === ".") return;
+    if (ty >= ROWS || tx < 0 || tx >= COLS || tileAt(tx, ty) === ".") return;
     R.tiles[ty][tx] = ".";
-    for (let i = 0; i < 4; i++)
-      R.particles.push({ x: tx * T + Math.random() * T, y: ty * T + Math.random() * T, vx: (Math.random() - 0.5) * 1.2, vy: Math.random() * -1, s: 3 + Math.random() * 3, life: 60, color: C.stone, g: 0.25 });
+    for (let i = 0; i < 3; i++)
+      R.particles.push({ x: tx * T + Math.random() * T, y: ty * T + Math.random() * T, vx: (Math.random() - 0.5) * 1.2, vy: Math.random() * -1, s: 3 + Math.random() * 3, life: 60, color: P.stone, g: 0.25 });
   }
 
   /* ================= Mise à jour ================= */
   function update() {
+    if (game.mode === "title" || game.mode === "end") { game.homeT++; return; }
     if (game.paused) return;
     if (game.mode === "card") {
       pressed.jump = pressed.fire = pressed.tnt = false;
       game.cardT++;
-      if (game.cardT > 75) { game.mode = "play"; runTriggers(true); }
+      if (game.cardT > 80) { game.mode = "play"; runTriggers(true); }
       return;
     }
-    if (game.mode !== "play" && game.mode !== "dead" && game.mode !== "win") return;
     R.t++;
     if (game.mode === "play") game.timer++;
+    if (game.invert > 0) game.invert--;
 
     updatePlayer();
     updateTilesFx();
     updateDoor();
     updateEnemies();
-    updateBullets();
+    updateShooters();
+    updateProjectiles();
     updateDynamites();
     updateBoulders();
     updateBlocks();
@@ -534,15 +375,8 @@
     if (R.say) { R.say.t++; if (R.say.t > R.say.dur) R.say = null; }
     if (R.hint) { R.hint.t++; if (R.hint.t > R.hint.dur) R.hint = null; }
     if (R.shake > 0) R.shake -= 0.5;
-
-    if (game.mode === "dead") {
-      game.deadT++;
-      if (game.deadT > 50) restartRoom(true);
-    }
-    if (game.mode === "win") {
-      game.winT++;
-      if (game.winT > 40) nextRoom();
-    }
+    if (game.mode === "dead" && ++game.deadT > 50) restartRoom(true);
+    if (game.mode === "win" && ++game.winT > 40) nextRoom();
     pressed.jump = pressed.fire = pressed.tnt = false;
   }
 
@@ -550,25 +384,39 @@
     const p = R.player;
     if (!p.alive) return;
     if (game.mode === "win") { p.vx *= 0.8; return; }
-    const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    let dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    if (game.invert > 0) dir = -dir;
     if (dir) p.face = dir;
     p.vx += (dir * PHYS.run - p.vx) * PHYS.accel;
     if (Math.abs(p.vx) < 0.05) p.vx = 0;
 
     p.coyote = p.grounded ? PHYS.coyote : p.coyote - 1;
     if (pressed.jump) p.buffer = PHYS.buffer; else p.buffer--;
-    if (p.buffer > 0 && p.coyote > 0) {
-      p.vy = PHYS.jump; p.buffer = 0; p.coyote = 0; sfx.jump();
-    }
-    if (!input.jump && p.vy < PHYS.jumpCut) p.vy = PHYS.jumpCut;
+    if (p.buffer > 0 && p.coyote > 0) { p.vy = PHYS.jump; p.buffer = 0; p.coyote = 0; sfx.jump(); }
+    if (!input.jump && p.vy < PHYS.jumpCut && !p.spring) p.vy = PHYS.jumpCut;
+    if (p.vy >= 0) p.spring = false;
     p.vy = Math.min(p.vy + PHYS.gravity, PHYS.maxFall);
     moveBody(p);
     p.anim += Math.abs(p.vx) * 0.25;
 
+    if (p.grounded) {
+      const fy = Math.floor((p.y + p.h + 1) / T);
+      const fx0 = Math.floor(p.x / T), fx1 = Math.floor((p.x + p.w - 0.01) / T);
+      const mid = Math.floor((p.x + p.w / 2) / T);
+      for (const fx of [fx0, fx1]) {
+        if (tileAt(fx, fy) === "x" && !R.shakeTiles.has(fx + "," + fy)) R.shakeTiles.set(fx + "," + fy, 12);
+      }
+      if (tileAt(mid, fy) === "J") {
+        p.vy = PHYS.spring; p.spring = true; p.coyote = 0;
+        R.springAnim.set(mid + "," + fy, 10);
+        sfx.spring();
+      }
+    }
+
     if (pressed.fire) {
       if (game.ammo.bullets > 0) {
         game.ammo.bullets--;
-        R.bullets.push({ x: p.x + (p.face > 0 ? p.w : -4), y: p.y + 6, w: 4, h: 2, vx: p.face * 5, life: 90 });
+        R.bullets.push({ x: p.x + (p.face > 0 ? p.w : -4), y: p.y + 9, w: 4, h: 2, vx: p.face * 5, life: 90 });
         sfx.shoot();
       } else { sfx.empty(); game.flash = { what: "bullets", t: 30 }; }
     }
@@ -588,12 +436,11 @@
         burst(it.x + 4, it.y + 4, C.hat, 8);
       }
     }
-
     const d = R.door;
-    if (d && !d.moving && overlap(p, { x: d.x + 3, y: d.y + 4, w: d.w - 6, h: d.h - 4 })) {
+    if (d && !d.moving && !d.hidden && overlap(p, { x: d.x + 3, y: d.y + 4, w: d.w - 6, h: d.h - 4 })) {
       game.mode = "win"; game.winT = 0; sfx.door();
     }
-    if (p.y > H + 20) kill("fall");
+    if (p.y > H + 20) kill();
   }
 
   function updateTilesFx() {
@@ -607,14 +454,13 @@
       } else R.shakeTiles.set(k, v - 1);
     }
     for (const [k, v] of R.spikeAnim) if (v < 1) R.spikeAnim.set(k, Math.min(1, v + 0.25));
+    for (const [k, v] of R.springAnim) { if (v <= 1) R.springAnim.delete(k); else R.springAnim.set(k, v - 1); }
   }
 
   function updateDoor() {
     const d = R.door;
     if (!d || !d.moving) return;
-    const dx = d.tx - d.x, dy = d.ty - d.y;
-    const dist = Math.hypot(dx, dy);
-    const sp = 6;
+    const dx = d.tx - d.x, dy = d.ty - d.y, dist = Math.hypot(dx, dy), sp = 6;
     if (dist <= sp) { d.x = d.tx; d.y = d.ty; d.moving = false; }
     else { d.x += (dx / dist) * sp; d.y += (dy / dist) * sp; }
     if (R.t % 3 === 0) R.particles.push({ x: d.x + 6, y: d.y + 20, vx: 0, vy: -0.3, s: 2, life: 20, color: C.door, g: 0 });
@@ -624,7 +470,14 @@
     for (const e of R.enemies) {
       if (!e.alive) continue;
       e.t += 0.1;
-      e.vy = Math.min(e.vy + PHYS.gravity, PHYS.maxFall);
+      if (e.kind === "b") {
+        e.x += e.vx;
+        if (e.x < e.x0 || e.x + e.w > e.x1 || rectHitsSolid(e.x, e.y, e.w, e.h)) { e.x -= e.vx; e.vx = -e.vx; }
+        const ny = e.by + Math.sin(e.t * 0.9) * 7;
+        if (!rectHitsSolid(e.x, ny, e.w, e.h)) e.y = ny;
+        continue;
+      }
+      e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall);
       const before = e.vx;
       const hit = moveBody(e);
       if (hit.hitX) e.vx = -before;
@@ -637,23 +490,36 @@
     }
   }
 
-  function updateBullets() {
+  function updateShooters() {
+    const rate = R.def.arrowRate || 110;
+    const p = R.player;
+    for (const s of R.shooters) {
+      s.t++;
+      if (s.t % rate !== 0) continue;
+      if (Math.abs(s.x - p.x) > 300) continue;
+      R.arrows.push({ x: s.dir < 0 ? s.x - 9 : s.x + 1, y: s.y, w: 8, h: 3, vx: s.dir * 2.6 });
+      sfx.arrow();
+    }
+  }
+
+  function updateProjectiles() {
     for (const b of R.bullets) {
       b.x += b.vx; b.life--;
-      if (rectHitsSolid(b.x, b.y, b.w, b.h) || b.x < -10 || b.x > W + 10) {
-        b.life = 0; burst(b.x, b.y, C.text, 3, 0.6);
-      }
-      for (const e of R.enemies) {
-        if (e.alive && b.life > 0 && overlap(b, e)) { e.alive = false; b.life = 0; killEnemy(e); }
-      }
+      if (rectHitsSolid(b.x, b.y, b.w, b.h) || b.x < -10 || b.x > W + 10) { b.life = 0; burst(b.x, b.y, C.text, 3, 0.6); }
+      for (const e of R.enemies) if (e.alive && b.life > 0 && overlap(b, e)) { e.alive = false; b.life = 0; killEnemy(e); }
     }
     R.bullets = R.bullets.filter((b) => b.life > 0);
+    for (const a of R.arrows) {
+      a.x += a.vx;
+      if (rectHitsSolid(a.x, a.y, a.w, a.h) || a.x < -20 || a.x > W + 20) { a.dead = true; burst(a.x + 4, a.y + 1, C.wood, 3, 0.5); }
+    }
+    R.arrows = R.arrows.filter((a) => !a.dead);
   }
 
   function killEnemy(e) {
     sfx.kill();
-    burst(e.x + 6, e.y + 7, C.enemy, 14, 1.6);
-    burst(e.x + 6, e.y + 5, C.eye, 4, 1);
+    const col = e.kind === "m" ? C.bandage : e.kind === "s" ? C.snake : C.batWing;
+    burst(e.x + e.w / 2, e.y + e.h / 2, col, 14, 1.6);
   }
 
   function updateDynamites() {
@@ -675,23 +541,21 @@
       for (let tx = Math.floor((cx - rad) / T); tx <= Math.floor((cx + rad) / T); tx++) {
         if (tileAt(tx, ty) !== "B") continue;
         if (Math.hypot(tx * T + 8 - cx, ty * T + 8 - cy) <= rad) {
-          R.tiles[ty][tx] = ".";
+          R.tiles[ty][tx] = "."; R.bCount--;
           for (let i = 0; i < 6; i++)
-            R.particles.push({ x: tx * T + 8, y: ty * T + 8, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.8) * 4, s: 3 + Math.random() * 3, life: 50, color: C.crack, g: 0.2 });
+            R.particles.push({ x: tx * T + 8, y: ty * T + 8, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.8) * 4, s: 3 + Math.random() * 3, life: 50, color: P.crack, g: 0.2 });
         }
       }
-    for (const e of R.enemies)
-      if (e.alive && Math.hypot(e.x + 6 - cx, e.y + 7 - cy) < rad + 6) { e.alive = false; killEnemy(e); }
-    for (const b of R.boulders)
-      if (Math.hypot(b.x + 14 - cx, b.y + 14 - cy) < rad + 12) { b.dead = true; burst(b.x + 14, b.y + 14, C.stoneTop, 18, 2.5); }
+    for (const e of R.enemies) if (e.alive && Math.hypot(e.x + 6 - cx, e.y + 7 - cy) < rad + 6) { e.alive = false; killEnemy(e); }
+    for (const b of R.boulders) if (Math.hypot(b.x + 14 - cx, b.y + 14 - cy) < rad + 12) { b.dead = true; burst(b.x + 14, b.y + 14, P.stoneTop, 18, 2.5); }
     R.boulders = R.boulders.filter((b) => !b.dead);
     for (let i = 0; i < 26; i++) {
       const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3.5;
       R.particles.push({ x: cx, y: cy, vx: Math.cos(a) * s, vy: Math.sin(a) * s, s: 2 + Math.random() * 4, life: 24 + Math.random() * 16, color: Math.random() < 0.5 ? C.hat : C.danger, g: 0.05 });
     }
-    R.particles.push({ ring: true, x: cx, y: cy, r: 4, life: 14, color: C.text });
+    R.particles.push({ ring: true, x: cx, y: cy, r: 4, life: 14 });
     const p = R.player;
-    if (p.alive && game.mode === "play" && Math.hypot(p.x + 5 - cx, p.y + 7 - cy) < rad) kill("boom");
+    if (p.alive && game.mode === "play" && Math.hypot(p.x + 5 - cx, p.y + 7 - cy) < rad) kill();
   }
 
   function updateBoulders() {
@@ -701,7 +565,7 @@
       const hit = moveBody(b);
       if (hit.hitX) b.dir = -b.dir;
       b.rot += (b.dir * b.speed) / 14;
-      if (b.grounded && R.t % 6 === 0) R.particles.push({ x: b.x + 14 - b.dir * 12, y: b.y + 27, vx: -b.dir * 0.5, vy: -0.4, s: 2, life: 18, color: C.stoneDark, g: 0.05 });
+      if (b.grounded && R.t % 6 === 0) R.particles.push({ x: b.x + 14 - b.dir * 12, y: b.y + 27, vx: -b.dir * 0.5, vy: -0.4, s: 2, life: 18, color: P.stoneDark, g: 0.05 });
       if (b.grounded && !b.wasGrounded) R.shake = Math.max(R.shake, 3);
       b.wasGrounded = b.grounded;
       if (b.y > H + 40) b.dead = true;
@@ -712,8 +576,7 @@
   function updateBlocks() {
     for (const k of R.blocks) {
       if (!k.falling) {
-        k.delay--;
-        if (k.delay <= 0) {
+        if (--k.delay <= 0) {
           k.falling = true;
           const [x, y, w, h] = k.tiles;
           for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) { R.tiles[ty][tx] = "."; R.wobble.delete(tx + "," + ty); }
@@ -726,12 +589,11 @@
       if (rectHitsSolid(k.x, k.y, k.w, k.h)) {
         k.y = Math.floor((k.y + k.h) / T) * T - k.h;
         const tx = Math.round(k.x / T), ty = Math.round(k.y / T);
-        for (let yy = 0; yy < k.h / T; yy++) for (let xx = 0; xx < k.w / T; xx++)
-          if (ty + yy < ROWS) R.tiles[ty + yy][tx + xx] = "#";
+        for (let yy = 0; yy < k.h / T; yy++) for (let xx = 0; xx < k.w / T; xx++) if (ty + yy < ROWS) R.tiles[ty + yy][tx + xx] = "#";
         k.done = true;
         R.shake = Math.max(R.shake, 5);
         sfx.crumble();
-        burst(k.x + k.w / 2, k.y + k.h, C.stoneTop, 10, 1.5);
+        burst(k.x + k.w / 2, k.y + k.h, P.stoneTop, 10, 1.5);
       }
       if (k.y > H + 40) k.done = true;
     }
@@ -757,20 +619,22 @@
   function checkHazards() {
     const p = R.player;
     if (!p.alive) return;
-    // Pics : seule la moitié basse de la tuile est mortelle
     const x0 = Math.floor(p.x / T), x1 = Math.floor((p.x + p.w - 0.01) / T);
     const y0 = Math.floor(p.y / T), y1 = Math.floor((p.y + p.h - 0.01) / T);
-    for (let ty = y0; ty <= y1; ty++)
-      for (let tx = x0; tx <= x1; tx++)
-        if (tileAt(tx, ty) === "^" && overlap(p, { x: tx * T + 2, y: ty * T + 7, w: 12, h: 9 })) return kill("spike");
-    for (const e of R.enemies) if (e.alive && overlap(p, { x: e.x + 1, y: e.y + 1, w: e.w - 2, h: e.h - 1 })) return kill("enemy");
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      const c = tileAt(tx, ty);
+      if (c === "^" && overlap(p, { x: tx * T + 2, y: ty * T + 7, w: 12, h: 9 })) return kill();
+      if (c === "v" && overlap(p, { x: tx * T + 2, y: ty * T, w: 12, h: 9 })) return kill();
+    }
+    for (const e of R.enemies) if (e.alive && overlap(p, { x: e.x + 1, y: e.y + 1, w: e.w - 2, h: e.h - 1 })) return kill();
+    for (const a of R.arrows) if (overlap(p, a)) return kill();
     for (const b of R.boulders) {
       const cx = b.x + 14, cy = b.y + 14;
       const nx = Math.max(p.x, Math.min(cx, p.x + p.w)), ny = Math.max(p.y, Math.min(cy, p.y + p.h));
-      if (Math.hypot(nx - cx, ny - cy) < 13) return kill("boulder");
+      if (Math.hypot(nx - cx, ny - cy) < 13) return kill();
     }
-    for (const k of R.blocks) if (k.falling && overlap(p, k)) return kill("block");
-    if (rectHitsSolid(p.x + 1, p.y + 1, p.w - 2, p.h - 2)) kill("crush");
+    for (const k of R.blocks) if (k.falling && overlap(p, k)) return kill();
+    if (rectHitsSolid(p.x + 1, p.y + 1, p.w - 2, p.h - 2)) kill();
   }
 
   function kill() {
@@ -778,42 +642,46 @@
     if (!p.alive) return;
     p.alive = false;
     game.mode = "dead"; game.deadT = 0;
-    game.deathsByRoom[R.index]++; game.totalDeaths++;
+    game.deathsByRoom[R.index]++;
+    progress.deaths++; saveProgress();
     sfx.death();
     R.shake = 6;
     burst(p.x + 5, p.y + 7, C.jacket, 12, 2.2);
     burst(p.x + 5, p.y + 7, C.shirt, 8, 2);
-    burst(p.x + 5, p.y + 2, C.skin, 4, 1.5);
     R.hat = { x: p.x, y: p.y, vx: -p.face * 1.2, vy: -4, r: 0 };
     R.say = { text: TAUNTS[Math.floor(Math.random() * TAUNTS.length)], t: 0, dur: 90 };
   }
 
   /* ================= Déroulement ================= */
-  function startGame() {
+  function playFrom(i) {
     unlockAudio();
-    game.roomIndex = 0;
-    game.deathsByRoom = ROOMS.map(() => 0);
-    game.totalDeaths = 0;
-    game.ammo = { bullets: 6, tnt: 1 };
+    if (isTouch) enterFullscreen();
     game.timer = 0;
-    enterRoom(0);
+    startLevel(Math.max(0, Math.min(LEVELS.length - 1, i)));
     showOverlay(null);
   }
 
-  function enterRoom(i) {
-    game.roomIndex = i;
-    game.entryAmmo = { ...game.ammo };
+  function startLevel(i) {
+    game.level = i;
+    const am = LEVELS[i].ammo || [6, 1];
+    game.ammo = { bullets: am[0], tnt: am[1] };
+    game.invert = 0;
     R = buildRoom(i);
+    resize();
+    updateCamera(true);
     game.mode = "card"; game.cardT = 0;
+    game.paused = false;
     releaseAll();
   }
 
   function restartRoom(fromDeath) {
     if (!R) return;
-    if (!fromDeath && game.mode === "play") { game.deathsByRoom[R.index]++; game.totalDeaths++; }
-    game.ammo = { ...game.entryAmmo };
-    const keep = R.say && fromDeath ? R.say : null;
-    R = buildRoom(game.roomIndex);
+    if (!fromDeath && game.mode === "play") { game.deathsByRoom[R.index]++; progress.deaths++; saveProgress(); }
+    const am = LEVELS[game.level].ammo || [6, 1];
+    game.ammo = { bullets: am[0], tnt: am[1] };
+    game.invert = 0;
+    const keep = fromDeath ? R.say : null;
+    R = buildRoom(game.level);
     updateCamera(true);
     game.mode = "play";
     runTriggers(true);
@@ -823,11 +691,22 @@
   }
 
   function nextRoom() {
-    if (game.roomIndex + 1 < ROOMS.length) enterRoom(game.roomIndex + 1);
-    else {
-      game.mode = "end";
-      showEnd();
-    }
+    const i = game.level;
+    const d = game.deathsByRoom[i];
+    if (progress.best[i] == null || d < progress.best[i]) progress.best[i] = d;
+    progress.unlocked = Math.max(progress.unlocked, Math.min(LEVELS.length - 1, i + 1));
+    if (i + 1 >= LEVELS.length) progress.finished = true;
+    saveProgress();
+    if (i + 1 < LEVELS.length) startLevel(i + 1);
+    else { game.mode = "end"; R = null; showEnd(); }
+  }
+
+  function goHome() {
+    game.mode = "title"; game.paused = false; R = null;
+    releaseAll();
+    resize();
+    showOverlay("titre");
+    refreshHome();
   }
 
   /* ================= Caméra ================= */
@@ -844,21 +723,21 @@
     else { cam.x += (tx - cam.x) * 0.12; cam.y += (ty - cam.y) * 0.12; }
   }
 
-  /* ================= Rendu ================= */
+  /* ================= Rendu du jeu ================= */
   function render() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = C.void;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (game.mode === "title" || game.mode === "end" || !R) { drawHome(); return; }
     const k = scale * dpr;
-    if (!R) { ctx.setTransform(k, 0, 0, k, 0, 0); drawTitleBackdrop(); return; }
-    if (game.mode !== "card" || game.cardT < 2) updateCamera(game.mode === "card");
+    if (game.mode !== "card") updateCamera(false);
     let sx = 0, sy = 0;
     if (R.shake > 0 && !reducedMotion) { sx = (Math.random() - 0.5) * R.shake; sy = (Math.random() - 0.5) * R.shake; }
     ctx.setTransform(k, 0, 0, k, Math.round((sx - cam.x) * k), Math.round((sy - cam.y) * k));
-    ctx.fillStyle = C.bg;
+    ctx.fillStyle = P.bg;
     ctx.fillRect(0, 0, W, H);
     drawBackground();
-    drawTiles();
+    drawTiles(false);
     drawDoor();
     for (const it of R.pickups) if (!it.taken) drawPickup(it);
     for (const e of R.enemies) if (e.alive) drawEnemy(e);
@@ -866,99 +745,146 @@
     for (const d of R.dynamites) drawDynamite(d);
     for (const b of R.boulders) drawBoulder(b);
     for (const b of R.bullets) { ctx.fillStyle = C.text; ctx.fillRect(b.x, b.y, b.w, b.h); }
+    for (const a of R.arrows) drawArrow(a);
     drawPlayer();
+    drawTiles(true); // faux murs par-dessus le joueur
     drawParticles();
     ctx.setTransform(k, 0, 0, k, 0, 0);
     drawHud();
     drawSpeech();
+    if (game.invert > 0) drawInvert();
     if (game.mode === "card") drawCard();
-    if (game.mode === "win") {
-      ctx.fillStyle = `rgba(13,21,18,${Math.min(1, game.winT / 40)})`;
-      ctx.fillRect(0, 0, view.w, view.h);
-    }
-  }
-
-  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  function drawTitleBackdrop() {
-    ctx.fillStyle = C.bg2;
-    for (let i = 0; i < 8; i++) ctx.fillRect(40 + i * 80, 60, 18, view.h);
+    if (game.mode === "win") { ctx.fillStyle = `rgba(7,11,9,${Math.min(1, game.winT / 40)})`; ctx.fillRect(0, 0, view.w, view.h); }
   }
 
   function drawBackground() {
-    ctx.fillStyle = C.bg2;
-    if (R.def.decor === "pillars") {
-      for (let i = 0; i < 7; i++) {
+    const decor = R.def.decor || (ACTS[R.def.act] || {}).palette;
+    ctx.fillStyle = P.bg2;
+    const x0 = Math.max(0, Math.floor(cam.x / 56) - 1), x1 = Math.ceil((cam.x + view.w) / 56) + 1;
+    if (decor === "pillars" || decor === "sanctuaire" || decor === "eye") {
+      for (let i = Math.floor(x0 * 56 / 68); i <= Math.ceil(x1 * 56 / 68); i++) {
         const x = 30 + i * 68;
-        ctx.fillRect(x, 40, 22, H - 72);
-        ctx.fillRect(x - 4, 36, 30, 6);
-        ctx.fillRect(x - 4, H - 38, 30, 6);
+        ctx.fillRect(x, 40, 22, H - 72); ctx.fillRect(x - 4, 36, 30, 6); ctx.fillRect(x - 4, H - 38, 30, 6);
       }
-      // l'œil du dieu, au fond
-      const cx = W / 2, cy = 70, open = 0.5 + 0.5 * Math.sin(R.t / 40);
-      ctx.strokeStyle = "rgba(217,164,65,0.25)";
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(cx, cy, 30, 12 * open + 2, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = "rgba(217,164,65,0.25)";
-      ctx.beginPath(); ctx.arc(cx + Math.sin(R.t / 70) * 8, cy, 5 * open + 1, 0, Math.PI * 2); ctx.fill();
-    } else {
-      for (let i = 0; i < 9; i++) {
-        const x = 8 + i * 56 + ((i * 37) % 13);
-        ctx.fillRect(x, 0, 2, H);
+      if (decor === "eye" || decor === "pillars") {
+        const cx = W / 2, cy = 70, open = 0.5 + 0.5 * Math.sin(R.t / 40);
+        ctx.strokeStyle = "rgba(217,164,65,0.28)"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(cx, cy, 34, 13 * open + 2, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = "rgba(217,164,65,0.28)";
+        const px = R.player ? Math.max(-10, Math.min(10, (R.player.x - cx) / 20)) : 0;
+        ctx.beginPath(); ctx.arc(cx + px, cy, 5 * open + 1, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (decor === "jungle") {
+      ctx.strokeStyle = P.deco; ctx.lineWidth = 2;
+      for (let i = x0; i <= x1; i++) {
+        const x = i * 56 + 20, len = 50 + ((i * 37) % 60);
+        ctx.beginPath(); ctx.moveTo(x, 0);
+        for (let yy = 0; yy < len; yy += 6) ctx.lineTo(x + Math.sin((yy + R.t * 0.3) / 14 + i) * 3, yy);
+        ctx.stroke();
+        ctx.fillStyle = P.deco; ctx.fillRect(x - 3, len - 2, 6, 4);
+      }
+    } else if (decor === "crypte" || decor === "glyphs") {
+      ctx.fillStyle = P.deco;
+      for (let i = x0; i <= x1; i++) {
+        const x = i * 56 + 14;
+        for (let j = 0; j < 3; j++) {
+          const y = 40 + j * 22 + ((i * 11) % 9), g = (i * 3 + j) % 4;
+          if (g === 0) { ctx.fillRect(x, y, 8, 2); ctx.fillRect(x + 3, y - 5, 2, 10); }
+          else if (g === 1) { ctx.beginPath(); ctx.arc(x + 4, y, 4, 0, Math.PI * 2); ctx.fill(); }
+          else if (g === 2) { ctx.fillRect(x, y - 4, 2, 8); ctx.fillRect(x + 4, y - 4, 2, 8); ctx.fillRect(x, y - 4, 6, 2); }
+          else { ctx.beginPath(); ctx.moveTo(x, y + 4); ctx.lineTo(x + 4, y - 4); ctx.lineTo(x + 8, y + 4); ctx.fill(); }
+        }
+      }
+    } else if (decor === "mines" || decor === "beams") {
+      ctx.fillStyle = P.deco;
+      for (let i = x0; i <= x1; i++) {
+        const x = i * 56 + 10;
+        ctx.fillRect(x, 0, 5, H); ctx.fillRect(x + 36, 0, 5, H); ctx.fillRect(x - 2, 24, 45, 5);
+      }
+    } else if (decor === "cascades" || decor === "water") {
+      for (let i = x0; i <= x1; i++) {
+        const x = i * 56 + 24;
+        ctx.fillStyle = "rgba(77,150,170,0.12)"; ctx.fillRect(x, 0, 8, H);
+        ctx.fillStyle = "rgba(160,220,235,0.18)";
+        for (let j = 0; j < 6; j++) { const y = ((R.t * 2 + j * 47 + i * 31) % (H + 20)) - 20; ctx.fillRect(x + (j % 3) * 2, y, 2, 10); }
       }
     }
   }
 
-  function drawTiles() {
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        const c = R.tiles[y][x];
-        if (c === ".") continue;
-        let ox = 0, oy = 0;
-        const sk = R.shakeTiles.get(x + "," + y) || R.wobble.has(x + "," + y);
-        if (sk) { ox = (Math.random() - 0.5) * 2; oy = (Math.random() - 0.5) * 1.5; }
-        const px = x * T + ox, py = y * T + oy;
-        if (c === "#") {
-          ctx.fillStyle = C.stone;
-          ctx.fillRect(px, py, T, T);
-          if (tileAt(x, y - 1) !== "#" && tileAt(x, y - 1) !== "B") { ctx.fillStyle = C.stoneTop; ctx.fillRect(px, py, T, 2); }
-          if (tileAt(x, y + 1) !== "#" && tileAt(x, y + 1) !== "B") { ctx.fillStyle = C.stoneDark; ctx.fillRect(px, py + T - 2, T, 2); }
-          if ((x * 7 + y * 13) % 5 === 0) { ctx.fillStyle = C.stoneDark; ctx.fillRect(px + 4, py + 6, 3, 2); }
-        } else if (c === "B") {
-          ctx.fillStyle = C.crack;
-          ctx.fillRect(px, py, T, T);
-          ctx.strokeStyle = C.crackDark; ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.moveTo(px + 3, py + 1); ctx.lineTo(px + 8, py + 7); ctx.lineTo(px + 5, py + 11); ctx.lineTo(px + 9, py + 15);
-          ctx.moveTo(px + 8, py + 7); ctx.lineTo(px + 14, py + 5);
-          ctx.stroke();
-        } else if (c === "^") {
-          const a = R.spikeAnim.get(x + "," + y) ?? 1;
-          const hgt = 10 * a;
-          ctx.fillStyle = C.danger;
-          ctx.beginPath();
-          for (let i = 0; i < 3; i++) {
-            const bx = px + 1 + i * 5;
-            ctx.moveTo(bx, py + T); ctx.lineTo(bx + 2.5, py + T - hgt); ctx.lineTo(bx + 5, py + T);
-          }
-          ctx.fill();
+  function drawStone(px, py, x, y) {
+    ctx.fillStyle = P.stone; ctx.fillRect(px, py, T, T);
+    const up = tileAt(x, y - 1), dn = tileAt(x, y + 1);
+    if (!looksStone(up) && up !== "B") { ctx.fillStyle = P.stoneTop; ctx.fillRect(px, py, T, 2); }
+    if (!looksStone(dn) && dn !== "B") { ctx.fillStyle = P.stoneDark; ctx.fillRect(px, py + T - 2, T, 2); }
+    if ((x * 7 + y * 13) % 5 === 0) { ctx.fillStyle = P.stoneDark; ctx.fillRect(px + 4, py + 6, 3, 2); }
+  }
+
+  function drawTiles(onlyFake) {
+    const x0 = Math.max(0, Math.floor(cam.x / T) - 1), x1 = Math.min(COLS - 1, Math.ceil((cam.x + view.w) / T) + 1);
+    const y0 = Math.max(0, Math.floor(cam.y / T) - 1), y1 = Math.min(ROWS - 1, Math.ceil((cam.y + view.h) / T) + 1);
+    const p = R.player;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const c = R.tiles[y][x];
+      if (c === ".") continue;
+      if (onlyFake !== (c === "F")) continue;
+      let ox = 0, oy = 0;
+      if (R.shakeTiles.get(x + "," + y) || R.wobble.has(x + "," + y)) { ox = (Math.random() - 0.5) * 2; oy = (Math.random() - 0.5) * 1.5; }
+      const px = x * T + ox, py = y * T + oy;
+      if (c === "#" || c === "x") drawStone(px, py, x, y);
+      else if (c === "F") {
+        const inside = p && p.alive && overlap(p, { x: x * T - 4, y: y * T - 4, w: T + 8, h: T + 8 });
+        ctx.globalAlpha = inside ? 0.45 : 1;
+        drawStone(px, py, x, y);
+        ctx.globalAlpha = 1;
+      } else if (c === "B") {
+        ctx.fillStyle = P.crack; ctx.fillRect(px, py, T, T);
+        ctx.strokeStyle = P.crackDark; ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(px + 3, py + 1); ctx.lineTo(px + 8, py + 7); ctx.lineTo(px + 5, py + 11); ctx.lineTo(px + 9, py + 15);
+        ctx.moveTo(px + 8, py + 7); ctx.lineTo(px + 14, py + 5);
+        ctx.stroke();
+      } else if (c === "^" || c === "v") {
+        const a = R.spikeAnim.get(x + "," + y) ?? 1, hgt = 10 * a;
+        ctx.fillStyle = C.danger;
+        ctx.beginPath();
+        for (let i = 0; i < 3; i++) {
+          const bx = px + 1 + i * 5;
+          if (c === "^") { ctx.moveTo(bx, py + T); ctx.lineTo(bx + 2.5, py + T - hgt); ctx.lineTo(bx + 5, py + T); }
+          else { ctx.moveTo(bx, py); ctx.lineTo(bx + 2.5, py + hgt); ctx.lineTo(bx + 5, py); }
         }
+        ctx.fill();
+      } else if (c === "<" || c === ">") {
+        drawStone(px, py, x, y);
+        const left = c === "<";
+        ctx.fillStyle = P.stoneDark;
+        ctx.fillRect(left ? px : px + 10, py + 5, 6, 5);
+        ctx.fillStyle = C.danger;
+        ctx.fillRect(left ? px + 8 : px + 5, py + 3, 2, 2);
+        ctx.fillRect(left ? px + 12 : px + 1, py + 3, 2, 2);
+      } else if (c === "J") {
+        const sq = R.springAnim.get(x + "," + y) || 0;
+        const top = py + 4 + (sq > 5 ? 3 : 0);
+        ctx.fillStyle = C.metal; ctx.fillRect(px + 1, py + T - 4, T - 2, 4);
+        ctx.strokeStyle = C.hat; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(px + 4, py + T - 4);
+        const n = 4, hh = (py + T - 4 - top - 2) / n;
+        for (let i = 0; i < n; i++) ctx.lineTo(px + (i % 2 ? 4 : 12), py + T - 4 - (i + 1) * hh);
+        ctx.stroke();
+        ctx.fillStyle = C.wood; ctx.fillRect(px, top, T, 3);
+        ctx.fillStyle = C.danger; ctx.fillRect(px + 6, top - 1, 4, 1);
       }
     }
   }
 
   function drawDoor() {
     const d = R.door;
-    if (!d) return;
+    if (!d || d.hidden) return;
     const glow = 0.5 + 0.5 * Math.sin(R.t / 12);
     ctx.fillStyle = `rgba(217,164,65,${0.12 + glow * 0.1})`;
     ctx.fillRect(d.x - 4, d.y - 4, d.w + 8, d.h + 4);
-    ctx.fillStyle = C.door;
-    ctx.fillRect(d.x - 2, d.y - 2, d.w + 4, d.h + 2);
-    ctx.fillStyle = C.doorIn;
-    ctx.fillRect(d.x + 1, d.y + 1, d.w - 2, d.h - 1);
+    ctx.fillStyle = C.door; ctx.fillRect(d.x - 2, d.y - 2, d.w + 4, d.h + 2);
+    ctx.fillStyle = C.doorIn; ctx.fillRect(d.x + 1, d.y + 1, d.w - 2, d.h - 1);
     if (d.moving) {
-      // la porte a des jambes quand elle s'enfuit
       ctx.fillStyle = C.door;
       const ph = Math.sin(R.t / 2) * 3;
       ctx.fillRect(d.x + 1 + ph, d.y + d.h, 2, 4);
@@ -970,61 +896,122 @@
     const bob = Math.sin(R.t / 10 + it.x) * 1.5;
     if (it.kind === "tnt") {
       ctx.fillStyle = C.danger; ctx.fillRect(it.x + 1, it.y + bob, 6, 10);
+      ctx.fillStyle = C.text; ctx.fillRect(it.x + 1, it.y + 4 + bob, 6, 1);
       ctx.fillStyle = C.hat; ctx.fillRect(it.x + 3, it.y - 3 + bob, 1, 3);
     } else {
-      ctx.fillStyle = C.text;
-      for (let i = 0; i < 3; i++) ctx.fillRect(it.x + i * 3, it.y + 2 + bob, 2, 7);
+      ctx.fillStyle = C.wood; ctx.fillRect(it.x - 1, it.y + 5 + bob, 10, 5);
+      ctx.fillStyle = C.hat;
+      for (let i = 0; i < 3; i++) ctx.fillRect(it.x + i * 3, it.y + 1 + bob, 2, 5);
     }
   }
 
   function drawEnemy(e) {
-    const bob = Math.abs(Math.sin(e.t * 2)) * 1;
-    ctx.fillStyle = C.enemy;
-    ctx.fillRect(e.x, e.y - bob, e.w, e.h + bob);
-    ctx.fillStyle = C.stoneDark;
-    ctx.fillRect(e.x, e.y - bob, e.w, 3);
-    ctx.fillStyle = C.eye;
-    const ex = e.vx > 0 ? e.x + 7 : e.x + 2;
-    ctx.fillRect(ex, e.y + 4 - bob, 3, 3);
+    const f = e.vx > 0 ? 1 : -1;
+    ctx.save();
+    if (f < 0) { ctx.translate(e.x * 2 + e.w, 0); ctx.scale(-1, 1); }
+    if (e.kind === "m") drawMummy(e);
+    else if (e.kind === "s") drawSnake(e);
+    else drawBat(e);
+    ctx.restore();
+  }
+
+  // Momie : bandages, bras tendus vers l'avant, yeux verts
+  function drawMummy(e) {
+    const x = e.x, y = Math.round(e.y);
+    const wob = Math.sin(e.t * 2.2), legA = wob > 0 ? 1 : 0;
+    ctx.fillStyle = C.bandage;
+    ctx.fillRect(x + 2, y + 1, 7, 6);
+    ctx.fillRect(x + 1, y + 6, 9, 6);
+    ctx.fillRect(x + 2, y + 12, 3, 3 - legA);
+    ctx.fillRect(x + 6, y + 12 + legA, 3, 3 - legA);
+    ctx.fillRect(x + 8, y + 7 + (wob > 0 ? 0 : 1), 5, 2);
+    ctx.fillRect(x + 8, y + 9 + (wob > 0 ? 1 : 0), 4, 2);
+    ctx.fillStyle = C.bandageDark;
+    ctx.fillRect(x + 2, y + 3, 7, 1);
+    ctx.fillRect(x + 1, y + 8, 9, 1);
+    ctx.fillRect(x + 1, y + 11, 9, 1);
+    ctx.fillRect(x + 3, y + 6, 1, 2);
+    ctx.fillStyle = C.bandage;
+    ctx.fillRect(x - 1, y + 10 + Math.round(wob), 2, 1);
+    ctx.fillRect(x - 3, y + 11 + Math.round(wob), 2, 1);
+    ctx.fillStyle = C.void; ctx.fillRect(x + 5, y + 4, 4, 2);
+    ctx.fillStyle = C.mummyEye; ctx.fillRect(x + 6, y + 4, 1, 1); ctx.fillRect(x + 8, y + 4, 1, 1);
+  }
+
+  // Serpent : corps ondulant, langue fourchue
+  function drawSnake(e) {
+    const x = e.x, y = Math.round(e.y);
+    for (let i = 0; i < 6; i++) {
+      const sx = x + i * 2, sy = y + 3 + Math.round(Math.sin(e.t * 3 + i * 0.9) * 1.5);
+      ctx.fillStyle = i % 2 ? C.snakeDark : C.snake; ctx.fillRect(sx, sy, 3, 3);
+      ctx.fillStyle = C.snakeBelly; ctx.fillRect(sx, sy + 2, 2, 1);
+    }
+    const hy = y + 1 + Math.round(Math.sin(e.t * 3 + 6));
+    ctx.fillStyle = C.snake; ctx.fillRect(x + 11, hy, 4, 4);
+    ctx.fillStyle = C.snakeDark; ctx.fillRect(x + 11, hy, 4, 1);
+    ctx.fillStyle = C.snakeBelly; ctx.fillRect(x + 13, hy + 1, 1, 1);
+    if (Math.sin(e.t * 1.7) > 0.3) { ctx.fillStyle = C.danger; ctx.fillRect(x + 15, hy + 2, 2, 1); ctx.fillRect(x + 17, hy + 1, 1, 1); ctx.fillRect(x + 17, hy + 3, 1, 1); }
+  }
+
+  // Chauve-souris : ailes qui battent, yeux rouges
+  function drawBat(e) {
+    const x = e.x, y = Math.round(e.y);
+    const flap = Math.sin(e.t * 6) > 0;
+    ctx.fillStyle = C.batWing;
+    ctx.beginPath();
+    if (flap) {
+      ctx.moveTo(x + 3, y + 3); ctx.lineTo(x - 4, y - 2); ctx.lineTo(x - 2, y + 4); ctx.lineTo(x + 3, y + 5);
+      ctx.moveTo(x + 7, y + 3); ctx.lineTo(x + 14, y - 2); ctx.lineTo(x + 12, y + 4); ctx.lineTo(x + 7, y + 5);
+    } else {
+      ctx.moveTo(x + 3, y + 3); ctx.lineTo(x - 4, y + 7); ctx.lineTo(x - 1, y + 4); ctx.lineTo(x + 3, y + 5);
+      ctx.moveTo(x + 7, y + 3); ctx.lineTo(x + 14, y + 7); ctx.lineTo(x + 11, y + 4); ctx.lineTo(x + 7, y + 5);
+    }
+    ctx.fill();
+    ctx.fillStyle = C.bat; ctx.fillRect(x + 2, y + 1, 6, 6);
+    ctx.fillRect(x + 2, y, 1, 1); ctx.fillRect(x + 7, y, 1, 1);
+    ctx.fillStyle = C.batEye; ctx.fillRect(x + 3, y + 2, 1, 1); ctx.fillRect(x + 6, y + 2, 1, 1);
+    ctx.fillStyle = C.text; ctx.fillRect(x + 4, y + 5, 1, 1); ctx.fillRect(x + 6, y + 5, 1, 1);
+  }
+
+  function drawArrow(a) {
+    const left = a.vx < 0;
+    ctx.fillStyle = C.wood; ctx.fillRect(a.x + 1, a.y + 1, 7, 1);
+    ctx.fillStyle = C.metal; ctx.fillRect(left ? a.x - 1 : a.x + 7, a.y, 2, 3);
+    ctx.fillStyle = C.danger; ctx.fillRect(left ? a.x + 7 : a.x, a.y, 2, 1); ctx.fillRect(left ? a.x + 7 : a.x, a.y + 2, 2, 1);
   }
 
   function drawBlock(k) {
-    if (!k.falling) return; // tant qu'il tremble, il est encore dessiné comme une tuile
-    const ox = 0;
-    ctx.fillStyle = C.stone; ctx.fillRect(k.x + ox, k.y, k.w, k.h);
-    ctx.fillStyle = C.stoneTop; ctx.fillRect(k.x + ox, k.y, k.w, 2);
+    if (!k.falling) return;
+    ctx.fillStyle = P.stone; ctx.fillRect(k.x, k.y, k.w, k.h);
+    ctx.fillStyle = P.stoneTop; ctx.fillRect(k.x, k.y, k.w, 2);
   }
 
   function drawDynamite(d) {
     const blink = d.fuse < 40 && Math.floor(d.fuse / 4) % 2 === 0;
-    ctx.fillStyle = blink ? C.text : C.danger;
-    ctx.fillRect(d.x, d.y, d.w, d.h);
+    ctx.fillStyle = blink ? C.text : C.danger; ctx.fillRect(d.x, d.y, d.w, d.h);
     ctx.fillStyle = C.hat; ctx.fillRect(d.x + 2, d.y - 4, 1, 4);
   }
 
   function drawBoulder(b) {
     const cx = b.x + 14, cy = b.y + 14;
-    ctx.fillStyle = C.stoneTop;
+    ctx.fillStyle = P.stoneTop;
     ctx.beginPath(); ctx.arc(cx, cy, 14, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = C.stoneDark; ctx.lineWidth = 2;
+    ctx.fillStyle = P.stone;
+    ctx.beginPath(); ctx.arc(cx + 3, cy + 3, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = P.stoneDark; ctx.lineWidth = 2;
     for (let i = 0; i < 3; i++) {
       const a = b.rot + (i * Math.PI * 2) / 3;
       ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * 4, cy + Math.sin(a) * 4); ctx.lineTo(cx + Math.cos(a) * 11, cy + Math.sin(a) * 11); ctx.stroke();
     }
   }
 
-  function drawFedora(x, y, face) {
+  function drawFedora(x, y) {
     ctx.fillStyle = C.fedora;
-    ctx.fillRect(x - 3, y + 3, 16, 2);          // bord
-    ctx.fillRect(x, y - 1, 10, 4);              // calotte
-    ctx.fillStyle = C.fedoraTop;
-    ctx.fillRect(x + 1, y - 2, 8, 1);
-    ctx.fillStyle = C.void;
-    ctx.fillRect(x + 4, y - 2, 2, 1);           // pincement du dessus
-    ctx.fillStyle = C.fedoraBand;
-    ctx.fillRect(x, y + 2, 10, 1);              // ruban
-    if (face < 0) { ctx.fillStyle = C.fedora; ctx.fillRect(x - 4, y + 4, 2, 1); }
-    else { ctx.fillStyle = C.fedora; ctx.fillRect(x + 12, y + 4, 2, 1); }
+    ctx.fillRect(x - 3, y + 3, 16, 2);
+    ctx.fillRect(x, y - 1, 10, 4);
+    ctx.fillStyle = C.fedoraTop; ctx.fillRect(x + 1, y - 2, 8, 1);
+    ctx.fillStyle = C.void; ctx.fillRect(x + 4, y - 2, 2, 1);
+    ctx.fillStyle = C.fedoraBand; ctx.fillRect(x, y + 2, 10, 1);
   }
 
   function drawPlayer() {
@@ -1033,80 +1020,44 @@
       const h = R.hat;
       if (h) {
         h.vy += 0.25; h.x += h.vx; h.y += h.vy; h.r += 0.2;
-        ctx.save(); ctx.translate(h.x + 5, h.y); ctx.rotate(h.r);
-        drawFedora(-5, -2, 1);
-        ctx.restore();
+        ctx.save(); ctx.translate(h.x + 5, h.y); ctx.rotate(h.r); drawFedora(-5, -2); ctx.restore();
       }
       return;
     }
     const run = p.grounded && Math.abs(p.vx) > 0.3;
-    const air = !p.grounded;
-    const ph = Math.sin(p.anim);
-    const bob = run ? Math.abs(ph) * 1 : 0;
-    const f = p.face;
+    const air = !p.grounded, ph = Math.sin(p.anim), bob = run ? Math.abs(ph) : 0;
     const x = Math.round(p.x), y = Math.round(p.y - bob);
-    // dessin en miroir selon la direction : on travaille dans un repère local 10 × 15
     ctx.save();
-    if (f < 0) { ctx.translate(x + p.w, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
-
-    // jambes et bottes
+    if (p.face < 0) { ctx.translate(x + p.w, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
     const legA = run ? ph * 2 : air ? -1 : 0, legB = run ? -ph * 2 : air ? 1 : 0;
-    ctx.fillStyle = C.pants;
-    ctx.fillRect(2 + legA, 10, 3, 3);
-    ctx.fillRect(5 + legB, 10, 3, 3);
-    ctx.fillStyle = C.boots;
-    ctx.fillRect(2 + legA, 13, 3, 2);
-    ctx.fillRect(5 + legB, 13, 4, 2);
-
-    // chemise + veste en cuir ouverte
-    ctx.fillStyle = C.shirt;
-    ctx.fillRect(2, 5, 6, 5);
-    ctx.fillStyle = C.jacket;
-    ctx.fillRect(1, 5, 3, 6);
-    ctx.fillRect(7, 5, 2, 6);
-    ctx.fillStyle = C.jacketHi;
-    ctx.fillRect(1, 5, 1, 6);
-    // ceinture
-    ctx.fillStyle = C.fedoraBand;
-    ctx.fillRect(2, 9, 6, 1);
-    // sangle et sacoche
-    ctx.fillStyle = C.satchel;
-    ctx.fillRect(4, 5, 1, 1); ctx.fillRect(5, 6, 1, 1); ctx.fillRect(6, 7, 1, 1);
-    ctx.fillRect(0, 8, 3, 3);
-    // fouet enroulé à la hanche
+    ctx.fillStyle = C.pants; ctx.fillRect(2 + legA, 10, 3, 3); ctx.fillRect(5 + legB, 10, 3, 3);
+    ctx.fillStyle = C.boots; ctx.fillRect(2 + legA, 13, 3, 2); ctx.fillRect(5 + legB, 13, 4, 2);
+    ctx.fillStyle = C.shirt; ctx.fillRect(2, 5, 6, 5);
+    ctx.fillStyle = C.jacket; ctx.fillRect(1, 5, 3, 6); ctx.fillRect(7, 5, 2, 6);
+    ctx.fillStyle = C.jacketHi; ctx.fillRect(1, 5, 1, 6);
+    ctx.fillStyle = C.fedoraBand; ctx.fillRect(2, 9, 6, 1);
+    ctx.fillStyle = C.satchel; ctx.fillRect(4, 5, 1, 1); ctx.fillRect(5, 6, 1, 1); ctx.fillRect(6, 7, 1, 1); ctx.fillRect(0, 8, 3, 3);
     ctx.strokeStyle = C.whip; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(8.5, 10.5, 1.6, 0, Math.PI * 2); ctx.stroke();
-
-    // bras (balancement)
     const arm = run ? -ph * 1.5 : 0;
-    ctx.fillStyle = C.jacket;
-    ctx.fillRect(7 + (arm > 0 ? 1 : 0), 6, 2, 3);
-    ctx.fillStyle = C.skin;
-    ctx.fillRect(8 + (arm > 0 ? 1 : 0), 9 + Math.round(arm * 0.5), 2, 1);
-
-    // tête
-    ctx.fillStyle = C.skin;
-    ctx.fillRect(3, 1, 6, 4);
-    ctx.fillStyle = C.void;
-    ctx.fillRect(7, 2, 1, 1);                   // œil
-    ctx.fillStyle = "#b9805a";
-    ctx.fillRect(4, 4, 5, 1);                   // barbe de trois jours
-    // chapeau
-    drawFedora(0, -3, 1);
+    ctx.fillStyle = C.jacket; ctx.fillRect(7 + (arm > 0 ? 1 : 0), 6, 2, 3);
+    ctx.fillStyle = C.skin; ctx.fillRect(8 + (arm > 0 ? 1 : 0), 9 + Math.round(arm * 0.5), 2, 1);
+    ctx.fillStyle = C.skin; ctx.fillRect(3, 1, 6, 4);
+    ctx.fillStyle = C.void; ctx.fillRect(7, 2, 1, 1);
+    ctx.fillStyle = C.skinDark; ctx.fillRect(4, 4, 5, 1);
+    drawFedora(0, -3);
     ctx.restore();
   }
 
   function drawParticles() {
     for (const q of R.particles) {
       if (q.ring) {
-        ctx.strokeStyle = `rgba(239,232,216,${q.life / 14})`;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(239,232,216,${q.life / 14})`; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2); ctx.stroke();
         continue;
       }
       ctx.globalAlpha = Math.min(1, q.life / 20);
-      ctx.fillStyle = q.color;
-      ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s);
+      ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s);
     }
     ctx.globalAlpha = 1;
   }
@@ -1115,37 +1066,35 @@
   const FONT_TXT = '"JetBrains Mono", ui-monospace, "Courier New", monospace';
 
   function drawHud() {
-    ctx.fillStyle = "rgba(6,10,8,0.72)";
-    ctx.fillRect(0, 0, view.w, 15);
+    ctx.fillStyle = "rgba(6,10,8,0.72)"; ctx.fillRect(0, 0, view.w, 15);
     const ty = TYPES[R.def.type];
-    ctx.textBaseline = "middle";
-    ctx.font = `8px ${FONT_PIX}`;
-    ctx.fillStyle = ty.color;
-    ctx.fillRect(6, 4, 7, 7);
-    ctx.fillStyle = C.text;
-    ctx.textAlign = "left";
-    ctx.fillText(`${R.index + 1}/${ROOMS.length}  ${R.def.name.toUpperCase()}`, 18, 8);
-
-    // munitions
+    ctx.textBaseline = "middle"; ctx.font = `8px ${FONT_PIX}`;
+    ctx.fillStyle = ty.color; ctx.fillRect(6, 4, 7, 7);
+    ctx.fillStyle = C.text; ctx.textAlign = "left";
+    ctx.fillText(`${R.index + 1}/${LEVELS.length}  ${R.def.name.toUpperCase()}`, 18, 8);
     let x = view.w - 112 - 52 / scale;
     const fl = game.flash && game.flash.t > 0 ? game.flash : null;
     if (fl) fl.t--;
-    ctx.fillStyle = fl && fl.what === "bullets" && fl.t % 8 < 4 ? C.danger : C.text;
+    ctx.fillStyle = fl && fl.what === "bullets" && fl.t % 8 < 4 ? C.danger : C.hat;
     ctx.fillRect(x, 5, 2, 6); ctx.fillRect(x + 3, 5, 2, 6);
-    ctx.fillText(String(game.ammo.bullets), x + 9, 8);
+    ctx.fillStyle = C.text; ctx.fillText(String(game.ammo.bullets), x + 9, 8);
     x += 34;
-    ctx.fillStyle = fl && fl.what === "tnt" && fl.t % 8 < 4 ? C.text : C.danger;
-    ctx.fillRect(x, 4, 4, 8);
-    ctx.fillStyle = C.text;
-    ctx.fillText(String(game.ammo.tnt), x + 9, 8);
+    ctx.fillStyle = fl && fl.what === "tnt" && fl.t % 8 < 4 ? C.text : C.danger; ctx.fillRect(x, 4, 4, 8);
+    ctx.fillStyle = C.text; ctx.fillText(String(game.ammo.tnt), x + 9, 8);
     x += 34;
-    // morts
-    ctx.fillStyle = C.text;
     ctx.beginPath(); ctx.arc(x + 3, 7, 3.5, 0, Math.PI * 2); ctx.fill();
     ctx.fillRect(x + 1, 9, 5, 3);
-    ctx.fillStyle = C.bg; ctx.fillRect(x + 1, 6, 2, 2); ctx.fillRect(x + 4, 6, 2, 2);
-    ctx.fillStyle = C.text;
-    ctx.fillText(String(game.totalDeaths), x + 11, 8);
+    ctx.fillStyle = C.void; ctx.fillRect(x + 1, 6, 2, 2); ctx.fillRect(x + 4, 6, 2, 2);
+    ctx.fillStyle = C.text; ctx.fillText(String(game.deathsByRoom[R.index]), x + 11, 8);
+  }
+
+  function drawInvert() {
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(R.t / 5);
+    ctx.font = `8px ${FONT_PIX}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const txt = "COMMANDES INVERSÉES", w = ctx.measureText(txt).width + 14;
+    ctx.fillStyle = "rgba(180,154,230,0.9)"; ctx.fillRect((view.w - w) / 2, view.h - 64, w, 14);
+    ctx.fillStyle = C.void; ctx.fillText(txt, view.w / 2, view.h - 57);
+    ctx.globalAlpha = 1;
   }
 
   function wrapText(text, maxW) {
@@ -1153,8 +1102,7 @@
     let line = "";
     for (const w of words) {
       const test = line ? line + " " + w : w;
-      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; }
-      else line = test;
+      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test;
     }
     if (line) lines.push(line);
     return lines;
@@ -1162,76 +1110,180 @@
 
   function drawSpeech() {
     if (R.say) {
-      const s = R.say;
-      const shown = Math.min(s.text.length, Math.floor(s.t * 1.2));
-      const a = Math.min(1, (s.dur - s.t) / 20);
+      const s = R.say, shown = Math.min(s.text.length, Math.floor(s.t * 1.2)), a = Math.min(1, (s.dur - s.t) / 20);
       ctx.globalAlpha = a;
       ctx.font = `8px ${FONT_TXT}`;
-      const bw = Math.min(330, view.w - 24);
-      const lines = wrapText(s.text, bw - 20);
-      const bh = 16 + lines.length * 11;
+      const bw = Math.min(330, view.w - 24), lines = wrapText(s.text, bw - 20), bh = 16 + lines.length * 11;
       const bx = (view.w - bw) / 2, by = 20;
       R.sayBottom = by + bh;
-      ctx.fillStyle = "rgba(6,10,8,0.85)";
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.fillStyle = C.god;
-      ctx.fillRect(bx, by, 2, bh);
-      ctx.font = `6px ${FONT_PIX}`;
-      ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.fillStyle = "rgba(6,10,8,0.86)"; ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = C.god; ctx.fillRect(bx, by, 2, bh);
+      ctx.font = `6px ${FONT_PIX}`; ctx.textAlign = "left"; ctx.textBaseline = "top";
       ctx.fillText("TRICKSTER-KA", bx + 10, by + 4);
-      ctx.font = `8px ${FONT_TXT}`;
-      ctx.fillStyle = C.text;
+      ctx.font = `8px ${FONT_TXT}`; ctx.fillStyle = C.text;
       let left = shown;
-      lines.forEach((ln, i) => {
-        const part = ln.slice(0, Math.max(0, left));
-        left -= ln.length + 1;
-        ctx.fillText(part, bx + 10, by + 13 + i * 11);
-      });
+      lines.forEach((ln, i) => { ctx.fillText(ln.slice(0, Math.max(0, left)), bx + 10, by + 13 + i * 11); left -= ln.length + 1; });
       ctx.globalAlpha = 1;
     }
     if (R.hint && game.mode === "play") {
-      const h = R.hint;
-      const a = Math.min(1, h.t / 10, (h.dur - h.t) / 20);
+      const h = R.hint, a = Math.min(1, h.t / 10, (h.dur - h.t) / 20);
       ctx.globalAlpha = a;
-      ctx.font = `8px ${FONT_TXT}`;
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      const w = ctx.measureText(h.text).width + 16;
-      ctx.fillStyle = "rgba(6,10,8,0.75)";
-      const hy = R.say ? (R.sayBottom || 50) + 6 : 22;
-      ctx.fillRect((view.w - w) / 2, hy, w, 14);
-      ctx.fillStyle = C.hint;
-      ctx.fillText(h.text, view.w / 2, hy + 7);
+      ctx.font = `8px ${FONT_TXT}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const w = ctx.measureText(h.text).width + 16, hy = R.say ? (R.sayBottom || 50) + 6 : 22;
+      ctx.fillStyle = "rgba(6,10,8,0.78)"; ctx.fillRect((view.w - w) / 2, hy, w, 14);
+      ctx.fillStyle = C.hint; ctx.fillText(h.text, view.w / 2, hy + 7);
       ctx.globalAlpha = 1;
     }
   }
 
   function drawCard() {
-    const t = game.cardT;
+    const t = game.cardT, a = t < 64 ? 1 : 1 - (t - 64) / 16;
     const VW2 = view.w / 2, VH2 = view.h / 2;
-    const a = t < 60 ? 1 : 1 - (t - 60) / 15;
     ctx.globalAlpha = Math.max(0, a);
-    ctx.fillStyle = C.bg;
-    ctx.fillRect(0, 0, view.w, view.h);
-    const ty = TYPES[R.def.type];
+    ctx.fillStyle = P.bg; ctx.fillRect(0, 0, view.w, view.h);
+    const ty = TYPES[R.def.type], act = ACTS[R.def.act] || { nom: "" };
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.font = `8px ${FONT_PIX}`;
-    ctx.fillStyle = C.dim;
-    ctx.fillText(`ACTE 1  ·  SALLE ${R.index + 1} SUR ${ROOMS.length}`, VW2, VH2 - 30);
-    ctx.font = `16px ${FONT_PIX}`;
-    ctx.fillStyle = C.text;
-    ctx.fillText(R.def.name.toUpperCase(), VW2, VH2 - 6);
+    ctx.font = `8px ${FONT_PIX}`; ctx.fillStyle = C.dim;
+    ctx.fillText(`ACTE ${R.def.act + 1} · ${act.nom.toUpperCase()}  —  NIVEAU ${R.index + 1} SUR ${LEVELS.length}`, VW2, VH2 - 32);
+    ctx.font = `16px ${FONT_PIX}`; ctx.fillStyle = C.text;
+    ctx.fillText(R.def.name.toUpperCase(), VW2, VH2 - 8);
     ctx.font = `8px ${FONT_PIX}`;
     const lw = ctx.measureText(ty.label.toUpperCase()).width + 16;
-    ctx.fillStyle = ty.color;
-    ctx.fillRect((view.w - lw) / 2, VH2 + 16, lw, 14);
-    ctx.fillStyle = C.bg;
-    ctx.fillText(ty.label.toUpperCase(), VW2, VH2 + 23.5);
+    ctx.fillStyle = ty.color; ctx.fillRect(VW2 - lw / 2, VH2 + 14, lw, 14);
+    ctx.fillStyle = C.void; ctx.fillText(ty.label.toUpperCase(), VW2, VH2 + 21.5);
+    if (game.deathsByRoom[R.index] === 0 && progress.best[R.index] != null) {
+      ctx.fillStyle = C.dim; ctx.font = `8px ${FONT_TXT}`;
+      ctx.fillText(`Ton record : ${progress.best[R.index]} mort${progress.best[R.index] > 1 ? "s" : ""}`, VW2, VH2 + 44);
+    }
     ctx.globalAlpha = 1;
+  }
+
+  /* ================= Accueil : l'explorateur fuit le rocher ================= */
+  const homeDust = [];
+  function drawHome() {
+    const t = game.homeT;
+    const hs = canvas.height / 200;
+    ctx.setTransform(hs, 0, 0, hs, 0, 0);
+    const Wd = canvas.width / hs;
+    const cx = Wd > 300 ? Wd * 0.7 : Wd / 2;
+    const vy = 74, fw = 30, fh = 26;
+    ctx.translate(0, reducedMotion ? 0 : Math.sin(t * 0.55) * 0.8);
+
+    const far = { l: cx - fw, r: cx + fw, t: vy - fh, b: vy + fh };
+    const poly = (pts, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath(); ctx.fill(); };
+    poly([0, -4, Wd, -4, far.r, far.t, far.l, far.t], "#1d140c");
+    poly([0, 204, Wd, 204, far.r, far.b, far.l, far.b], "#3a2a18");
+    poly([0, -4, far.l, far.t, far.l, far.b, 0, 204], "#2a1d11");
+    poly([Wd, -4, far.r, far.t, far.r, far.b, Wd, 204], "#2a1d11");
+    ctx.fillStyle = "#070503"; ctx.fillRect(far.l, far.t, fw * 2, fh * 2);
+
+    const speed = reducedMotion ? 0 : 0.012;
+    ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 1;
+    for (let i = 0; i < 9; i++) {
+      const d = ((i / 9) + t * speed) % 1, e = d * d * d;
+      const yb = far.b + (204 - far.b) * e, yt = far.t + (-4 - far.t) * e;
+      const xl = far.l + (0 - far.l) * e, xr = far.r + (Wd - far.r) * e;
+      ctx.beginPath(); ctx.moveTo(xl, yb); ctx.lineTo(xr, yb); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xl, yt); ctx.lineTo(xl, yb); ctx.moveTo(xr, yt); ctx.lineTo(xr, yb); ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    for (let j = 1; j < 6; j++) {
+      const f = j / 6;
+      ctx.beginPath(); ctx.moveTo(0, -4 + 208 * f); ctx.lineTo(far.l, far.t + fh * 2 * f); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(Wd, -4 + 208 * f); ctx.lineTo(far.r, far.t + fh * 2 * f); ctx.stroke();
+    }
+    for (let i = 0; i < 4; i++) {
+      const d = ((i / 4) + t * speed + 0.12) % 1, e = d * d * d;
+      const side = i % 2 ? 1 : -1;
+      const x = side < 0 ? far.l + (0 - far.l) * e * 0.92 : far.r + (Wd - far.r) * e * 0.92;
+      const y = far.t + 14 + (40 - far.t - 14) * e;
+      const s = 0.25 + e * 2.2;
+      const fl = 1 + Math.sin(t * 0.7 + i * 2) * 0.15 + (reducedMotion ? 0 : Math.random() * 0.1);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 40 * s * fl);
+      g.addColorStop(0, "rgba(255,170,70,0.45)"); g.addColorStop(1, "rgba(255,120,40,0)");
+      ctx.fillStyle = g; ctx.fillRect(x - 40 * s * fl, y - 40 * s * fl, 80 * s * fl, 80 * s * fl);
+      ctx.fillStyle = "#4a3018"; ctx.fillRect(x - 1.2 * s, y, 2.4 * s, 10 * s);
+      ctx.fillStyle = "#ffb347"; ctx.beginPath(); ctx.ellipse(x, y - 3 * s, 3 * s * fl, 5 * s * fl, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff1b8"; ctx.beginPath(); ctx.ellipse(x, y - 2 * s, 1.4 * s, 2.6 * s, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    const bounce = reducedMotion ? 0 : Math.abs(Math.sin(t * 0.11)) * 4;
+    const br = 66, bx = cx, by = 108 - bounce;
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath(); ctx.ellipse(bx, 178, br * 0.9, 10, 0, 0, Math.PI * 2); ctx.fill();
+    const bg = ctx.createRadialGradient(bx - 22, by - 26, 8, bx, by, br);
+    bg.addColorStop(0, "#a48a63"); bg.addColorStop(0.6, "#6f5a3d"); bg.addColorStop(1, "#3a2c1c");
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.clip();
+    ctx.strokeStyle = "rgba(40,28,16,0.6)"; ctx.lineWidth = 3;
+    const roll = reducedMotion ? 0 : t * 0.05;
+    for (let i = 0; i < 6; i++) {
+      const phase = ((i / 6) * Math.PI * 2 + roll) % (Math.PI * 2);
+      if (Math.sin(phase) < 0) continue;
+      const yy = by + Math.cos(phase) * br, half = Math.sin(phase) * br * 0.8;
+      ctx.beginPath(); ctx.moveTo(bx - half, yy); ctx.quadraticCurveTo(bx + (i % 2 ? 12 : -12), yy + 6, bx + half * 0.7, yy - 3); ctx.stroke();
+    }
+    ctx.restore();
+    if (!reducedMotion && t % 3 === 0) homeDust.push({ x: bx + (Math.random() - 0.5) * br * 1.6, y: 176, vx: (Math.random() - 0.5) * 1.4, vy: -Math.random() * 1.2, life: 40 });
+    for (const d of homeDust) { d.x += d.vx; d.y += d.vy; d.vy += 0.02; d.life--; ctx.fillStyle = `rgba(170,140,100,${Math.max(0, d.life / 80)})`; ctx.fillRect(d.x, d.y, 3, 3); }
+    while (homeDust.length && homeDust[0].life <= 0) homeDust.shift();
+
+    drawRunner(cx, 198, t);
+
+    const vg = ctx.createRadialGradient(cx, 110, 40, cx, 110, Wd * 0.8);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.7)");
+    ctx.fillStyle = vg; ctx.fillRect(0, -4, Wd, 208);
+    const lg = ctx.createLinearGradient(0, 0, Wd * 0.55, 0);
+    lg.addColorStop(0, "rgba(10,6,3,0.85)"); lg.addColorStop(1, "rgba(10,6,3,0)");
+    ctx.fillStyle = lg; ctx.fillRect(0, -4, Wd * 0.55, 208);
+  }
+
+  // L'explorateur vu de face, en gros pixels (u = taille d'un pixel)
+  function drawRunner(cx, feetY, t) {
+    const u = 3.5;
+    const cyc = reducedMotion ? 0 : t * 0.32;
+    const s = Math.sin(cyc), bob = Math.abs(Math.cos(cyc)) * 2.2;
+    const ox = cx - 8 * u, oy = feetY - 30 * u - bob * u * 0.5;
+    const px = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(ox + x * u, oy + y * u, w * u, h * u); };
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath(); ctx.ellipse(cx, feetY, 9 * u, 1.6 * u, 0, 0, Math.PI * 2); ctx.fill();
+    const lUp = s > 0, liftL = lUp ? Math.round(s * 3) : 0, liftR = !lUp ? Math.round(-s * 3) : 0;
+    px(4, 20, 3, 6 - liftL, C.pants); px(9, 20, 3, 6 - liftR, C.pants);
+    px(3.5, 26 - liftL, 4, 2 + (lUp ? 1 : 0), C.boots); px(8.5, 26 - liftR, 4, 2 + (!lUp ? 1 : 0), C.boots);
+    px(3, 12, 10, 8, C.jacket);
+    px(6, 12, 4, 7, C.shirt);
+    px(3, 12, 1, 8, C.jacketHi);
+    px(4, 19, 8, 1, C.fedoraBand);
+    px(7.5, 19, 1, 1, C.hat);
+    for (let i = 0; i < 6; i++) px(4 + i, 12 + i, 1, 1, C.satchel);
+    px(10, 17, 3, 3, C.satchel);
+    px(2, 18, 1, 2, C.whip); px(1, 19, 1, 1, C.whip);
+    const aL = Math.round(-s * 2.5), aR = Math.round(s * 2.5);
+    px(1, 12 + aL, 2, 5, C.jacket); px(1, 17 + aL, 2, 2, C.skin);
+    px(13, 12 + aR, 2, 5, C.jacket); px(13, 17 + aR, 2, 2, C.skin);
+    px(4, 5, 8, 7, C.skin);
+    px(4, 11, 8, 1, C.skinDark);
+    px(5, 7, 2, 2, "#ffffff"); px(9, 7, 2, 2, "#ffffff");
+    px(6, 8, 1, 1, C.void); px(9, 8, 1, 1, C.void);
+    px(5, 6, 2, 0.6, C.fedoraBand); px(9, 6, 2, 0.6, C.fedoraBand);
+    px(7, 9.5, 2, 1.6 + Math.abs(s) * 0.6, "#3a1a10");
+    const hatLift = reducedMotion ? 0 : Math.max(0, Math.sin(cyc * 0.5)) * 1.2;
+    px(0, 4 - hatLift, 16, 1.5, C.fedora);
+    px(3, 0.5 - hatLift, 10, 3.5, C.fedora);
+    px(3, 3 - hatLift, 10, 1, C.fedoraBand);
+    px(4, 0 - hatLift, 8, 0.8, C.fedoraTop);
+    if (!reducedMotion) {
+      const k = (t % 50) / 50;
+      ctx.fillStyle = "#bfe6ff";
+      ctx.beginPath(); ctx.arc(ox + (2 - k * 4) * u, oy + (6 - k * 3 + k * k * 6) * u, 0.9 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ox + (14 + k * 4) * u, oy + (5 - k * 2 + k * k * 6) * u, 0.8 * u, 0, Math.PI * 2); ctx.fill();
+    }
   }
 
   /* ================= Interface DOM ================= */
   const overlays = {
     titre: document.getElementById("ecran-titre"),
+    niveaux: document.getElementById("ecran-niveaux"),
     pause: document.getElementById("ecran-pause"),
     fin: document.getElementById("ecran-fin"),
   };
@@ -1253,35 +1305,92 @@
     updateMuteLabel();
   }
   function updateMuteLabel() {
-    document.querySelectorAll("[data-son]").forEach((b) => {
-      b.textContent = muted ? "Son : coupé" : "Son : activé";
-      b.setAttribute("aria-pressed", String(!muted));
+    document.querySelectorAll("[data-son]").forEach((b) => { b.textContent = muted ? "Son : coupé" : "Son : activé"; b.setAttribute("aria-pressed", String(!muted)); });
+  }
+
+  const QUOTES = [
+    "« Aucun aventurier n'a été maltraité pendant ce jeu. C'est faux. »",
+    "« Le sol est solide. Enfin, la plupart du temps. »",
+    "« J'adore les visiteurs. Surtout quand ils tombent. »",
+    "« Gérard, mon rocher, ne roule que pour toi. »",
+    "« Il y a une porte au bout. Elle bouge un peu. »",
+    "« Ce temple se souvient de chacune de tes morts. Il les trouve drôles. »",
+  ];
+  let quoteI = 0;
+  function refreshHome() {
+    const u = progress.unlocked;
+    const btn = document.getElementById("btn-jouer");
+    btn.textContent = progress.finished ? "Rejouer depuis le début" : u > 0 ? `Continuer · niveau ${u + 1}` : "Entrer dans le temple";
+    btn.dataset.level = progress.finished ? 0 : u;
+    document.getElementById("accueil-stats").textContent = u > 0 || progress.deaths
+      ? `Niveau ${Math.min(u + 1, LEVELS.length)} sur ${LEVELS.length} · ${progress.deaths} mort${progress.deaths > 1 ? "s" : ""} au compteur`
+      : `${LEVELS.length} niveaux · 5 actes · un dieu farceur`;
+  }
+  setInterval(() => {
+    if (overlays.titre.hidden) return;
+    quoteI = (quoteI + 1) % QUOTES.length;
+    const q = document.getElementById("accueil-citation");
+    q.classList.add("fondu");
+    setTimeout(() => { q.textContent = QUOTES[quoteI]; q.classList.remove("fondu"); }, 350);
+  }, 5000);
+
+  function buildLevelGrid() {
+    const box = document.getElementById("liste-niveaux");
+    box.innerHTML = "";
+    ACTS.forEach((act, a) => {
+      const sec = document.createElement("section");
+      sec.className = "acte";
+      const h = document.createElement("h3");
+      h.innerHTML = `<span>Acte ${a + 1}</span> ${act.nom}`;
+      sec.appendChild(h);
+      const grid = document.createElement("div");
+      grid.className = "grille";
+      LEVELS.forEach((lv, i) => {
+        if (lv.act !== a) return;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "case";
+        const locked = i > progress.unlocked;
+        b.disabled = locked;
+        b.style.setProperty("--type", TYPES[lv.type].color);
+        const best = progress.best[i];
+        b.innerHTML = `<b>${i + 1}</b><small>${locked ? "fermé" : best != null ? `☠ ${best}` : "nouveau"}</small>`;
+        b.title = `${lv.name} · ${TYPES[lv.type].label}`;
+        b.setAttribute("aria-label", `Niveau ${i + 1}, ${lv.name}${locked ? ", verrouillé" : ""}`);
+        b.addEventListener("click", () => playFrom(i));
+        grid.appendChild(b);
+      });
+      sec.appendChild(grid);
+      box.appendChild(sec);
     });
   }
 
-  function fmtTime(frames) {
-    const s = Math.floor(frames / 60);
-    return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`;
-  }
-
+  function fmtTime(frames) { const s = Math.floor(frames / 60); return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`; }
   function showEnd() {
-    document.getElementById("fin-morts").textContent = String(game.totalDeaths);
+    document.getElementById("fin-morts").textContent = String(progress.deaths);
     document.getElementById("fin-temps").textContent = fmtTime(game.timer);
-    const worst = game.deathsByRoom.indexOf(Math.max(...game.deathsByRoom));
-    document.getElementById("fin-pire").textContent =
-      game.totalDeaths ? `${ROOMS[worst].name} (${game.deathsByRoom[worst]} morts)` : "aucune, bravo";
-    document.getElementById("fin-mot").textContent = game.totalDeaths === 0
-      ? "« Zéro mort ? Tu as triché. C'est mon métier, pas le tien. »"
-      : game.totalDeaths < 8
-        ? "« Pas mal. L'acte 2 sera moins gentil. »"
-        : "« Merci pour toutes ces chutes. J'ai beaucoup ri. »";
+    const arr = game.deathsByRoom, mx = Math.max(...arr), worst = arr.indexOf(mx);
+    document.getElementById("fin-pire").textContent = mx > 0 ? `${LEVELS[worst].name} (${mx})` : "aucune, bravo";
+    document.getElementById("fin-mot").textContent = progress.deaths < 50
+      ? "« Moins de 50 morts ? Tu as triché. C'est mon métier, pas le tien. »"
+      : "« Merci pour toutes ces chutes. C'était le plus beau jour de ma vie de dieu. »";
     showOverlay("fin");
   }
 
+  document.getElementById("btn-jouer").addEventListener("click", (e) => playFrom(Number(e.currentTarget.dataset.level || 0)));
+  document.getElementById("btn-niveaux").addEventListener("click", () => { buildLevelGrid(); showOverlay("niveaux"); });
+  document.getElementById("btn-retour-niveaux").addEventListener("click", () => { showOverlay("titre"); refreshHome(); });
+  document.getElementById("btn-reprendre").addEventListener("click", togglePause);
+  document.getElementById("btn-recommencer").addEventListener("click", () => { game.paused = false; restartRoom(); });
+  document.getElementById("btn-accueil").addEventListener("click", goHome);
+  document.getElementById("btn-fin-accueil").addEventListener("click", goHome);
+  document.getElementById("btn-pause").addEventListener("click", togglePause);
+  document.querySelectorAll("[data-son]").forEach((b) => b.addEventListener("click", toggleMute));
+  updateMuteLabel();
+
   /* ---------- Plein écran ---------- */
   const root = document.documentElement;
-  const fsSupported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) &&
-    !!(root.requestFullscreen || root.webkitRequestFullscreen);
+  const fsSupported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && !!(root.requestFullscreen || root.webkitRequestFullscreen);
   const standalone = matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches || navigator.standalone === true;
   const inFrame = (() => { try { return window.self !== window.top; } catch (_) { return true; } })();
   const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -1292,36 +1401,22 @@
       Promise.resolve(r).then(() => screen.orientation?.lock?.("landscape")).catch(() => {});
     } catch (_) {}
   }
-  function toggleFullscreen() {
-    if (isFs()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    else enterFullscreen();
-  }
-  document.querySelectorAll("[data-plein]").forEach((b) => {
-    b.hidden = !fsSupported || standalone;
-    b.addEventListener("click", toggleFullscreen);
-  });
+  function toggleFullscreen() { if (isFs()) (document.exitFullscreen || document.webkitExitFullscreen).call(document); else enterFullscreen(); }
+  document.querySelectorAll("[data-plein]").forEach((b) => { b.hidden = !fsSupported || standalone; b.addEventListener("click", toggleFullscreen); });
   const astuce = document.getElementById("astuce-plein");
   if (astuce && !fsSupported && !standalone) {
     astuce.hidden = false;
     astuce.textContent = inFrame
-      ? "Le plein écran n'est pas disponible dans cet aperçu. Il le sera dans la version installée sur l'écran d'accueil."
-      : "Plein écran : touche Partager, puis « Sur l'écran d'accueil », et lance le jeu depuis l'icône.";
+      ? "Plein écran indisponible dans cet aperçu : il le sera dans la version installée."
+      : "Plein écran : Partager, puis « Sur l'écran d'accueil ».";
   }
   ["fullscreenchange", "webkitfullscreenchange"].forEach((ev) => document.addEventListener(ev, () => setTimeout(resize, 50)));
-
-  document.getElementById("btn-jouer").addEventListener("click", () => { if (isTouch) enterFullscreen(); startGame(); });
-  document.getElementById("btn-rejouer").addEventListener("click", startGame);
-  document.getElementById("btn-reprendre").addEventListener("click", togglePause);
-  document.getElementById("btn-recommencer").addEventListener("click", () => { game.paused = false; restartRoom(); });
-  document.getElementById("btn-pause").addEventListener("click", togglePause);
-  document.querySelectorAll("[data-son]").forEach((b) => b.addEventListener("click", toggleMute));
-  updateMuteLabel();
 
   const orient = document.getElementById("tourner");
   function checkOrientation() {
     const portrait = isTouch && window.innerHeight > window.innerWidth;
     orient.hidden = !portrait;
-    if (portrait && game.mode !== "title" && game.mode !== "end" && !game.paused) togglePause();
+    if (portrait && (game.mode === "play" || game.mode === "card") && !game.paused) togglePause();
   }
 
   /* ================= Boucle ================= */
@@ -1335,31 +1430,24 @@
   }
 
   function boot(saved) {
-    if (saved && typeof saved.roomIndex === "number" && saved.mode && saved.mode !== "title") {
-      Object.assign(game, { deathsByRoom: saved.deathsByRoom, totalDeaths: saved.totalDeaths, ammo: saved.entryAmmo, timer: saved.timer });
-      enterRoom(saved.roomIndex);
-      showOverlay(null);
-    } else showOverlay("titre");
-    window.claude?.hot?.snapshot?.(() => ({
-      roomIndex: game.roomIndex, mode: game.mode, deathsByRoom: game.deathsByRoom,
-      totalDeaths: game.totalDeaths, entryAmmo: game.entryAmmo, timer: game.timer,
-    }));
     window.addEventListener("resize", resize);
     resize();
+    if (saved && typeof saved.level === "number" && saved.mode && saved.mode !== "title" && saved.mode !== "end") {
+      game.deathsByRoom = saved.deathsByRoom || game.deathsByRoom;
+      startLevel(saved.level);
+      showOverlay(null);
+    } else { showOverlay("titre"); refreshHome(); }
+    window.claude?.hot?.snapshot?.(() => ({ level: game.level, mode: game.mode, deathsByRoom: game.deathsByRoom }));
     requestAnimationFrame(frame);
   }
-
   const start = (data) => boot(data || null);
+  function go() { window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {}); }
   if (document.fonts && document.fonts.load) {
     Promise.race([
       Promise.all([document.fonts.load(`8px "Silkscreen"`), document.fonts.load(`8px "JetBrains Mono"`)]),
       new Promise((r) => setTimeout(r, 1200)),
     ]).catch(() => {}).finally(go);
   } else go();
-  function go() {
-    window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
-  }
 
-  // exposé pour les tests automatisés
-  window.__temple = { game, get room() { return R; }, ROOMS, input, pressed, startGame, enterRoom };
+  window.__temple = { game, get room() { return R; }, LEVELS, input, pressed, startLevel, playFrom, progress };
 })();

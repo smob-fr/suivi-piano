@@ -10,23 +10,26 @@
 <!--CONTENU-->
 <title>Le Temple qui Triche</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="theme-color" content="#0d1512">
+<meta name="theme-color" content="#0d0906">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Special+Elite&family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-  /* Une seule scène noire-jade, plein écran, en paysage. Le jeu est un écran unique,
-     les menus sont des panneaux posés dessus. Choix volontaire d'un seul thème sombre. */
+  /* Affiche de film d'aventure : torche, pierre, or vieilli. Une seule ambiance sombre et chaude,
+     volontairement sans thème clair. Le jeu occupe tout l'écran, les menus sont posés dessus. */
   :root {
-    --fond: #0d1512;
-    --fond-2: #13201b;
-    --pierre: #3a5649;
-    --texte: #efe8d8;
-    --terne: #8aa398;
-    --or: #d9a441;
-    --danger: #e5483c;
+    --nuit: #0d0906;
+    --pierre: #3a2a18;
+    --parchemin: #ecdcb4;
+    --or: #e2a640;
+    --or-fonce: #8a5a1c;
+    --sang: #c8432f;
+    --texte: #f1e6cc;
+    --terne: #b8a682;
+    --f-titre: "Alfa Slab One", "Rockwell", Georgia, serif;
+    --f-carnet: "Special Elite", "Courier New", monospace;
     --f-pix: "Silkscreen", "Courier New", monospace;
     --f-txt: "JetBrains Mono", ui-monospace, "Courier New", monospace;
     color-scheme: dark;
@@ -34,122 +37,134 @@
   [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
-    margin: 0;
-    background: var(--fond);
-    color: var(--texte);
-    font-family: var(--f-txt);
-    overflow: hidden;
-    touch-action: none;
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    overscroll-behavior: none;
+    margin: 0; background: var(--nuit); color: var(--texte); font-family: var(--f-txt);
+    overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
   }
-  #cadre {
-    position: fixed; inset: 0;
-    display: grid; place-items: center;
-    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
-  }
+  #cadre { position: fixed; inset: 0; display: grid; place-items: center; }
   #zone { width: 100%; height: 100%; display: grid; place-items: center; min-width: 0; }
   #scene { position: relative; }
-  #jeu { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-
+  #jeu { display: block; width: 100%; height: 100%; }
   button { font: inherit; color: inherit; }
   :focus-visible { outline: 2px solid var(--or); outline-offset: 3px; }
 
   #btn-pause {
-    position: fixed;
-    top: calc(env(safe-area-inset-top, 0px) + 6px);
-    right: calc(env(safe-area-inset-right, 0px) + 8px);
-    width: 46px; height: 40px;
-    border: 1px solid rgba(239,232,216,.25); border-radius: 6px;
-    background: rgba(6,10,8,.6);
-    display: none; place-items: center; cursor: pointer;
-    z-index: 5;
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px); right: calc(env(safe-area-inset-right, 0px) + 8px);
+    width: 46px; height: 40px; border: 1px solid rgba(241,230,204,.25); border-radius: 6px;
+    background: rgba(6,8,6,.6); display: none; place-items: center; cursor: pointer; z-index: 5;
   }
   #btn-pause span { display: block; width: 12px; height: 12px; border-left: 4px solid var(--texte); border-right: 4px solid var(--texte); box-sizing: border-box; }
   body.en-jeu #btn-pause { display: grid; }
 
   /* ---------- Contrôles tactiles ---------- */
-  .pad { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); display: none; gap: 10px; z-index: 4; }
+  .pad { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); display: none; gap: 8px; z-index: 4; }
   body.tactile.en-jeu .pad { display: flex; }
-  .pad.gauche { left: calc(env(safe-area-inset-left, 0px) + 10px); gap: 8px; }
-  .pad.droite {
-    right: calc(env(safe-area-inset-right, 0px) + 10px);
-    display: none; grid-template-columns: 56px 56px; gap: 8px; justify-items: center;
-  }
+  .pad.gauche { left: calc(env(safe-area-inset-left, 0px) + 10px); }
+  .pad.droite { right: calc(env(safe-area-inset-right, 0px) + 10px); grid-template-columns: 56px 56px; justify-items: center; }
   body.tactile.en-jeu .pad.droite { display: grid; }
   .pad.droite .saut { grid-column: 1 / -1; justify-self: end; }
   .touche {
-    width: 56px; height: 56px; border-radius: 50%;
-    border: 2px solid rgba(239,232,216,.28);
-    background: rgba(6,10,8,.28);
-    display: grid; place-items: center;
-    font-family: var(--f-pix); font-size: 11px; letter-spacing: .06em;
-    color: rgba(239,232,216,.85);
-    touch-action: none;
-    transition: background .06s, transform .06s;
+    width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(241,230,204,.28);
+    background: rgba(6,8,6,.28); display: grid; place-items: center;
+    font-family: var(--f-pix); font-size: 11px; letter-spacing: .06em; color: rgba(241,230,204,.85);
+    touch-action: none; transition: background .06s, transform .06s;
   }
-  .touche.on { background: rgba(217,164,65,.35); border-color: var(--or); transform: scale(.94); }
+  .touche.on { background: rgba(226,166,64,.35); border-color: var(--or); transform: scale(.94); }
   .touche.saut { width: 72px; height: 72px; }
-  .touche.tnt { color: var(--danger); }
+  .touche.tnt { color: var(--sang); }
   .fleche { width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; }
   .fleche.g { border-right: 16px solid currentColor; margin-right: 4px; }
   .fleche.d { border-left: 16px solid currentColor; margin-left: 4px; }
 
   /* ---------- Panneaux ---------- */
   .panneau {
-    position: fixed; inset: 0; z-index: 10;
-    display: grid; place-items: center;
+    position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
     padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
-    padding-left: max(16px, env(safe-area-inset-left, 0px));
-    padding-right: max(16px, env(safe-area-inset-right, 0px));
-    background: rgba(13,21,18,.9);
-    overflow-y: auto;
-    touch-action: pan-y;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(13,9,6,.88); overflow-y: auto; touch-action: pan-y;
   }
-  .carte { width: min(100%, 560px); display: grid; gap: 14px; }
+  .carte { width: min(100%, 580px); display: grid; gap: 14px; }
   .surtitre { font-family: var(--f-pix); font-size: 12px; letter-spacing: .14em; color: var(--terne); margin: 0; }
-  h1 {
-    font-family: var(--f-pix); font-weight: 700;
-    font-size: clamp(28px, 7vw, 54px); line-height: .95;
-    margin: 0; text-wrap: balance; letter-spacing: .01em;
-  }
-  h1 em { font-style: normal; color: var(--or); }
-  h2 { font-family: var(--f-pix); font-size: 26px; margin: 0; }
+  h2 { font-family: var(--f-titre); font-weight: 400; font-size: 30px; margin: 0; color: var(--or); letter-spacing: .01em; }
   .recit { margin: 0; color: var(--terne); line-height: 1.55; font-size: 15px; max-width: 60ch; }
-  .recit strong { color: var(--texte); font-weight: 600; }
   .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   .bouton {
-    font-family: var(--f-pix); font-size: 14px; letter-spacing: .08em;
-    padding: 12px 22px; border-radius: 4px; cursor: pointer;
-    border: 2px solid var(--or); background: var(--or); color: var(--fond);
+    font-family: var(--f-titre); font-size: 17px; letter-spacing: .03em; padding: 12px 22px; border-radius: 3px; cursor: pointer;
+    border: 2px solid #f3c66b; color: #2a1606;
+    background: linear-gradient(#f4c76c, #d38f2c);
+    box-shadow: 0 3px 0 #6e4313, 0 6px 14px rgba(0,0,0,.45);
+    text-shadow: 0 1px 0 rgba(255,235,190,.6);
   }
-  .bouton.discret { background: transparent; color: var(--texte); border-color: rgba(239,232,216,.3); }
-  .types { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--terne); }
-  .types li { display: flex; align-items: center; gap: 6px; }
-  .types i { width: 8px; height: 8px; display: inline-block; }
-  .clavier { font-size: 13px; color: var(--terne); margin: 0; line-height: 1.6; }
-  .clavier kbd { font-family: var(--f-txt); color: var(--texte); border: 1px solid rgba(239,232,216,.25); border-radius: 3px; padding: 0 4px; }
+  .bouton:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e4313; }
+  .bouton.discret { font-family: var(--f-carnet); font-size: 15px; background: rgba(236,220,180,.08); color: var(--parchemin); border-color: rgba(236,220,180,.35); box-shadow: none; text-shadow: none; }
+
+  /* ---------- Accueil ---------- */
+  #ecran-titre { background: none; place-items: center start; padding-left: max(28px, env(safe-area-inset-left, 0px)); }
+  #ecran-titre .carte { width: min(100%, 470px); gap: 12px; }
+  .presente { font-family: var(--f-carnet); font-size: 15px; color: var(--terne); margin: 0; letter-spacing: .04em; }
+  .titre {
+    margin: 0; font-family: var(--f-titre); font-weight: 400; line-height: .9; text-wrap: balance;
+    transform: rotate(-3deg); transform-origin: left center;
+    color: #f5c463;
+    background: linear-gradient(180deg, #fff0b8 0%, #f2b94a 45%, #b9711f 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 0 #5a3410) drop-shadow(0 4px 0 #3a210a) drop-shadow(0 10px 14px rgba(0,0,0,.7));
+  }
+  .titre .l1 { display: block; font-size: clamp(30px, 5.2vw, 56px); letter-spacing: .02em; }
+  .titre .l2 { display: block; font-size: clamp(44px, 8.6vw, 92px); letter-spacing: .01em; }
+  .citation-accueil { margin: 6px 0 0; font-family: var(--f-carnet); font-size: 16px; color: var(--parchemin); max-width: 36ch; line-height: 1.4; transition: opacity .35s; min-height: 2.8em; }
+  .citation-accueil.fondu { opacity: 0; }
+  .signature { display: block; font-size: 13px; color: var(--or); margin-top: 2px; }
+  .stats-accueil { margin: 0; font-family: var(--f-carnet); font-size: 13px; color: var(--terne); }
+  .astuce { margin: 0; font-size: 12px; color: var(--terne); border-left: 2px solid var(--or); padding-left: 10px; }
+  .clavier { font-size: 12px; color: var(--terne); margin: 0; line-height: 1.6; }
+  .clavier kbd { font-family: var(--f-txt); color: var(--texte); border: 1px solid rgba(241,230,204,.25); border-radius: 3px; padding: 0 4px; }
   body.tactile .clavier { display: none; }
+
+  /* ---------- Choix du niveau ---------- */
+  #ecran-niveaux { place-items: start center; }
+  #ecran-niveaux .carte { width: min(100%, 640px); }
+  .entete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .acte { display: grid; gap: 8px; }
+  .acte h3 { margin: 0; font-family: var(--f-titre); font-weight: 400; font-size: 18px; color: var(--parchemin); }
+  .acte h3 span { font-family: var(--f-pix); font-size: 11px; color: var(--or); letter-spacing: .12em; margin-right: 6px; }
+  .grille { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
+  .case {
+    aspect-ratio: 1; max-width: 100%; min-width: 0; padding: 0; border-radius: 4px; cursor: pointer;
+    border: 1px solid rgba(236,220,180,.25); border-bottom: 3px solid var(--type);
+    background: rgba(236,220,180,.06); display: grid; place-content: center; gap: 1px;
+  }
+  .case b { font-family: var(--f-pix); font-size: 15px; font-weight: 400; color: var(--texte); }
+  .case small { font-size: 9px; color: var(--terne); font-variant-numeric: tabular-nums; }
+  .case:disabled { opacity: .35; cursor: not-allowed; border-bottom-color: rgba(236,220,180,.2); }
+  .case:not(:disabled):hover { background: rgba(226,166,64,.18); }
+  .legende { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--terne); }
+  .legende li { display: flex; align-items: center; gap: 6px; }
+  .legende i { width: 10px; height: 3px; display: inline-block; }
+  #liste-niveaux { display: grid; gap: 14px; }
+
   .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
   .stats div { border-top: 2px solid var(--pierre); padding-top: 8px; min-width: 0; }
   .stats dt { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--terne); }
   .stats dd { margin: 4px 0 0; font-family: var(--f-pix); font-size: 15px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .citation { margin: 0; color: var(--or); font-size: 15px; }
-  .astuce { margin: 0; font-size: 13px; color: var(--terne); border-left: 2px solid var(--or); padding-left: 10px; }
+  .citation { margin: 0; color: var(--or); font-size: 16px; font-family: var(--f-carnet); }
 
   #tourner {
-    position: fixed; inset: 0; z-index: 20;
-    display: grid; place-items: center; text-align: center;
-    padding-left: max(16px, env(safe-area-inset-left, 0px));
-    padding-right: max(16px, env(safe-area-inset-right, 0px));
-    background: var(--fond);
+    position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; text-align: center;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: var(--nuit);
   }
   #tourner .tel { width: 44px; height: 72px; border: 3px solid var(--or); border-radius: 8px; margin: 0 auto 18px; animation: pivot 2s ease-in-out infinite; }
   @keyframes pivot { 0%, 30% { transform: rotate(0) } 60%, 100% { transform: rotate(-90deg) } }
-  @media (prefers-reduced-motion: reduce) { #tourner .tel { animation: none; transform: rotate(-90deg); } .touche { transition: none; } }
-  @media (max-height: 420px) { .carte { gap: 10px; } h1 { font-size: 34px; } .recit { font-size: 14px; } }
+  @media (prefers-reduced-motion: reduce) { #tourner .tel { animation: none; transform: rotate(-90deg); } .touche, .citation-accueil { transition: none; } }
+  @media (max-height: 430px) {
+    #ecran-titre .carte { gap: 8px; }
+    .titre .l1 { font-size: 30px; } .titre .l2 { font-size: 50px; }
+    .citation-accueil { font-size: 14px; min-height: 2.6em; }
+    .bouton { font-size: 15px; padding: 10px 16px; }
+    .bouton.discret { font-size: 13px; padding: 9px 12px; }
+  }
+  @media (max-width: 560px) { .grille { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 </style>
 
 <div id="cadre">
@@ -172,33 +187,46 @@
 
 <section id="ecran-titre" class="panneau">
   <div class="carte">
-    <p class="surtitre">ACTE 1 · L'ENTRÉE DU TEMPLE · PROTOTYPE</p>
-    <h1>Le Temple<br>qui <em>Triche</em></h1>
-    <p class="recit">Un aventurier entre dans le temple de <strong>Trickster-Ka</strong>, dieu des farces.
-      Les pièges ne sont jamais deux fois les mêmes : le temple se souvient de chacune de tes morts.</p>
-    <ul class="types">
+    <p class="presente">Trickster-Ka, dieu des farces, présente</p>
+    <h1 class="titre"><span class="l1">Le Temple</span><span class="l2">qui Triche</span></h1>
+    <p class="citation-accueil" id="accueil-citation">« Aucun aventurier n'a été maltraité pendant ce jeu. C'est faux. »</p>
+    <div class="actions">
+      <button id="btn-jouer" class="bouton" type="button" data-level="0">Entrer dans le temple</button>
+      <button id="btn-niveaux" class="bouton discret" type="button">Niveaux</button>
+      <button class="bouton discret" type="button" data-plein>Plein écran</button>
+      <button class="bouton discret" type="button" data-son>Son : activé</button>
+    </div>
+    <p class="stats-accueil" id="accueil-stats">50 niveaux · 5 actes · un dieu farceur</p>
+    <p class="astuce" id="astuce-plein" hidden></p>
+    <p class="clavier"><kbd>←</kbd> <kbd>→</kbd> courir · <kbd>↑</kbd> sauter · <kbd>X</kbd> tirer · <kbd>C</kbd> dynamite · <kbd>R</kbd> recommencer · <kbd>Échap</kbd> pause</p>
+  </div>
+</section>
+
+<section id="ecran-niveaux" class="panneau" hidden>
+  <div class="carte">
+    <div class="entete">
+      <h2>Carte du temple</h2>
+      <button id="btn-retour-niveaux" class="bouton discret" type="button">Retour</button>
+    </div>
+    <ul class="legende">
       <li><i style="background:#6fb58f"></i>Exploration</li>
       <li><i style="background:#e5483c"></i>Trahison</li>
       <li><i style="background:#e3913b"></i>Action</li>
       <li><i style="background:#b49ae6"></i>Histoire</li>
+      <li>☠ = ton record de morts</li>
     </ul>
-    <div class="actions">
-      <button id="btn-jouer" class="bouton" type="button">Entrer dans le temple</button>
-      <button class="bouton discret" type="button" data-plein>Plein écran</button>
-      <button class="bouton discret" type="button" data-son>Son : activé</button>
-    </div>
-    <p class="astuce" id="astuce-plein" hidden></p>
-    <p class="clavier"><kbd>←</kbd> <kbd>→</kbd> courir · <kbd>↑</kbd> ou <kbd>Espace</kbd> sauter · <kbd>X</kbd> tirer · <kbd>C</kbd> dynamite · <kbd>R</kbd> recommencer · <kbd>Échap</kbd> pause</p>
+    <div id="liste-niveaux"></div>
   </div>
 </section>
 
 <section id="ecran-pause" class="panneau" hidden>
   <div class="carte">
     <h2>Pause</h2>
-    <p class="recit">Recommencer la salle compte comme une mort. Le temple s'en souviendra.</p>
+    <p class="recit">Recommencer le niveau compte comme une mort. Le temple s'en souviendra.</p>
     <div class="actions">
       <button id="btn-reprendre" class="bouton" type="button">Reprendre</button>
-      <button id="btn-recommencer" class="bouton discret" type="button">Recommencer la salle</button>
+      <button id="btn-recommencer" class="bouton discret" type="button">Recommencer</button>
+      <button id="btn-accueil" class="bouton discret" type="button">Accueil</button>
       <button class="bouton discret" type="button" data-plein>Plein écran</button>
       <button class="bouton discret" type="button" data-son>Son : activé</button>
     </div>
@@ -207,16 +235,16 @@
 
 <section id="ecran-fin" class="panneau" hidden>
   <div class="carte">
-    <p class="surtitre">FIN DU PROTOTYPE · ACTE 1</p>
+    <p class="surtitre">LES 50 NIVEAUX SONT TERMINÉS</p>
     <h2>Tu es sorti du temple.</h2>
     <p class="citation" id="fin-mot"></p>
     <dl class="stats">
-      <div><dt>Morts</dt><dd id="fin-morts">0</dd></div>
-      <div><dt>Temps</dt><dd id="fin-temps">0 s</dd></div>
-      <div><dt>Salle la plus cruelle</dt><dd id="fin-pire">–</dd></div>
+      <div><dt>Morts au total</dt><dd id="fin-morts">0</dd></div>
+      <div><dt>Temps de la partie</dt><dd id="fin-temps">0 s</dd></div>
+      <div><dt>Niveau le plus cruel</dt><dd id="fin-pire">–</dd></div>
     </dl>
     <div class="actions">
-      <button id="btn-rejouer" class="bouton" type="button">Rejouer</button>
+      <button id="btn-fin-accueil" class="bouton" type="button">Retour à l'accueil</button>
     </div>
   </div>
 </section>
@@ -229,6 +257,7 @@
   </div>
 </div>
 
+<script src="levels.js"></script>
 <script src="game.js"></script>
 <!--/CONTENU-->
 </html>
