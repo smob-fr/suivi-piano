@@ -55,7 +55,7 @@
   }
   #btn-pause span { display: block; width: 12px; height: 12px; border-left: 4px solid var(--texte); border-right: 4px solid var(--texte); box-sizing: border-box; }
   body.en-jeu #btn-pause { display: grid; }
-  #btn-passer {
+  #btn-passer, #btn-amulette {
     position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
     bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
     font-family: var(--f-carnet); font-size: 14px; color: #2a1606; cursor: pointer;
@@ -64,9 +64,16 @@
     animation: invite 1.6s ease-in-out infinite;
   }
   #btn-passer b { font-family: var(--f-titre); font-weight: 400; margin-left: 4px; }
-  body:not(.en-jeu) #btn-passer { display: none; }
+  #btn-amulette { background: linear-gradient(#6fe0a8, #2a9a62); border-color: #a8f0cc; color: #062414; box-shadow: 0 3px 0 #145034, 0 6px 14px rgba(0,0,0,.45); }
+  body:not(.en-jeu) #btn-passer, body:not(.en-jeu) #btn-amulette { display: none; }
   @keyframes invite { 0%, 100% { transform: translateX(-50%) scale(1) } 50% { transform: translateX(-50%) scale(1.05) } }
-  @media (prefers-reduced-motion: reduce) { #btn-passer { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { #btn-passer, #btn-amulette { animation: none; } }
+  .compte-relance { font-family: var(--f-pix); font-size: 28px; color: var(--or); margin: 0; }
+  .offres { display: grid; gap: 10px; }
+  .offre { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid rgba(236,220,180,.25); border-radius: 6px; background: rgba(236,220,180,.05); }
+  .offre p { margin: 0; font-size: 14px; color: var(--parchemin); min-width: 0; }
+  .offre small { display: block; color: var(--terne); font-size: 12px; }
+  .solde { margin: 0; font-family: var(--f-pix); font-size: 15px; color: var(--jade, #3fd08a); }
   .ecran-video { position: relative; aspect-ratio: 16 / 9; max-height: 34vh; width: 100%; border-radius: 6px; background: linear-gradient(135deg, #1d140c, #3a2a18); display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(236,220,180,.25); }
   .pub-demo { margin: 0; padding: 0 18px; text-align: center; font-size: 13px; color: var(--terne); max-width: 40ch; }
   .pub-compte { position: absolute; right: 10px; bottom: 6px; margin: 0; font-family: var(--f-pix); font-size: 18px; color: var(--or); }
@@ -236,7 +243,8 @@
 </div>
 
 <button id="btn-pause" type="button" aria-label="Pause"><span></span></button>
-<button id="btn-passer" type="button" hidden>Bloqué ? Passer ce niveau <b>▶ vidéo</b></button>
+<button id="btn-passer" class="pilule" type="button" hidden>Toujours bloqué ? Passer ce niveau <b>▶ vidéo</b></button>
+<button id="btn-amulette" class="pilule jade" type="button" hidden>✦ Activer une amulette</button>
 
 <div class="pad gauche" aria-hidden="true">
   <div class="touche" data-btn="left"><span class="fleche g"></span></div>
@@ -268,6 +276,7 @@
       <button id="btn-niveaux" class="bouton" type="button">Carte des niveaux</button>
       <button class="bouton discret" type="button" data-avis>Donner mon avis</button>
       <button id="btn-stats" class="bouton discret" type="button">Mes statistiques</button>
+      <button class="bouton discret" type="button" data-boutique>Boutique ✦</button>
       <button class="bouton discret" type="button" data-son>Son : activé</button>
       <button class="bouton discret" type="button" data-plein>Plein écran</button>
     </div>
@@ -367,6 +376,51 @@
   </div>
 </section>
 
+<section id="ecran-relance" class="panneau" hidden>
+  <div class="carte">
+    <p class="surtitre">TU Y ÉTAIS PRESQUE !</p>
+    <h2>Repartir d'ici ?</h2>
+    <p class="recit">Max repart juste avant sa chute, protégé par une amulette de jade (2 coups absorbés).</p>
+    <p class="compte-relance" id="relance-compte" aria-live="polite">4</p>
+    <div class="actions">
+      <button id="btn-relance-amulette" class="bouton" type="button">✦ Oui, avec une amulette</button>
+      <button id="btn-relance-video" class="bouton discret" type="button">▶ Oui, avec une vidéo</button>
+      <button id="btn-relance-non" class="bouton discret" type="button">Non, je recommence</button>
+    </div>
+  </div>
+</section>
+
+<section id="ecran-boutique" class="panneau" hidden>
+  <div class="carte">
+    <div class="entete">
+      <h2>Boutique ✦</h2>
+      <button id="btn-retour-boutique" class="bouton discret" type="button">Retour</button>
+    </div>
+    <p class="solde" id="boutique-solde">0 pièces · 0 amulettes</p>
+    <p class="recit">Une amulette de jade absorbe 2 coups dans un niveau (pas les chutes dans le vide). Tu peux l'activer après quelques chutes, ou t'en servir pour repartir de l'endroit où tu es tombé.</p>
+    <div class="offres">
+      <div class="offre"><p>Échanger tes pièces d'or<small>Ramasse-les dans les niveaux</small></p><button id="btn-echange" class="bouton discret" type="button">Échanger 30 pièces → 1 amulette</button></div>
+      <div class="offre"><p>Regarder une vidéo<small>Gratuit</small></p><button id="btn-video-amulette" class="bouton discret" type="button">▶ +1 amulette</button></div>
+      <div class="offre"><p>10 amulettes de jade</p><button id="btn-pack-10" class="bouton" type="button">0,99 €</button></div>
+      <div class="offre"><p>Pack aventurier<small>40 amulettes + chapeau doré pour Max</small></p><button id="btn-pack-aventurier" class="bouton" type="button">2,99 €</button></div>
+    </div>
+    <p class="astuce" id="boutique-demo">Version de test : les achats et les vidéos sont simulés, rien n'est payé. Les vrais achats arriveront avec l'appli des stores.</p>
+    <p class="astuce" id="boutique-retour" hidden></p>
+  </div>
+</section>
+
+<section id="ecran-achat" class="panneau" hidden>
+  <div class="carte">
+    <p class="surtitre">ACHAT SIMULÉ · DÉMO</p>
+    <h2 id="achat-nom">10 amulettes de jade</h2>
+    <p class="recit">Prix dans l'appli : <strong id="achat-prix">0,99 €</strong>. Ici, c'est une démonstration pour les testeurs : aucun paiement n'est demandé.</p>
+    <div class="actions">
+      <button id="btn-achat-ok" class="bouton" type="button">Simuler l'achat</button>
+      <button id="btn-achat-non" class="bouton discret" type="button">Annuler</button>
+    </div>
+  </div>
+</section>
+
 <section id="ecran-pause" class="panneau" hidden>
   <div class="carte">
     <h2>Pause</h2>
@@ -375,6 +429,8 @@
       <button id="btn-reprendre" class="bouton" type="button">Reprendre</button>
       <button id="btn-recommencer" class="bouton discret" type="button">Recommencer</button>
       <button id="btn-accueil" class="bouton discret" type="button">Accueil</button>
+      <button id="btn-utiliser-amulette" class="bouton discret" type="button" hidden>✦ Activer une amulette</button>
+      <button class="bouton discret" type="button" data-boutique>Boutique ✦</button>
       <button id="btn-passer-pause" class="bouton discret" type="button">Passer ce niveau ▶ vidéo</button>
       <button class="bouton discret" type="button" data-avis>Donner mon avis</button>
       <button class="bouton discret" type="button" data-plein>Plein écran</button>

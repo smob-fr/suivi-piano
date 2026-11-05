@@ -48,6 +48,7 @@
     snake: "#5d9a3a", snakeDark: "#335f20", snakeBelly: "#d9c14a",
     bat: "#3b2a3f", batWing: "#5a4160", batEye: "#ff5a4a",
     wood: "#a07443", metal: "#5d636b", club: "#8a5a2b", clubDark: "#5a3818", gold: "#f2c14e",
+    jade: "#3fd08a", jadeDark: "#1f7a4f", poison: "#b04ad8",
     rivalSuit: "#e9e2cf", rivalShade: "#bfb59a", rivalHelmet: "#efe2bd", rivalScarf: "#b8322a", rivalHair: "#3a2a1c",
   };
   let P = PALETTES.jungle;
@@ -229,7 +230,7 @@
   };
 
   /* ================= Progression (navigateur du joueur) ================= */
-  const progress = { unlocked: 0, best: {}, deaths: 0, stats: {}, tester: false };
+  const progress = { unlocked: 0, best: {}, deaths: 0, stats: {}, tester: false, pieces: 0, amulettes: 3, coinsPris: {} };
   try {
     const s = JSON.parse(localStorage.getItem("temple-progres") || "null");
     if (s && typeof s.unlocked === "number") Object.assign(progress, s);
@@ -269,12 +270,18 @@
         else if (c === "b") { room.enemies.push({ kind: "b", x: x * T + 3, y: y * T + 4, by: y * T + 4, w: 10, h: 7, vx: 0.7, x0: x * T - 48, x1: x * T + 56, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "a" || c === "t") { room.pickups.push({ kind: c === "a" ? "coin" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
         else if (c === "^" || c === "v") room.spikeAnim.set(x + "," + y, 1);
-        else if (c === "<" || c === ">") room.shooters.push({ x: c === "<" ? x * T : x * T + T, y: y * T + 6, dir: c === "<" ? -1 : 1, t: def.arrowSync ? 0 : (x * 7 + y * 13) % 60 });
+        else if (c === "<" || c === ">" || c === "(" || c === ")") {
+          const left = c === "<" || c === "(";
+          room.shooters.push({ x: left ? x * T : x * T + T, y: y * T + 6, dir: left ? -1 : 1, poison: c === "(" || c === ")", t: def.arrowSync ? 0 : (x * 7 + y * 13) % 60 });
+        }
         else if (c === "B") room.bCount++;
       }
     }
     if (def.doorStart && room.door) { room.door.x = def.doorStart[0] * T + 2; room.door.y = def.doorStart[1] * T - 6; }
     room.decor = genDecor(room, act ? act.palette : "jungle");
+    for (const [cx, cy] of def.coins || []) room.pickups.push({ kind: "coin", x: cx * T + 4, y: cy * T + 6, w: 8, h: 10, taken: false });
+    const pris = (progress.coinsPris || {})[index] || [];
+    room.pickups.forEach((it, k) => { it.id = k; if (it.kind === "coin" && pris.includes(k)) it.taken = true; });
     room.dark = !!def.dark;
     room.assist = Math.min(3, Math.floor(room.deaths / 3));   // 0 à 3
     room.slow = 1 - 0.12 * room.assist;                       // vitesse des pièges
@@ -339,7 +346,7 @@
   }
 
   function makePlayer(tx, ty) {
-    return { x: tx * T + 3, y: ty * T + 1, w: 10, h: 15, vx: 0, vy: 0, face: 1, grounded: false, coyote: 0, buffer: 0, alive: true, anim: 0, spring: false, club: 0 };
+    return { x: tx * T + 3, y: ty * T + 1, w: 10, h: 15, vx: 0, vy: 0, face: 1, grounded: false, coyote: 0, buffer: 0, alive: true, anim: 0, spring: false, club: 0, shield: 0, invuln: 0, safe: { x: tx * T + 3, y: ty * T + 1 } };
   }
 
   /* ================= Tuiles ================= */
@@ -350,12 +357,12 @@
     return R.tiles[y][x];
   }
   // g = sol glissant, G = grille (s'ouvre avec la bonne dalle), _ = dalle à pression (non solide)
-  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">" || c === "g" || c === "G";
+  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">" || c === "(" || c === ")" || c === "g" || c === "G";
   // planches qui clignotent : présentes ~1,6 s, absentes ~1 s, par groupes de deux décalés
   const BLINK = 160, BLINK_ON = 96;
   const blinkPhase = (x) => ((R ? R.t : 0) + (Math.floor(x / 2) % 2) * (BLINK / 2)) % BLINK;
   const blinkOn = (x) => blinkPhase(x) < BLINK_ON;
-  const looksStone = (c) => c === "#" || c === "x" || c === "F" || c === "<" || c === ">" || c === "g";
+  const looksStone = (c) => c === "#" || c === "x" || c === "F" || c === "<" || c === ">" || c === "(" || c === ")" || c === "g";
   function solidAt(px, py) { const tx = Math.floor(px / T), c = tileAt(tx, Math.floor(py / T)); return isSolid(c) || (c === "c" && blinkOn(tx)); }
   function rectHitsSolid(x, y, w, h) {
     const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.01) / T);
@@ -399,6 +406,7 @@
         const [zx, zy, zw, zh] = tr.zone;
         if (!p.alive || !overlap(p, { x: zx * T, y: zy * T, w: zw * T, h: zh * T })) return;
         if (tr.air && p.grounded) return;
+        if (tr.dir && Math.sign(p.vx) !== tr.dir) return;
       }
       R.fired.add(i);
       tr.act.forEach(doAction);
@@ -440,6 +448,7 @@
       }
       case "invert": game.invert = v[0]; sfx.invert(); R.shake = Math.max(R.shake, 3); break;
       case "dark": R.dark = !!v[0]; sfx.flee(); break;
+      case "wobble": { const k = v[0] + "," + v[1]; R.wobble.add(k); sfx.crumble(); setTimeout(() => R && R.wobble.delete(k), (v[2] || 60) * 16); break; }
       case "flood": R.flood = { kind: v[0], speed: v[1] * (1 - 0.15 * R.assist), level: (v[2] != null ? v[2] : ROWS) * T, top: v[0] === "plafond" }; if (R.flood.top) R.flood.level = (v[2] || 0) * T; R.shake = 6; sfx.crumble(); break;
       case "timer": R.timer = Math.round(v[0] * 60 * (1 + 0.2 * R.assist)); break;
       case "press": R.tiles[v[1]][v[0]] = "-"; sfx.place(); break;
@@ -473,7 +482,7 @@
   /* ================= Mise à jour ================= */
   function update() {
     if (game.mode === "title" || game.mode === "end") { game.homeT++; return; }
-    if (game.paused) return;
+    if (game.paused || game.mode === "relance") return;
     if (game.mode === "card") {
       pressed.jump = pressed.fire = pressed.tnt = false;
       game.cardT++;
@@ -503,7 +512,8 @@
     if (R.say) { R.say.t++; if (R.say.t > R.say.dur) R.say = null; }
     if (R.hint) { R.hint.t++; if (R.hint.t > R.hint.dur) R.hint = null; }
     if (R.shake > 0) R.shake -= 0.5;
-    if (game.mode === "dead" && ++game.deadT > 50) restartRoom(true);
+    if (game.mode === "dead" && ++game.deadT === 32 && offrirRelance()) return;
+    if (game.mode === "dead" && game.deadT > 50) restartRoom(true);
     majBoutonPasser();
     if (game.mode === "win" && ++game.winT > 40) nextRoom();
     pressed.jump = pressed.fire = pressed.tnt = false;
@@ -558,6 +568,7 @@
       if (p.club >= 6 && p.club <= 13) {
         const hit = { x: p.face > 0 ? p.x + p.w - 2 : p.x - 14, y: p.y - 2, w: 16, h: 17 };
         for (const e of R.enemies) if (e.alive && !e.stun && overlap(hit, e)) stunEnemy(e, p.face);
+        for (const a of R.arrows) if (!a.poison && !a.dead && overlap(hit, a)) breakArrow(a);
       }
     }
     if (pressed.tnt) {
@@ -571,7 +582,13 @@
     for (const it of R.pickups) {
       if (!it.taken && overlap(p, it)) {
         it.taken = true;
-        if (it.kind === "coin") { game.coins++; game.coinsTotal++; } else game.ammo.tnt += 1;
+        if (it.kind === "coin") {
+          game.coins++; game.coinsTotal++;
+          progress.pieces = (progress.pieces || 0) + 1;
+          const cp = (progress.coinsPris = progress.coinsPris || {});
+          (cp[R.index] = cp[R.index] || []).push(it.id);
+          saveProgress();
+        } else game.ammo.tnt += 1;
         sfx.pick();
         burst(it.x + 4, it.y + 4, C.hat, 8);
       }
@@ -585,7 +602,15 @@
     if (d && !d.moving && !d.hidden && overlap(p, { x: d.x + 3, y: d.y + 4, w: d.w - 6, h: d.h - 4 })) {
       game.mode = "win"; game.winT = 0; sfx.door();
     }
-    if (p.y > H + 20) kill();
+    if (p.y > H + 20) kill(null, "fall");
+    if (p.invuln > 0) p.invuln--;
+    // dernier endroit sûr (pour « Repartir d'ici ») : sur de la vraie pierre, loin des pics
+    if (p.grounded && !p.onMover) {
+      const fx = Math.floor((p.x + p.w / 2) / T), fy = Math.floor((p.y + p.h + 1) / T), my = Math.floor((p.y + 8) / T);
+      const ok = tileAt(fx, fy) === "#" && tileAt(fx - 1, fy) === "#" && tileAt(fx + 1, fy) === "#" &&
+        ![-1, 0, 1].some((d) => "^v".includes(tileAt(fx + d, my))) && !R.crushers.some((c) => Math.abs(c.x - fx * T) < 32);
+      if (ok) p.safe = { x: fx * T + 3, y: p.y };
+    }
   }
 
   function updateMovers() {
@@ -635,7 +660,7 @@
   function updateTimer() {
     if (!R.timer || game.mode !== "play") return;
     R.timer--;
-    if (R.timer === 0) { R.shake = 10; kill("Trop tard, Max ! La salle s'effondre !"); }
+    if (R.timer === 0) { R.shake = 10; kill("Trop tard, Max ! La salle s'effondre !", "timer"); }
   }
 
   function updateTilesFx() {
@@ -698,7 +723,7 @@
       s.t++;
       if (s.t % rate !== 0) continue;
       if (Math.abs(s.x - p.x) > 300) continue;
-      R.arrows.push({ x: s.dir < 0 ? s.x - 9 : s.x + 1, y: s.y, w: 8, h: 3, vx: s.dir * 2.4 * R.slow });
+      R.arrows.push({ x: s.dir < 0 ? s.x - 9 : s.x + 1, y: s.y, w: 8, h: 3, vx: s.dir * 2.4 * R.slow, poison: s.poison });
       sfx.arrow();
     }
   }
@@ -853,7 +878,12 @@
       if (p.vy > 0.5 && p.y + p.h - e.y < 10) { stunEnemy(e, 0); p.vy = -4.6; p.spring = false; continue; }
       return kill();
     }
-    for (const a of R.arrows) if (overlap(p, a)) return kill();
+    for (const a of R.arrows) {
+      if (a.dead || !overlap(p, a)) continue;
+      if (!a.poison && p.vy > 0.3 && p.y + p.h - a.y < 8) { breakArrow(a); p.vy = -4.6; p.spring = false; continue; }
+      return kill();
+    }
+    R.arrows = R.arrows.filter((a) => !a.dead);
     for (const b of R.boulders) {
       const cx = b.x + 14, cy = b.y + 14;
       const nx = Math.max(p.x, Math.min(cx, p.x + p.w)), ny = Math.max(p.y, Math.min(cy, p.y + p.h));
@@ -864,7 +894,7 @@
     if (R.flood) {
       const f = R.flood;
       if (f.top ? p.y < f.level - 2 : (f.kind === "eau" ? p.y + 3 > f.level : p.y + p.h - 5 > f.level))
-        return kill({ eau: "Glouglou ! Tu ne savais pas nager ?", sable: "Englouti par le sable. Classique.", lave: "Ouille. C'était chaud, hein ?", plafond: "Aplati comme une crêpe !" }[f.kind]);
+        return kill({ eau: "Glouglou ! Tu ne savais pas nager ?", sable: "Englouti par le sable. Classique.", lave: "Ouille. C'était chaud, hein ?", plafond: "Aplati comme une crêpe !" }[f.kind], "flood");
     }
     if (R.mirror) {
       // le reflet copie Max en miroir ; s'il touche des pics de son côté, c'est perdu
@@ -880,9 +910,18 @@
 
   function mirrorPos() { const p = R.player; return { x: p.x, y: 2 * R.mirror.axis - (p.y + p.h) }; }
 
-  function kill(msg) {
+  function kill(msg, cause) {
     const p = R.player;
     if (!p.alive) return;
+    const absorbable = cause !== "fall" && cause !== "flood" && cause !== "timer";
+    if (absorbable && p.invuln > 0) return;
+    if (absorbable && p.shield > 0) {
+      p.shield--; p.invuln = 75; p.vy = -3.5; p.vx = -p.face * 2;
+      sfx.bonk(); R.shake = 5;
+      burst(p.x + 5, p.y + 7, C.jade, 16, 2);
+      R.hint = { text: p.shield ? "L'amulette t'a protégé ! Encore 1 coup." : "L'amulette s'est brisée !", t: 0, dur: 120 };
+      return;
+    }
     p.alive = false;
     game.mode = "dead"; game.deadT = 0;
     game.deathsByRoom[R.index]++;
@@ -963,7 +1002,9 @@
       return demoPub();
     },
   };
-  const PASSER_APRES = 5;     // le bouton apparaît après 5 chutes dans le même niveau
+  const PASSER_APRES = 10;    // « passer le niveau » : dernier recours, après 10 chutes
+  const AMULETTE_APRES = 3;   // proposer l'amulette après 3 chutes
+  const PIECES_PAR_AMULETTE = 30;
   let pubEnCours = false;
   function demoPub() {
     return new Promise((res) => {
@@ -972,8 +1013,21 @@
       const t = setInterval(() => { n--; el.textContent = n; if (n <= 0) { clearInterval(t); res(true); } }, 1000);
     });
   }
+  let pubRetour = null;
+  function ouvrirPubAmulette(retour) {
+    pubBut = "amulette"; pubRetour = retour;
+    document.getElementById("pub-titre").textContent = "Gagner une amulette de jade";
+    document.getElementById("pub-etiquette").textContent = PUB.admob() ? "VIDÉO SPONSORISÉE" : "VIDÉO SPONSORISÉE · DÉMO";
+    document.getElementById("pub-video").hidden = !!PUB.admob();
+    document.getElementById("pub-compte").textContent = "5";
+    const lancer = document.getElementById("btn-pub-lancer");
+    lancer.disabled = false; lancer.textContent = "▶ Regarder la vidéo";
+    document.getElementById("pub-texte").textContent = "Regarde la vidéo jusqu'au bout : tu gagnes une amulette, qui absorbe 2 coups.";
+    showOverlay("pub");
+  }
   function ouvrirPub() {
     if (!R || R.index >= LEVELS.length - 1) return;
+    pubBut = "passer"; pubRetour = null;
     if (!game.paused) { game.paused = true; releaseAll(); }
     document.getElementById("pub-titre").textContent = `Passer « ${R.def.name} »`;
     document.getElementById("pub-etiquette").textContent = PUB.admob() ? "VIDÉO SPONSORISÉE" : "VIDÉO SPONSORISÉE · DÉMO";
@@ -984,11 +1038,13 @@
     document.getElementById("pub-texte").textContent = "Regarde la vidéo jusqu'au bout pour passer ce niveau. Archibald, lui, n'a pas besoin de publicité pour tricher.";
     showOverlay("pub");
   }
+  let pubBut = "passer";   // « passer » le niveau ou gagner une « amulette »
   async function lancerPub() {
     if (pubEnCours) return;
     pubEnCours = true;
     const ok = await PUB.regarder();
     pubEnCours = false;
+    if (ok && pubBut === "amulette") { gagnerAmulettes(1, "Merci ! +1 amulette de jade."); showOverlay(pubRetour); return; }
     if (!ok) {
       document.getElementById("pub-texte").textContent = "Pas de vidéo disponible pour le moment. Réessaie un peu plus tard, ou retente le niveau !";
       const lancer = document.getElementById("btn-pub-lancer"); lancer.disabled = false; lancer.textContent = "▶ Réessayer";
@@ -1008,10 +1064,149 @@
     R.say = { text: "Tu as sauté un niveau ? Tricheur ! … Bon, je suis mal placé pour dire ça.", t: 0, dur: 200 };
   }
   const btnPasser = document.getElementById("btn-passer");
+  const btnAmulette = document.getElementById("btn-amulette");
   function majBoutonPasser() {
-    const voir = !!R && (game.mode === "play" || game.mode === "dead") && !game.paused && R.index < LEVELS.length - 1 && game.deathsByRoom[R.index] >= PASSER_APRES;
-    if (btnPasser.hidden === voir) btnPasser.hidden = !voir;
+    const enJeu = !!R && game.mode === "play" && !game.paused;
+    const voirPasser = enJeu && R.index < LEVELS.length - 1 && game.deathsByRoom[R.index] >= PASSER_APRES;
+    if (btnPasser.hidden === voirPasser) btnPasser.hidden = !voirPasser;
+    const voirAmu = enJeu && !voirPasser && game.deathsByRoom[R.index] >= AMULETTE_APRES && !(R.player && R.player.shield > 0);
+    if (btnAmulette.hidden === voirAmu) btnAmulette.hidden = !voirAmu;
+    if (voirAmu) {
+      const t = (progress.amulettes || 0) > 0 ? `✦ Activer une amulette (${progress.amulettes})` : "✦ Une amulette ? ▶ vidéo";
+      if (btnAmulette.textContent !== t) btnAmulette.textContent = t;
+    }
   }
+
+  /* ---------- Amulettes de jade ---------- */
+  function gagnerAmulettes(n, msg) {
+    progress.amulettes = (progress.amulettes || 0) + n; saveProgress();
+    sfx.pick(); majBoutique();
+    if (msg) { const el = document.getElementById("boutique-retour"); if (el) { el.textContent = msg; el.hidden = false; } }
+  }
+  function activerAmulette() {
+    if (!R || !R.player || !R.player.alive) return false;
+    if ((progress.amulettes || 0) <= 0) return false;
+    progress.amulettes--; saveProgress();
+    R.player.shield = 2;
+    burst(R.player.x + 5, R.player.y + 7, C.jade, 18, 1.8); sfx.spring();
+    R.hint = { text: "Amulette de jade : elle absorbe 2 coups (pas les chutes dans le vide).", t: 0, dur: 180 };
+    return true;
+  }
+  btnAmulette.addEventListener("click", (e) => {
+    e.preventDefault();
+    if ((progress.amulettes || 0) > 0) activerAmulette();
+    else { game.paused = true; releaseAll(); ouvrirPubAmulette(null); pubRetour = null; }
+  });
+
+  /* « Repartir d'ici ? » : après une chute où Max avait bien avancé */
+  let relanceT = null;
+  function offrirRelance() {
+    const p = R.player;
+    if (!p || !p.safe) return false;
+    const depart = R.cp && R.cp.on ? R.cp.x * T : 3 * T;
+    if (p.safe.x - depart < W * 0.2) return false;               // trop près du départ : on recommence simplement
+    game.mode = "relance";
+    const n = progress.amulettes || 0;
+    document.getElementById("btn-relance-amulette").hidden = n <= 0;
+    document.getElementById("btn-relance-amulette").textContent = `✦ Oui, avec une amulette (il t'en reste ${n})`;
+    let reste = 4;
+    const cpt = document.getElementById("relance-compte"); cpt.textContent = reste;
+    clearInterval(relanceT);
+    relanceT = setInterval(() => { reste--; cpt.textContent = reste; if (reste <= 0) refuserRelance(); }, 1000);
+    showOverlay("relance");
+    return true;
+  }
+  function refuserRelance() {
+    clearInterval(relanceT);
+    if (game.mode !== "relance") return;
+    game.mode = "dead"; game.deadT = 51;
+    showOverlay(null);
+  }
+  function relancer() {
+    clearInterval(relanceT);
+    const p = R.player;
+    p.alive = true; p.x = p.safe.x; p.y = p.safe.y; p.vx = 0; p.vy = 0;
+    p.shield = 2; p.invuln = 90; R.hat = null;
+    R.boulders = R.boulders.filter((b) => Math.abs(b.x - p.x) > 140);
+    R.arrows = [];
+    if (R.flood && !R.flood.top) R.flood.level = Math.max(R.flood.level, p.y + p.h + 56);
+    if (R.flood && R.flood.top) R.flood.level = Math.min(R.flood.level, p.y - 56);
+    if (R.timer !== undefined && R.timer < 15 * 60 && R.def.triggers.some((t) => t.act.some((a) => a[0] === "timer"))) R.timer += 15 * 60;
+    game.deathsByRoom[R.index] = Math.max(0, game.deathsByRoom[R.index]);
+    game.mode = "play";
+    R.say = { text: "Quoi ?! Tu reviens ? Avec une amulette ? C'est de la triche ! … J'adore.", t: 0, dur: 150 };
+    showOverlay(null);
+  }
+  document.getElementById("btn-relance-amulette").addEventListener("click", () => {
+    if ((progress.amulettes || 0) <= 0) return;
+    progress.amulettes--; saveProgress(); relancer();
+  });
+  document.getElementById("btn-relance-video").addEventListener("click", async () => {
+    clearInterval(relanceT);
+    const b = document.getElementById("btn-relance-video"); b.disabled = true; b.textContent = "Vidéo en cours…";
+    const ok = await PUB.regarder();
+    b.disabled = false; b.textContent = "▶ Oui, avec une vidéo";
+    if (ok) relancer(); else refuserRelance();
+  });
+  document.getElementById("btn-relance-non").addEventListener("click", refuserRelance);
+
+  /* Boutique : pièces → amulettes, vidéo, packs (vrais achats seulement dans l'appli des stores) */
+  const ACHAT = {
+    produits: {
+      "amulettes_10": { prix: "0,99 €", amulettes: 10, nom: "10 amulettes de jade" },
+      "pack_aventurier": { prix: "2,99 €", amulettes: 40, chapeau: true, nom: "Pack aventurier : 40 amulettes + chapeau doré" },
+    },
+    // l'appli native fournira window.MaxStore.purchase(id) → Promise<boolean> (achat intégré Google Play / App Store)
+    natif() { return window.MaxStore && typeof window.MaxStore.purchase === "function"; },
+    async acheter(id) {
+      if (this.natif()) { try { return !!(await window.MaxStore.purchase(id)); } catch (_) { return false; } }
+      return demoAchat(id);
+    },
+  };
+  let achatRes = null;
+  function demoAchat(id) {
+    const pr = ACHAT.produits[id];
+    document.getElementById("achat-nom").textContent = pr.nom;
+    document.getElementById("achat-prix").textContent = pr.prix;
+    showOverlay("achat");
+    return new Promise((res) => { achatRes = res; });
+  }
+  document.getElementById("btn-achat-ok").addEventListener("click", () => { showOverlay("boutique"); achatRes && achatRes(true); achatRes = null; });
+  document.getElementById("btn-achat-non").addEventListener("click", () => { showOverlay("boutique"); achatRes && achatRes(false); achatRes = null; });
+  async function acheter(id) {
+    const pr = ACHAT.produits[id];
+    const ok = await ACHAT.acheter(id);
+    if (!ok) return;
+    if (pr.chapeau) progress.chapeauOr = true;
+    gagnerAmulettes(pr.amulettes, `Merci ! +${pr.amulettes} amulettes${pr.chapeau ? " et le chapeau doré" : ""}.`);
+  }
+  let boutiqueRetour = "options";
+  function majBoutique() {
+    const el = document.getElementById("boutique-solde");
+    if (!el) return;
+    el.textContent = `${progress.pieces || 0} pièces · ${progress.amulettes || 0} amulettes`;
+    const ech = document.getElementById("btn-echange");
+    ech.disabled = (progress.pieces || 0) < PIECES_PAR_AMULETTE;
+    ech.textContent = `Échanger ${PIECES_PAR_AMULETTE} pièces → 1 amulette`;
+    document.getElementById("boutique-demo").hidden = ACHAT.natif();
+  }
+  function ouvrirBoutique() {
+    boutiqueRetour = game.mode === "title" ? "options" : "pause";
+    document.getElementById("boutique-retour").hidden = true;
+    majBoutique(); showOverlay("boutique");
+  }
+  document.querySelectorAll("[data-boutique]").forEach((b) => b.addEventListener("click", ouvrirBoutique));
+  document.getElementById("btn-retour-boutique").addEventListener("click", () => showOverlay(boutiqueRetour));
+  document.getElementById("btn-echange").addEventListener("click", () => {
+    if ((progress.pieces || 0) < PIECES_PAR_AMULETTE) return;
+    progress.pieces -= PIECES_PAR_AMULETTE; gagnerAmulettes(1, "Échange fait : +1 amulette.");
+  });
+  document.getElementById("btn-video-amulette").addEventListener("click", () => ouvrirPubAmulette("boutique"));
+  document.getElementById("btn-pack-10").addEventListener("click", () => acheter("amulettes_10"));
+  document.getElementById("btn-pack-aventurier").addEventListener("click", () => acheter("pack_aventurier"));
+  document.getElementById("btn-utiliser-amulette").addEventListener("click", () => {
+    if (activerAmulette()) { game.paused = false; showOverlay(null); }
+  });
 
   function nextRoom() {
     const i = game.level;
@@ -1443,9 +1638,10 @@
           else { ctx.moveTo(bx, py); ctx.lineTo(bx + 2.5, py + hgt); ctx.lineTo(bx + 5, py); }
         }
         ctx.fill();
-      } else if (c === "<" || c === ">") {
+      } else if (c === "<" || c === ">" || c === "(" || c === ")") {
         drawStone(px, py, x, y);
-        const left = c === "<";
+        const left = c === "<" || c === "(";
+        if (c === "(" || c === ")") { ctx.fillStyle = "rgba(176,74,216,0.45)"; ctx.fillRect(left ? px : px + 8, py + 3, 8, 9); }
         ctx.fillStyle = P.stoneDark;
         ctx.fillRect(left ? px : px + 10, py + 5, 6, 5);
         ctx.fillStyle = C.danger;
@@ -1644,11 +1840,23 @@
     ctx.fillStyle = C.text; ctx.fillRect(x + 4, y + 5, 1, 1); ctx.fillRect(x + 6, y + 5, 1, 1);
   }
 
+  // flèche en bois (pointe grise, plumes vertes) : se casse ; flèche empoisonnée (pointe rouge, traînée violette) : mortelle
   function drawArrow(a) {
     const left = a.vx < 0;
-    ctx.fillStyle = C.wood; ctx.fillRect(a.x + 1, a.y + 1, 7, 1);
-    ctx.fillStyle = C.metal; ctx.fillRect(left ? a.x - 1 : a.x + 7, a.y, 2, 3);
-    ctx.fillStyle = C.danger; ctx.fillRect(left ? a.x + 7 : a.x, a.y, 2, 1); ctx.fillRect(left ? a.x + 7 : a.x, a.y + 2, 2, 1);
+    if (a.poison) {
+      ctx.fillStyle = "rgba(176,74,216,0.35)"; ctx.fillRect(left ? a.x + 8 : a.x - 8, a.y, 9, 3);
+      ctx.fillStyle = "#3a2a3e"; ctx.fillRect(a.x + 1, a.y + 1, 7, 1);
+      ctx.fillStyle = C.danger; ctx.fillRect(left ? a.x - 2 : a.x + 7, a.y - 0.5, 3, 4);
+      ctx.fillStyle = C.poison; ctx.fillRect(left ? a.x + 7 : a.x, a.y, 2, 1); ctx.fillRect(left ? a.x + 7 : a.x, a.y + 2, 2, 1);
+    } else {
+      ctx.fillStyle = C.wood; ctx.fillRect(a.x + 1, a.y + 1, 7, 1);
+      ctx.fillStyle = "#b8bcc2"; ctx.fillRect(left ? a.x - 1 : a.x + 7, a.y, 2, 3);
+      ctx.fillStyle = "#5fae3e"; ctx.fillRect(left ? a.x + 7 : a.x, a.y, 2, 1); ctx.fillRect(left ? a.x + 7 : a.x, a.y + 2, 2, 1);
+    }
+  }
+  function breakArrow(a) {
+    a.dead = true; sfx.bonk();
+    for (let i = 0; i < 5; i++) R.particles.push({ x: a.x + 4, y: a.y + 1, vx: (Math.random() - 0.5) * 2.5, vy: -Math.random() * 2, s: 2, life: 26, color: i % 2 ? C.wood : "#5fae3e", g: 0.15 });
   }
 
   function drawBlock(k) {
@@ -1683,7 +1891,8 @@
   }
 
   function drawFedora(x, y) {
-    ctx.fillStyle = C.fedora;
+    const or = progress.chapeauOr;
+    ctx.fillStyle = or ? "#e2b23c" : C.fedora;
     ctx.fillRect(x - 3, y + 3, 16, 2);
     ctx.fillRect(x, y - 1, 10, 4);
     ctx.fillStyle = C.fedoraTop; ctx.fillRect(x + 1, y - 2, 8, 1);
@@ -1700,6 +1909,12 @@
         ctx.save(); ctx.translate(h.x + 5, h.y); ctx.rotate(h.r); drawFedora(-5, -2); ctx.restore();
       }
       return;
+    }
+    if (p.invuln > 0 && Math.floor(p.invuln / 4) % 2) return;
+    if (p.shield > 0) {
+      const g = 0.5 + 0.5 * Math.sin(R.t / 8);
+      ctx.fillStyle = `rgba(63,208,138,${0.12 + g * 0.12})`; ctx.beginPath(); ctx.arc(p.x + p.w / 2, p.y + 6, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(63,208,138,${0.5 + g * 0.3})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(p.x + p.w / 2, p.y + 6, 12, 0, Math.PI * 2); ctx.stroke();
     }
     const run = p.grounded && Math.abs(p.vx) > 0.3;
     const air = !p.grounded, ph = Math.sin(p.anim), bob = run ? Math.abs(ph) : 0;
@@ -1764,13 +1979,16 @@
       ctx.fillStyle = C.danger; ctx.fillRect(24 + nw, 3, 30, 10);
       ctx.fillStyle = C.text; ctx.fillText("DÉFI", 27 + nw, 8);
     }
-    let x = view.w - 112 - 52 / scale;
+    let x = view.w - 192 - 52 / scale;
     const fl = game.flash && game.flash.t > 0 ? game.flash : null;
     if (fl) fl.t--;
     ctx.fillStyle = C.gold; ctx.beginPath(); ctx.arc(x + 3, 7.5, 3.5, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#b8862a"; ctx.fillRect(x + 2.5, 5.5, 1, 4);
-    ctx.fillStyle = C.text; ctx.fillText(String(game.coins), x + 9, 8);
-    x += 34;
+    ctx.fillStyle = C.text; ctx.fillText(String(progress.pieces || 0), x + 9, 8);
+    x += 38;
+    ctx.fillStyle = C.jade; ctx.beginPath(); ctx.moveTo(x + 3, 3); ctx.lineTo(x + 7, 7.5); ctx.lineTo(x + 3, 12); ctx.lineTo(x - 1, 7.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = C.text; ctx.fillText(String(progress.amulettes || 0) + (R.player && R.player.shield ? ` ✦${R.player.shield}` : ""), x + 10, 8);
+    x += 42;
     ctx.fillStyle = fl && fl.what === "tnt" && fl.t % 8 < 4 ? C.text : C.danger; ctx.fillRect(x, 4, 4, 8);
     ctx.fillStyle = C.text; ctx.fillText(String(game.ammo.tnt), x + 9, 8);
     x += 34;
@@ -2053,6 +2271,9 @@
     avis: document.getElementById("ecran-avis"),
     stats: document.getElementById("ecran-stats"),
     pub: document.getElementById("ecran-pub"),
+    relance: document.getElementById("ecran-relance"),
+    boutique: document.getElementById("ecran-boutique"),
+    achat: document.getElementById("ecran-achat"),
     quitter: document.getElementById("ecran-quitter"),
     pause: document.getElementById("ecran-pause"),
     fin: document.getElementById("ecran-fin"),
@@ -2064,7 +2285,10 @@
   }
 
   function togglePause() {
-    if (game.mode === "title" || game.mode === "end") return;
+    if (game.mode === "title" || game.mode === "end" || game.mode === "relance") return;
+    const ua = document.getElementById("btn-utiliser-amulette");
+    ua.hidden = !R || !R.player || R.player.shield > 0 || (progress.amulettes || 0) <= 0;
+    ua.textContent = `✦ Activer une amulette (${progress.amulettes || 0})`;
     document.getElementById("btn-passer-pause").hidden = !R || R.index >= LEVELS.length - 1;
     game.paused = !game.paused;
     releaseAll();
@@ -2242,7 +2466,11 @@
   btnPasser.addEventListener("click", (e) => { e.preventDefault(); ouvrirPub(); });
   document.getElementById("btn-passer-pause").addEventListener("click", ouvrirPub);
   document.getElementById("btn-pub-lancer").addEventListener("click", lancerPub);
-  document.getElementById("btn-pub-annuler").addEventListener("click", () => { if (pubEnCours) return; game.paused = false; showOverlay(null); });
+  document.getElementById("btn-pub-annuler").addEventListener("click", () => {
+    if (pubEnCours) return;
+    if (pubBut === "amulette" && pubRetour) { showOverlay(pubRetour); return; }
+    game.paused = false; showOverlay(null);
+  });
 
   document.getElementById("btn-jouer").addEventListener("click", (e) => playFrom(Number(e.currentTarget.dataset.level || 0)));
   document.getElementById("btn-niveaux").addEventListener("click", () => { buildLevelGrid(); showOverlay("niveaux"); });
