@@ -1422,7 +1422,7 @@
     ctx.globalAlpha = 1;
   }
 
-  // Professeur Archibald : casque colonial kaki, lunettes rondes, nœud papillon rouge, veste beige
+  // Professeur Archibald : chapeau de feutre beige, lunettes rondes, nœud papillon rouge, veste beige
   function drawRival(r) {
     const run = r.state === "run";
     const ph = run ? Math.sin(r.t * 0.6) : 0, bob = run ? Math.abs(ph) : Math.sin(r.t / 10) * 0.4;
@@ -1449,14 +1449,14 @@
     ctx.strokeStyle = "#2a1a10"; ctx.lineWidth = 0.7;
     ctx.beginPath(); ctx.arc(7.6, 2.2, 1.2, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = "#2a1a10"; ctx.fillRect(7.3, 1.9, 0.8, 0.8);
-    // casque colonial : dôme kaki, bandeau sombre, large bord tout autour
-    ctx.fillStyle = "#b5a06c";
-    ctx.beginPath(); ctx.ellipse(6, 0.4, 7.2, 1.6, 0, 0, Math.PI * 2); ctx.fill();       // bord
-    ctx.fillStyle = "#d9c48e";
-    ctx.beginPath(); ctx.ellipse(6, -0.4, 4.6, 4.3, 0, Math.PI, 0); ctx.fill();          // dôme
-    ctx.fillStyle = "#f0e2b4"; ctx.fillRect(3.6, -3.4, 2, 1);                           // reflet
-    ctx.fillStyle = "#6b5236"; ctx.fillRect(1.4, -1.2, 9.2, 1);                          // bandeau
-    ctx.fillStyle = "#8c7a4c"; ctx.fillRect(5.6, -4.9, 0.9, 0.9);                        // bouton du dessus
+    // chapeau de feutre beige à large bord, ruban brun (comme sur l'affiche)
+    ctx.fillStyle = "#b39a6a";
+    ctx.beginPath(); ctx.ellipse(6, 0.6, 7.4, 1.5, -0.05, 0, Math.PI * 2); ctx.fill();          // bord
+    ctx.fillStyle = "#cdb688";
+    ctx.beginPath(); ctx.moveTo(2.2, 0.4); ctx.lineTo(2.8, -3.6); ctx.quadraticCurveTo(6, -5.2, 9.2, -3.6); ctx.lineTo(9.8, 0.4); ctx.closePath(); ctx.fill(); // calotte
+    ctx.fillStyle = "#9c8457"; ctx.fillRect(5.4, -4.6, 1.4, 1);                                   // creux du dessus
+    ctx.fillStyle = "#6b4a2a"; ctx.fillRect(2.4, -1.1, 7.2, 1.2);                                 // ruban
+    ctx.fillStyle = "#e4d3a8"; ctx.fillRect(3.4, -3.2, 1.6, 0.8);                                 // reflet
     ctx.restore();
   }
 
