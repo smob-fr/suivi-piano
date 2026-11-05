@@ -1441,6 +1441,8 @@
   const overlays = {
     titre: document.getElementById("ecran-titre"),
     niveaux: document.getElementById("ecran-niveaux"),
+    options: document.getElementById("ecran-options"),
+    quitter: document.getElementById("ecran-quitter"),
     pause: document.getElementById("ecran-pause"),
     fin: document.getElementById("ecran-fin"),
   };
@@ -1478,14 +1480,14 @@
   function refreshHome() {
     const u = progress.unlocked;
     const btn = document.getElementById("btn-jouer");
-    btn.textContent = progress.finished ? "Rejouer depuis le début" : u > 0 ? `Continuer · niveau ${u + 1}` : "Entrer dans le temple";
+    btn.setAttribute("aria-label", progress.finished ? "Jouer : recommencer depuis le début" : u > 0 ? `Jouer : continuer au niveau ${u + 1}` : "Jouer");
     btn.dataset.level = progress.finished ? 0 : u;
     document.getElementById("accueil-stats").textContent = u > 0 || progress.deaths
-      ? `Niveau ${Math.min(u + 1, LEVELS.length)} sur ${LEVELS.length} · ${progress.deaths} mort${progress.deaths > 1 ? "s" : ""} au compteur`
-      : `${LEVELS.length} niveaux · 5 actes · un rival tricheur`;
+      ? `Niveau ${Math.min(u + 1, LEVELS.length)} sur ${LEVELS.length} · ${progress.deaths} chute${progress.deaths > 1 ? "s" : ""}`
+      : `${LEVELS.length} niveaux · 5 actes`;
   }
   setInterval(() => {
-    if (overlays.titre.hidden) return;
+    if (overlays.titre.hidden || !document.getElementById("accueil-citation")) return;
     quoteI = (quoteI + 1) % QUOTES.length;
     const q = document.getElementById("accueil-citation");
     q.classList.add("fondu");
@@ -1537,7 +1539,15 @@
 
   document.getElementById("btn-jouer").addEventListener("click", (e) => playFrom(Number(e.currentTarget.dataset.level || 0)));
   document.getElementById("btn-niveaux").addEventListener("click", () => { buildLevelGrid(); showOverlay("niveaux"); });
-  document.getElementById("btn-retour-niveaux").addEventListener("click", () => { showOverlay("titre"); refreshHome(); });
+  document.getElementById("btn-retour-niveaux").addEventListener("click", () => showOverlay("options"));
+  document.getElementById("btn-options").addEventListener("click", () => { unlockAudio(); showOverlay("options"); });
+  document.getElementById("btn-retour-options").addEventListener("click", () => { showOverlay("titre"); refreshHome(); });
+  document.getElementById("btn-rester").addEventListener("click", () => showOverlay("titre"));
+  document.getElementById("btn-quitter").addEventListener("click", () => {
+    // dans l'appli installée (Capacitor), on ferme vraiment ; sur le web, on ne peut pas fermer l'onglet
+    const app = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (app && app.exitApp) app.exitApp(); else showOverlay("quitter");
+  });
   document.getElementById("btn-reprendre").addEventListener("click", togglePause);
   document.getElementById("btn-recommencer").addEventListener("click", () => { game.paused = false; restartRoom(); });
   document.getElementById("btn-accueil").addEventListener("click", goHome);

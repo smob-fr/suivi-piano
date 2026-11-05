@@ -1,4 +1,4 @@
-# Le Temple qui Triche
+# Max et l'Œil de Jade
 
 Jeu de plateforme pour mobile (en paysage), à mi-chemin entre l'exploration d'un *Rick Dangerous*
 (munitions limitées, dynamite, momies) et les pièges farceurs d'un *Level Devil*

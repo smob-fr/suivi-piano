@@ -6,9 +6,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Temple">
+<meta name="apple-mobile-web-app-title" content="Max">
 <!--CONTENU-->
-<title>Le Temple qui Triche</title>
+<title>Max et l'Œil de Jade</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="theme-color" content="#0d0906">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -99,17 +99,6 @@
   .bouton.discret { font-family: var(--f-carnet); font-size: 15px; background: rgba(236,220,180,.08); color: var(--parchemin); border-color: rgba(236,220,180,.35); box-shadow: none; text-shadow: none; }
 
   /* ---------- Accueil ---------- */
-  #ecran-titre {
-    place-items: center start; padding-left: max(28px, env(safe-area-inset-left, 0px));
-    background:
-      linear-gradient(90deg, rgba(14,8,3,.98) 0%, rgba(14,8,3,.95) 21%, rgba(14,8,3,.7) 31%, rgba(14,8,3,.3) 42%, rgba(14,8,3,0) 54%),
-      linear-gradient(0deg, rgba(14,8,3,.5) 0%, rgba(14,8,3,0) 20%),
-      url("images/accueil.webp") right center / auto 100% no-repeat,
-      var(--nuit);
-  }
-  #ecran-titre .carte { width: min(100%, 44vw, 470px); gap: 12px; }
-  #ecran-titre .actions { gap: 8px; }
-  #ecran-titre #btn-jouer { flex: 1 0 100%; }
   .presente { font-family: var(--f-carnet); font-size: 15px; color: var(--terne); margin: 0; letter-spacing: .04em; }
   .titre {
     margin: 0; font-family: var(--f-titre); font-weight: 400; line-height: .9; text-wrap: balance;
@@ -129,6 +118,32 @@
   .clavier { font-size: 12px; color: var(--terne); margin: 0; line-height: 1.6; }
   .clavier kbd { font-family: var(--f-txt); color: var(--texte); border: 1px solid rgba(241,230,204,.25); border-radius: 3px; padding: 0 4px; }
   body.tactile .clavier { display: none; }
+
+  /* ---------- Accueil : l'affiche, toujours entière ; boutons posés sur ceux de l'image ---------- */
+  #ecran-titre.accueil { padding: 0; place-items: center; background: var(--nuit); overflow: hidden; }
+  #ecran-titre.accueil::before {
+    content: ""; position: absolute; inset: -40px;
+    background: url("images/accueil.webp") center / cover no-repeat;
+    filter: blur(24px) brightness(.45) saturate(1.1);
+  }
+  .affiche {
+    position: relative; aspect-ratio: 1672 / 941;
+    width: min(100vw, 100vh * 1672 / 941); width: min(100vw, 100dvh * 1672 / 941);
+    max-width: 100%; box-shadow: 0 0 40px rgba(0,0,0,.6);
+  }
+  .affiche img { display: block; width: 100%; height: 100%; -webkit-user-drag: none; }
+  .zone { position: absolute; border: 0; padding: 0; background: transparent; cursor: pointer; border-radius: 10px; transition: background .12s, box-shadow .12s, transform .08s; }
+  .zone:hover, .zone:focus-visible { background: rgba(255,235,170,.14); box-shadow: 0 0 0 3px rgba(255,214,120,.75), 0 0 24px rgba(255,200,90,.45); outline: none; }
+  .zone:active { transform: translateY(2px); background: rgba(0,0,0,.12); }
+  .z-jouer { left: 71.2%; top: 54%; width: 25.2%; height: 11.2%; }
+  .z-options { left: 73.4%; top: 68%; width: 21.1%; height: 8.8%; }
+  .z-quitter { left: 73.4%; top: 79.1%; width: 21.1%; height: 8.8%; }
+  .progression {
+    position: absolute; right: 5.6%; bottom: 2.4%; margin: 0;
+    font-family: var(--f-carnet); font-size: clamp(11px, 1.5vw, 15px); color: var(--parchemin);
+    background: rgba(20,12,5,.62); padding: 4px 10px; border-radius: 4px;
+  }
+  @media (prefers-reduced-motion: reduce) { .zone { transition: none; } }
 
   /* ---------- Choix du niveau ---------- */
   #ecran-niveaux { place-items: start center; }
@@ -194,20 +209,41 @@
   <div class="touche saut" data-btn="jump">SAUT</div>
 </div>
 
-<section id="ecran-titre" class="panneau">
+<section id="ecran-titre" class="panneau accueil">
+  <div class="affiche">
+    <img src="images/accueil.webp" alt="Max et l'Œil de Jade : Max fuit un rocher géant, poursuivi par le professeur Lecoquin qui ricane" draggable="false">
+    <button id="btn-jouer" class="zone z-jouer" type="button" data-level="0" aria-label="Jouer"></button>
+    <button id="btn-options" class="zone z-options" type="button" aria-label="Options"></button>
+    <button id="btn-quitter" class="zone z-quitter" type="button" aria-label="Quitter"></button>
+    <p class="progression" id="accueil-stats">50 niveaux · 5 actes</p>
+  </div>
+</section>
+
+<section id="ecran-options" class="panneau" hidden>
   <div class="carte">
-    <p class="presente">Une course au trésor contre le professeur Lecoquin</p>
-    <h1 class="titre"><span class="l1">Le Temple</span><span class="l2">qui Triche</span></h1>
-    <p class="citation-accueil" id="accueil-citation">« L'Œil de Jade sera à moi, Max. J'ai piégé tout le temple. »</p>
-    <div class="actions">
-      <button id="btn-jouer" class="bouton" type="button" data-level="0">Entrer dans le temple</button>
-      <button id="btn-niveaux" class="bouton discret" type="button">Niveaux</button>
-      <button class="bouton discret" type="button" data-plein>Plein écran</button>
-      <button class="bouton discret" type="button" data-son>Son : activé</button>
+    <div class="entete">
+      <h2>Options</h2>
+      <button id="btn-retour-options" class="bouton discret" type="button">Retour</button>
     </div>
-    <p class="stats-accueil" id="accueil-stats">50 niveaux · 5 actes · un rival tricheur</p>
+    <div class="actions">
+      <button id="btn-niveaux" class="bouton" type="button">Carte des niveaux</button>
+      <button class="bouton discret" type="button" data-son>Son : activé</button>
+      <button class="bouton discret" type="button" data-plein>Plein écran</button>
+    </div>
     <p class="astuce" id="astuce-plein" hidden></p>
+    <p class="recit">Saute sur les ennemis ou assomme-les d'un coup de massue. La dynamite ouvre les murs fissurés. Ramasse les pièces d'or et arrive à l'Œil de Jade avant le professeur Lecoquin.</p>
     <p class="clavier"><kbd>←</kbd> <kbd>→</kbd> courir · <kbd>↑</kbd> sauter · <kbd>X</kbd> massue · <kbd>C</kbd> dynamite · <kbd>R</kbd> recommencer · <kbd>Échap</kbd> pause</p>
+  </div>
+</section>
+
+<section id="ecran-quitter" class="panneau" hidden>
+  <div class="carte">
+    <h2>Déjà ?</h2>
+    <p class="citation">« Tu abandonnes ? Merci, Max, l'Œil de Jade sera à moi ! » — Lecoquin</p>
+    <p class="recit">Sur le web, il suffit de fermer l'onglet. Ta progression est gardée.</p>
+    <div class="actions">
+      <button id="btn-rester" class="bouton" type="button">Non, je reste !</button>
+    </div>
   </div>
 </section>
 
