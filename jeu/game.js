@@ -482,7 +482,7 @@
       case "invert": game.invert = v[0]; sfx.invert(); R.shake = Math.max(R.shake, 3); break;
       case "dark": R.dark = !!v[0]; sfx.flee(); break;
       case "wobble": { const k = v[0] + "," + v[1]; R.wobble.add(k); sfx.crumble(); setTimeout(() => R && R.wobble.delete(k), (v[2] || 60) * 16); break; }
-      case "flood": R.flood = { kind: v[0], speed: v[1] * (1 - 0.15 * R.assist), level: (v[2] != null ? v[2] : ROWS) * T, top: v[0] === "plafond" }; if (R.flood.top) R.flood.level = (v[2] || 0) * T; R.shake = 6; sfx.crumble(); break;
+      case "flood": R.flood = { kind: v[0], speed: v[1] * (1 - 0.15 * R.assist), level: (v[2] != null ? v[2] : ROWS) * T, top: v[0] === "plafond" }; if (R.flood.top) R.flood.level = Math.min(v[2] || 0, 1) * T - T;   // un plafond qui descend part toujours du haut R.shake = 6; sfx.crumble(); break;
       case "timer": R.timer = Math.round(v[0] * 60 * (1 + 0.2 * R.assist)); break;
       case "press": R.tiles[v[1]][v[0]] = "-"; sfx.place(); break;
       case "gate": sfx.door(); R.shake = Math.max(R.shake, 3); break;
@@ -753,9 +753,11 @@
   }
 
   function updateEnemies() {
+    const reveil = R.t > 90;   // les ennemis attendent 1,5 s à l'arrivée
     for (const e of R.enemies) {
       if (!e.alive) continue;
       e.t += 0.1;
+      if (!reveil) continue;
       if (e.stun > 0) {
         e.stun--;
         if (e.kind !== "b") { e.vx = 0; e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall); moveBody(e); if (e.y > H + 20) e.alive = false; }
@@ -785,6 +787,7 @@
   function updateShooters() {
     const rate = Math.round((R.def.arrowRate || 110) * (1 + 0.25 * R.assist));
     const p = R.player;
+    if (R.t < 100) return;   // à l'arrivée, on laisse le temps de regarder avant les premières flèches
     for (const s of R.shooters) {
       s.t++;
       if (s.t % rate !== 0) continue;

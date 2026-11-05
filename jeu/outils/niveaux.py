@@ -448,7 +448,8 @@ class Niveau:
         self.opts["_timer"] = marge
 
     def crue(self, nature="eau", vitesse=0.16, texte=None):
-        self.t([["flood", nature, vitesse, self.h]] + ([["say", texte]] if texte else []))
+        depart = 0 if nature == "plafond" else self.h + 4   # le plafond part du haut, l'eau de bien plus bas (temps de réaction)
+        self.t([["flood", nature, vitesse, depart]] + ([["say", texte]] if texte else []))
 
     def sprint(self):
         x0 = self.pics(2); self.plat(1); self.fosse(3, "vide"); self.plat(1); self.pics(2); self.plat(1)
