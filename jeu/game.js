@@ -97,15 +97,30 @@
   // abaissée automatiquement si le téléphone peine (voir frame()).
   let maxDpr = 2;
   let lastSize = "";
-  function resize() {
-    const r = stage.parentElement.getBoundingClientRect();
+  // Paysage forcé : téléphone tenu droit → on affiche tout de côté (voir #rot dans la page)
+  const rotEl = document.getElementById("rot");
+  function majRotation() {
     const vv = window.visualViewport;
+    const vw = Math.min(innerWidth, vv ? vv.width : Infinity), vh = Math.min(innerHeight, vv ? vv.height : Infinity);
+    const portrait = isTouch && vh > vw;
+    document.body.classList.toggle("rot", portrait);
+    if (portrait) {
+      rotEl.style.width = vh + "px"; rotEl.style.height = vw + "px"; rotEl.style.left = vw + "px";
+    } else { rotEl.style.width = rotEl.style.height = rotEl.style.left = ""; }
+    const lw = portrait ? vh : vw, lh = portrait ? vw : vh;
+    document.documentElement.style.setProperty("--lw", lw + "px");
+    document.documentElement.style.setProperty("--lh", lh + "px");
+    return { w: lw, h: lh };
+  }
+  function mesure() {
+    const vp = majRotation(), el = stage.parentElement;
+    // clientWidth/Height ne sont pas déformés par la rotation, contrairement à getBoundingClientRect
+    return { width: Math.min(el.clientWidth || vp.w, vp.w), height: Math.min(el.clientHeight || vp.h, vp.h) };
+  }
+  function resize() {
     // Sur Android, après une rotation ou un passage en plein écran, la taille réelle arrive en retard :
     // on prend la plus petite des mesures disponibles pour ne jamais déborder de l'écran.
-    const wrap = {
-      width: Math.min(r.width || innerWidth, innerWidth, vv ? vv.width : Infinity),
-      height: Math.min(r.height || innerHeight, innerHeight, vv ? vv.height : Infinity),
-    };
+    const wrap = mesure();
     lastSize = `${Math.round(wrap.width)}x${Math.round(wrap.height)}`;
     const fit = Math.min(wrap.width / W, wrap.height / H);
     const zoom = Math.min(wrap.width / VIEW_TARGET.w, wrap.height / VIEW_TARGET.h);
@@ -2517,9 +2532,8 @@
 
   const orient = document.getElementById("tourner");
   function checkOrientation() {
-    const portrait = isTouch && window.innerHeight > window.innerWidth;
-    orient.hidden = !portrait;
-    if (portrait && (game.mode === "play" || game.mode === "card") && !game.paused) togglePause();
+    // plus besoin de demander de tourner le téléphone : le jeu s'affiche de côté tout seul
+    orient.hidden = true;
   }
 
   /* ================= Boucle ================= */
@@ -2531,9 +2545,8 @@
     last = now;
     // recadrage : vérifie régulièrement que la taille de l'écran n'a pas changé
     if (++frameN % 15 === 0) {
-      const r = stage.parentElement.getBoundingClientRect(), vv = window.visualViewport;
-      const sz = `${Math.round(Math.min(r.width || innerWidth, innerWidth, vv ? vv.width : Infinity))}x${Math.round(Math.min(r.height || innerHeight, innerHeight, vv ? vv.height : Infinity))}`;
-      if (sz !== lastSize) resize();
+      const m = mesure();
+      if (`${Math.round(m.width)}x${Math.round(m.height)}` !== lastSize) resize();
     }
     // téléphone lent : on baisse la résolution pour garder des commandes réactives
     if (game.mode === "play" && dt > 0 && dt < 200) {

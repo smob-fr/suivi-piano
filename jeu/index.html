@@ -41,6 +41,11 @@
     overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
   }
+  /* Paysage forcé : quand le téléphone est tenu droit (rotation automatique coupée, iPhone…),
+     tout le jeu est affiché de côté ; il suffit de tourner le téléphone. */
+  #rot { position: fixed; inset: 0; }
+  body.rot #rot { inset: auto; top: 0; transform-origin: 0 0; transform: rotate(90deg); }
+  body.rot .panneau { touch-action: pan-x pan-y; }
   #cadre { position: fixed; inset: 0; display: grid; place-items: center; }
   #zone { width: 100%; height: 100%; display: grid; place-items: center; min-width: 0; }
   #scene { position: relative; }
@@ -158,6 +163,7 @@
   .affiche {
     position: relative; aspect-ratio: 1671 / 941;
     width: min(100vw, 100vh * 1671 / 941); width: min(100vw, 100dvh * 1671 / 941);
+    width: min(var(--lw, 100vw), var(--lh, 100vh) * 1671 / 941);
     max-width: 100%; box-shadow: 0 0 40px rgba(0,0,0,.6);
   }
   .affiche img { display: block; width: 100%; height: 100%; -webkit-user-drag: none; }
@@ -236,6 +242,7 @@
   @media (max-width: 560px) { .grille { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 </style>
 
+<div id="rot">
 <div id="cadre">
   <div id="zone">
     <div id="scene"><canvas id="jeu" aria-label="Zone de jeu"></canvas></div>
@@ -463,6 +470,7 @@
   </div>
 </div>
 
+</div>
 <script src="levels.js"></script>
 <script src="game.js"></script>
 <!--/CONTENU-->
