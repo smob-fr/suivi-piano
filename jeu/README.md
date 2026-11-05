@@ -1,5 +1,7 @@
 # Max et l'Œil de Jade
 
+**Jouer : https://smob-fr.github.io/max-oeil-de-jade/** (sur téléphone : « Ajouter à l'écran d'accueil » pour le plein écran)
+
 Jeu de plateforme pour mobile (en paysage), à mi-chemin entre l'exploration d'un *Rick Dangerous*
 (munitions limitées, dynamite, momies) et les pièges farceurs d'un *Level Devil*
 (le décor change sous tes pieds). L'explorateur Max fait la course contre le professeur Archibald,
@@ -23,6 +25,11 @@ La dynamite sert à ouvrir les murs fissurés.
 | 9 | Les jardins suspendus | vent, Max-miroir, nuages fantômes, balançoires |
 | 10 | La chambre du trésor | sable qui monte, tous les pièges réunis, la vraie finale (niveau 100) |
 
+**Passer un niveau** : après 5 chutes dans le même niveau (ou depuis la pause), on peut passer le niveau
+en regardant une vidéo sponsorisée. Dans l'appli des stores, c'est une vraie vidéo récompensée AdMob
+(plugin `@capacitor-community/admob`, identifiant à renseigner dans `PUB.adId` de `game.js`, actuellement
+l'identifiant de test de Google) ; sur le web, un écran de démonstration de 5 secondes la remplace.
+
 Chaque acte alterne Exploration, Trahison, Action et Histoire. Le temple se souvient :
 certains pièges changent selon le nombre de morts dans le niveau. La progression et les records
 sont gardés dans le navigateur.
@@ -30,7 +37,7 @@ sont gardés dans le navigateur.
 ## Jouer
 
 ```bash
-python -m http.server 8000   # puis http://localhost:8000/jeu/
+python -m http.server 8000   # puis http://localhost:8000/
 ```
 
 - Clavier : ← → courir · ↑ / Espace sauter · X massue · C dynamite · R recommencer · Échap pause
@@ -47,7 +54,7 @@ python -m http.server 8000   # puis http://localhost:8000/jeu/
 ## Modifier les niveaux
 
 ```bash
-python3 jeu/outils/niveaux.py
+python3 outils/niveaux.py
 ```
 
 Le script réécrit `levels.js` et vérifie que chaque niveau a un départ, une porte atteignable

@@ -495,6 +495,7 @@
     if (R.hint) { R.hint.t++; if (R.hint.t > R.hint.dur) R.hint = null; }
     if (R.shake > 0) R.shake -= 0.5;
     if (game.mode === "dead" && ++game.deadT > 50) restartRoom(true);
+    majBoutonPasser();
     if (game.mode === "win" && ++game.winT > 40) nextRoom();
     pressed.jump = pressed.fire = pressed.tnt = false;
   }
@@ -923,6 +924,76 @@
   }
 
   function statOf(i) { return (progress.stats[i] = progress.stats[i] || { morts: 0, essais: 0, fini: 0, temps: 0 }); }
+
+  /* ---------- Passer un niveau en regardant une vidéo sponsorisée ----------
+   * Dans l'appli des stores (Capacitor + @capacitor-community/admob), c'est une vraie
+   * vidéo récompensée AdMob. Sur le web, un écran de démonstration la remplace. */
+  const PUB = {
+    // identifiant AdMob de la vidéo récompensée ; celui-ci est l'identifiant de TEST de Google,
+    // à remplacer par le tien dans la version des stores
+    adId: "ca-app-pub-3940256099942544/5224354917",
+    admob() { const P = window.Capacitor && window.Capacitor.Plugins; return P && P.AdMob; },
+    async regarder() {
+      const admob = this.admob();
+      if (admob) {
+        try {
+          await admob.prepareRewardVideoAd({ adId: this.adId });
+          const r = await admob.showRewardVideoAd();
+          return !!r;
+        } catch (_) { return false; }
+      }
+      return demoPub();
+    },
+  };
+  const PASSER_APRES = 5;     // le bouton apparaît après 5 chutes dans le même niveau
+  let pubEnCours = false;
+  function demoPub() {
+    return new Promise((res) => {
+      const el = document.getElementById("pub-compte"), lancer = document.getElementById("btn-pub-lancer");
+      let n = 5; el.textContent = n; lancer.disabled = true; lancer.textContent = "Vidéo en cours…";
+      const t = setInterval(() => { n--; el.textContent = n; if (n <= 0) { clearInterval(t); res(true); } }, 1000);
+    });
+  }
+  function ouvrirPub() {
+    if (!R || R.index >= LEVELS.length - 1) return;
+    if (!game.paused) { game.paused = true; releaseAll(); }
+    document.getElementById("pub-titre").textContent = `Passer « ${R.def.name} »`;
+    document.getElementById("pub-etiquette").textContent = PUB.admob() ? "VIDÉO SPONSORISÉE" : "VIDÉO SPONSORISÉE · DÉMO";
+    document.getElementById("pub-video").hidden = !!PUB.admob();
+    document.getElementById("pub-compte").textContent = "5";
+    const lancer = document.getElementById("btn-pub-lancer");
+    lancer.disabled = false; lancer.textContent = "▶ Regarder la vidéo";
+    document.getElementById("pub-texte").textContent = "Regarde la vidéo jusqu'au bout pour passer ce niveau. Archibald, lui, n'a pas besoin de publicité pour tricher.";
+    showOverlay("pub");
+  }
+  async function lancerPub() {
+    if (pubEnCours) return;
+    pubEnCours = true;
+    const ok = await PUB.regarder();
+    pubEnCours = false;
+    if (!ok) {
+      document.getElementById("pub-texte").textContent = "Pas de vidéo disponible pour le moment. Réessaie un peu plus tard, ou retente le niveau !";
+      const lancer = document.getElementById("btn-pub-lancer"); lancer.disabled = false; lancer.textContent = "▶ Réessayer";
+      return;
+    }
+    passerNiveau();
+  }
+  function passerNiveau() {
+    const i = game.level;
+    statOf(i).passe = 1;
+    progress.unlocked = Math.max(progress.unlocked, Math.min(LEVELS.length - 1, i + 1));
+    progress.passes = (progress.passes || 0) + 1;
+    saveProgress();
+    game.paused = false;
+    showOverlay(null);
+    startLevel(i + 1);
+    R.say = { text: "Tu as sauté un niveau ? Tricheur ! … Bon, je suis mal placé pour dire ça.", t: 0, dur: 200 };
+  }
+  const btnPasser = document.getElementById("btn-passer");
+  function majBoutonPasser() {
+    const voir = !!R && (game.mode === "play" || game.mode === "dead") && !game.paused && R.index < LEVELS.length - 1 && game.deathsByRoom[R.index] >= PASSER_APRES;
+    if (btnPasser.hidden === voir) btnPasser.hidden = !voir;
+  }
 
   function nextRoom() {
     const i = game.level;
@@ -1951,6 +2022,7 @@
     options: document.getElementById("ecran-options"),
     avis: document.getElementById("ecran-avis"),
     stats: document.getElementById("ecran-stats"),
+    pub: document.getElementById("ecran-pub"),
     quitter: document.getElementById("ecran-quitter"),
     pause: document.getElementById("ecran-pause"),
     fin: document.getElementById("ecran-fin"),
@@ -1963,6 +2035,7 @@
 
   function togglePause() {
     if (game.mode === "title" || game.mode === "end") return;
+    document.getElementById("btn-passer-pause").hidden = !R || R.index >= LEVELS.length - 1;
     game.paused = !game.paused;
     releaseAll();
     showOverlay(game.paused ? "pause" : null);
@@ -2023,7 +2096,8 @@
         b.disabled = locked;
         b.style.setProperty("--type", TYPES[lv.type].color);
         const best = progress.best[i];
-        b.innerHTML = `<b>${i + 1}</b><small>${locked ? "fermé" : best != null ? `☠ ${best}` : "nouveau"}</small>`;
+        const passe = progress.stats[i] && progress.stats[i].passe && best == null;
+        b.innerHTML = `<b>${i + 1}</b><small>${locked ? "fermé" : best != null ? `☠ ${best}` : passe ? "passé ▶" : "nouveau"}</small>`;
         if (lv.defi) b.classList.add("defi");
         b.title = `${lv.name} · ${TYPES[lv.type].label}`;
         b.setAttribute("aria-label", `Niveau ${i + 1}, ${lv.name}${locked ? ", verrouillé" : ""}`);
@@ -2053,7 +2127,7 @@
     const lignes = [];
     const ids = Object.keys(progress.stats).map(Number);
     const finis = ids.filter((i) => progress.stats[i].fini > 0).length;
-    lignes.push(`Niveau atteint : ${Math.min(progress.unlocked + 1, LEVELS.length)}/${LEVELS.length} · niveaux finis : ${finis} · chutes : ${progress.deaths}${progress.tester ? " · mode testeur" : ""}`);
+    lignes.push(`Niveau atteint : ${Math.min(progress.unlocked + 1, LEVELS.length)}/${LEVELS.length} · niveaux finis : ${finis} · chutes : ${progress.deaths}${progress.passes ? ` · niveaux passés en vidéo : ${progress.passes}` : ""}${progress.tester ? " · mode testeur" : ""}`);
     const pires = ids.filter((i) => progress.stats[i].morts > 0).sort((a, b) => progress.stats[b].morts - progress.stats[a].morts).slice(0, 5);
     if (pires.length) lignes.push("Les plus durs : " + pires.map((i) => `n°${i + 1} ${LEVELS[i].name} (${progress.stats[i].morts} chute${progress.stats[i].morts > 1 ? "s" : ""}${progress.stats[i].fini ? "" : ", pas fini"})`).join(" ; "));
     return lignes.join("\n");
@@ -2134,6 +2208,11 @@
   const testeur = document.getElementById("mode-testeur");
   testeur.checked = !!progress.tester;
   testeur.addEventListener("change", () => { progress.tester = testeur.checked; saveProgress(); });
+
+  btnPasser.addEventListener("click", (e) => { e.preventDefault(); ouvrirPub(); });
+  document.getElementById("btn-passer-pause").addEventListener("click", ouvrirPub);
+  document.getElementById("btn-pub-lancer").addEventListener("click", lancerPub);
+  document.getElementById("btn-pub-annuler").addEventListener("click", () => { if (pubEnCours) return; game.paused = false; showOverlay(null); });
 
   document.getElementById("btn-jouer").addEventListener("click", (e) => playFrom(Number(e.currentTarget.dataset.level || 0)));
   document.getElementById("btn-niveaux").addEventListener("click", () => { buildLevelGrid(); showOverlay("niveaux"); });

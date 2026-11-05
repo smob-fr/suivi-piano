@@ -55,6 +55,21 @@
   }
   #btn-pause span { display: block; width: 12px; height: 12px; border-left: 4px solid var(--texte); border-right: 4px solid var(--texte); box-sizing: border-box; }
   body.en-jeu #btn-pause { display: grid; }
+  #btn-passer {
+    position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    font-family: var(--f-carnet); font-size: 14px; color: #2a1606; cursor: pointer;
+    padding: 8px 14px; border-radius: 999px; border: 2px solid #f3c66b;
+    background: linear-gradient(#f4c76c, #d38f2c); box-shadow: 0 3px 0 #6e4313, 0 6px 14px rgba(0,0,0,.45);
+    animation: invite 1.6s ease-in-out infinite;
+  }
+  #btn-passer b { font-family: var(--f-titre); font-weight: 400; margin-left: 4px; }
+  body:not(.en-jeu) #btn-passer { display: none; }
+  @keyframes invite { 0%, 100% { transform: translateX(-50%) scale(1) } 50% { transform: translateX(-50%) scale(1.05) } }
+  @media (prefers-reduced-motion: reduce) { #btn-passer { animation: none; } }
+  .ecran-video { position: relative; aspect-ratio: 16 / 9; max-height: 34vh; width: 100%; border-radius: 6px; background: linear-gradient(135deg, #1d140c, #3a2a18); display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(236,220,180,.25); }
+  .pub-demo { margin: 0; padding: 0 18px; text-align: center; font-size: 13px; color: var(--terne); max-width: 40ch; }
+  .pub-compte { position: absolute; right: 10px; bottom: 6px; margin: 0; font-family: var(--f-pix); font-size: 18px; color: var(--or); }
 
   /* ---------- Contrôles tactiles ---------- */
   .pad { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); display: none; gap: 8px; z-index: 4; }
@@ -221,6 +236,7 @@
 </div>
 
 <button id="btn-pause" type="button" aria-label="Pause"><span></span></button>
+<button id="btn-passer" type="button" hidden>Bloqué ? Passer ce niveau <b>▶ vidéo</b></button>
 
 <div class="pad gauche" aria-hidden="true">
   <div class="touche" data-btn="left"><span class="fleche g"></span></div>
@@ -335,6 +351,22 @@
   </div>
 </section>
 
+<section id="ecran-pub" class="panneau" hidden>
+  <div class="carte">
+    <p class="surtitre" id="pub-etiquette">VIDÉO SPONSORISÉE</p>
+    <h2 id="pub-titre">Passer le niveau</h2>
+    <div class="ecran-video" id="pub-video">
+      <p class="pub-demo">Démo pour les testeurs : dans la version des stores, une vraie publicité vidéo s'affichera ici.</p>
+      <p class="pub-compte" id="pub-compte">5</p>
+    </div>
+    <p class="recit" id="pub-texte">Regarde la vidéo jusqu'au bout pour passer ce niveau. Archibald, lui, n'a pas besoin de publicité pour tricher.</p>
+    <div class="actions">
+      <button id="btn-pub-lancer" class="bouton" type="button">▶ Regarder la vidéo</button>
+      <button id="btn-pub-annuler" class="bouton discret" type="button">Non merci, je réessaie</button>
+    </div>
+  </div>
+</section>
+
 <section id="ecran-pause" class="panneau" hidden>
   <div class="carte">
     <h2>Pause</h2>
@@ -343,6 +375,7 @@
       <button id="btn-reprendre" class="bouton" type="button">Reprendre</button>
       <button id="btn-recommencer" class="bouton discret" type="button">Recommencer</button>
       <button id="btn-accueil" class="bouton discret" type="button">Accueil</button>
+      <button id="btn-passer-pause" class="bouton discret" type="button">Passer ce niveau ▶ vidéo</button>
       <button class="bouton discret" type="button" data-avis>Donner mon avis</button>
       <button class="bouton discret" type="button" data-plein>Plein écran</button>
       <button class="bouton discret" type="button" data-son>Son : activé</button>
