@@ -2,21 +2,26 @@
 
 Jeu de plateforme pour mobile (en paysage), à mi-chemin entre l'exploration d'un *Rick Dangerous*
 (munitions limitées, dynamite, momies) et les pièges farceurs d'un *Level Devil*
-(le décor change sous tes pieds). L'explorateur Max fait la course contre le professeur Lecoquin,
+(le décor change sous tes pieds). L'explorateur Max fait la course contre le professeur Archibald,
 un archéologue tricheur qui a piégé tout le temple pour arriver le premier à l'Œil de Jade.
 
 Pas d'armes : on saute sur les ennemis ou on les assomme quelques secondes d'un coup de massue.
 La dynamite sert à ouvrir les murs fissurés.
 
-**50 niveaux en 5 actes**, avec une difficulté qui augmente :
+**100 niveaux en 10 actes**, avec une difficulté qui augmente et un niveau « Défi » tous les 3 niveaux :
 
 | Acte | Lieu | Nouveautés |
 |---|---|---|
 | 1 | La jungle | sauts, pics, serpents, dynamite, ressorts, fausses dalles, flèches, rocher |
-| 2 | La crypte | momies, faux murs, sols fissurés, éboulements |
-| 3 | Les mines | chauves-souris, pics au plafond, deux rochers |
-| 4 | Les cascades | commandes inversées, longs sauts |
-| 5 | Le sanctuaire | tout à la fois, et la finale : ouvrir le coffre de l'Œil de Jade |
+| 2 | La crypte | momies, faux murs, sols fissurés, éboulements, salle dans le noir |
+| 3 | Les mines | chauves-souris, pics au plafond, planches clignotantes, deux rochers |
+| 4 | Les cascades | commandes inversées, plateformes fantômes, ressort piégé |
+| 5 | Le sanctuaire | tout à la fois ; au niveau 50, l'Œil de Jade… est un faux |
+| 6 | Les catacombes | écraseurs, dalles à pression et grilles, plafond qui descend |
+| 7 | La cité engloutie | eau qui monte, sol glissant, plateformes mobiles, monte-charges |
+| 8 | Le volcan | lave qui monte, compte à rebours, forges à pilons |
+| 9 | Les jardins suspendus | vent, Max-miroir, nuages fantômes, balançoires |
+| 10 | La chambre du trésor | sable qui monte, tous les pièges réunis, la vraie finale (niveau 100) |
 
 Chaque acte alterne Exploration, Trahison, Action et Histoire. Le temple se souvient :
 certains pièges changent selon le nombre de morts dans le niveau. La progression et les records
@@ -36,7 +41,7 @@ python -m http.server 8000   # puis http://localhost:8000/jeu/
 
 - `index.html` — page, accueil, carte des niveaux, pause, fin, contrôles tactiles
 - `game.js` — moteur (canvas, physique, ennemis, pièges, caméra, accueil animé)
-- `levels.js` — les 50 niveaux, **généré** par `outils/niveaux.py`
+- `levels.js` — les 100 niveaux, **généré** par `outils/niveaux.py`
 - `outils/niveaux.py` — recettes des niveaux + vérificateur automatique
 
 ## Modifier les niveaux
@@ -51,4 +56,7 @@ pièges, pour 0 à 3 morts.
 
 Légende des cartes : `#` pierre · `B` mur fissuré · `^` pics · `v` pics au plafond · `P` départ ·
 `D` porte · `J` ressort · `x` fausse dalle · `F` faux mur · `<` `>` lance-flèches · `m` momie ·
-`s` serpent · `b` chauve-souris · `a` pièce d'or · `t` dynamite.
+`s` serpent · `b` chauve-souris · `a` pièce d'or · `t` dynamite · `c` planche clignotante ·
+`o` plateforme fantôme · `g` sol glissant · `G` grille · `_` dalle à pression.
+Les plateformes mobiles, écraseurs, courants d'air et le Max-miroir sont décrits à part (`movers`,
+`crushers`, `winds`, `mirror`).

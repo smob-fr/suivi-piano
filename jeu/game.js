@@ -27,6 +27,11 @@
     mines:      { bg: "#0e1014", bg2: "#171b22", stone: "#474c58", stoneTop: "#6a7283", stoneDark: "#2c3038", crack: "#9a8660", crackDark: "#584b33", deco: "#4a3522" },
     cascades:   { moss: "#3f8a6e", bg: "#081316", bg2: "#0e2126", stone: "#2f5560", stoneTop: "#4f8796", stoneDark: "#1c373e", crack: "#a39167", crackDark: "#655a3e", deco: "#3d7f93" },
     sanctuaire: { bg: "#0f0b15", bg2: "#1a1329", stone: "#4b3a63", stoneTop: "#73598f", stoneDark: "#2d2240", crack: "#b99c60", crackDark: "#75623c", deco: "#d9a441" },
+    catacombes: { bg: "#0c0d10", bg2: "#16181d", stone: "#5b5d63", stoneTop: "#84878e", stoneDark: "#36383d", crack: "#b3a481", crackDark: "#6e6448", deco: "#2a2c31" },
+    engloutie:  { moss: "#2f8a7e", bg: "#05121a", bg2: "#0a1f2b", stone: "#2c5f6e", stoneTop: "#4e95a6", stoneDark: "#173a45", crack: "#a7a07a", crackDark: "#5f5b42", deco: "#2b7f95" },
+    volcan:     { bg: "#140806", bg2: "#22100b", stone: "#4a2f2a", stoneTop: "#7a4a3a", stoneDark: "#2c1915", crack: "#c58a4a", crackDark: "#7a4e25", deco: "#5a1d10" },
+    jardins:    { moss: "#5fae3e", bg: "#0e1a12", bg2: "#18291c", stone: "#6b6a4c", stoneTop: "#97956a", stoneDark: "#45442f", crack: "#c0a36a", crackDark: "#7a6540", deco: "#2c5a2c" },
+    tresor:     { bg: "#140f06", bg2: "#22190a", stone: "#7b6332", stoneTop: "#b8964a", stoneDark: "#4c3c1c", crack: "#e2c070", crackDark: "#8a6c2c", deco: "#e2a640" },
   };
 
   const C = {
@@ -253,7 +258,14 @@
     if (def.doorStart && room.door) { room.door.x = def.doorStart[0] * T + 2; room.door.y = def.doorStart[1] * T - 6; }
     room.decor = genDecor(room, act ? act.palette : "jungle");
     room.dark = !!def.dark;
-    // le professeur Lecoquin attend à la porte, puis file devant le joueur
+    // plateformes mobiles : [x, y, largeur, dx, dy, vitesse] en cases
+    room.movers = (def.movers || []).map(([x, y, w, dx, dy, sp], i) => ({ x0: x * T, y0: y * T, x: x * T, y: y * T, w: w * T, h: 6, dx: dx * T, dy: dy * T, sp, t: i * 40, mx: 0, my: 0 }));
+    // écraseurs : [x, ligne du haut, décalage] ; ils tombent de 3 cases puis remontent
+    room.crushers = (def.crushers || []).map(([x, y, ph, drop]) => ({ x: x * T + 1, y0: y * T, y: y * T, w: T - 2, h: T, drop: (drop || 3) * T, t: ph || 0 }));
+    room.winds = (def.winds || []).map(([x0, x1, f]) => ({ x0: x0 * T, x1: (x1 + 1) * T, f }));
+    room.flood = null; room.timer = 0;
+    room.mirror = def.mirror ? { axis: def.mirror * T } : null;   // ligne de l'eau : le reflet est symétrique par rapport à elle
+    // le professeur Archibald attend à la porte, puis file devant le joueur
     if (room.door && !def.doorHidden && !def.doorStart) room.rival = { x: room.door.x - 22, y: room.door.y + 7, w: 10, h: 15, state: "wait", t: 0, face: -1 };
     return room;
   }
@@ -310,12 +322,13 @@
     if (y >= ROWS) return ".";
     return R.tiles[y][x];
   }
-  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">";
+  // g = sol glissant, G = grille (s'ouvre avec la bonne dalle), _ = dalle à pression (non solide)
+  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">" || c === "g" || c === "G";
   // planches qui clignotent : présentes ~1,6 s, absentes ~1 s, par groupes de deux décalés
   const BLINK = 160, BLINK_ON = 96;
   const blinkPhase = (x) => ((R ? R.t : 0) + (Math.floor(x / 2) % 2) * (BLINK / 2)) % BLINK;
   const blinkOn = (x) => blinkPhase(x) < BLINK_ON;
-  const looksStone = (c) => c === "#" || c === "x" || c === "F" || c === "<" || c === ">";
+  const looksStone = (c) => c === "#" || c === "x" || c === "F" || c === "<" || c === ">" || c === "g";
   function solidAt(px, py) { const tx = Math.floor(px / T), c = tileAt(tx, Math.floor(py / T)); return isSolid(c) || (c === "c" && blinkOn(tx)); }
   function rectHitsSolid(x, y, w, h) {
     const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.01) / T);
@@ -400,6 +413,10 @@
       }
       case "invert": game.invert = v[0]; sfx.invert(); R.shake = Math.max(R.shake, 3); break;
       case "dark": R.dark = !!v[0]; sfx.flee(); break;
+      case "flood": R.flood = { kind: v[0], speed: v[1], level: (v[2] != null ? v[2] : ROWS) * T, top: v[0] === "plafond" }; if (R.flood.top) R.flood.level = (v[2] || 0) * T; R.shake = 6; sfx.crumble(); break;
+      case "timer": R.timer = v[0] * 60; break;
+      case "press": R.tiles[v[1]][v[0]] = "-"; sfx.place(); break;
+      case "gate": sfx.door(); R.shake = Math.max(R.shake, 3); break;
       case "appear": {
         const [x, y, w, h] = v;
         for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) {
@@ -440,7 +457,10 @@
     if (game.mode === "play") game.timer++;
     if (game.invert > 0) game.invert--;
 
+    updateMovers();
     updatePlayer();
+    updateCrushers();
+    updateFlood();
     updateTilesFx();
     updateDoor();
     updateEnemies();
@@ -451,7 +471,7 @@
     updateBoulders();
     updateBlocks();
     updateParticles();
-    if (game.mode === "play") { runTriggers(false); checkHazards(); }
+    if (game.mode === "play") { runTriggers(false); checkHazards(); updateTimer(); }
 
     if (R.say) { R.say.t++; if (R.say.t > R.say.dur) R.say = null; }
     if (R.hint) { R.hint.t++; if (R.hint.t > R.hint.dur) R.hint = null; }
@@ -468,16 +488,25 @@
     let dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     if (game.invert > 0) dir = -dir;
     if (dir) p.face = dir;
-    p.vx += (dir * PHYS.run - p.vx) * PHYS.accel;
-    if (Math.abs(p.vx) < 0.05) p.vx = 0;
+    // sol glissant : Max a du mal à accélérer et à freiner
+    const under = p.grounded ? tileAt(Math.floor((p.x + p.w / 2) / T), Math.floor((p.y + p.h + 1) / T)) : "";
+    const slip = under === "g";
+    const inWater = R.flood && !R.flood.top && R.flood.kind === "eau" && p.y + p.h > R.flood.level;
+    const run = PHYS.run * (inWater ? 0.6 : 1);
+    p.vx += (dir * run - p.vx) * (slip ? 0.03 : PHYS.accel);
+    if (Math.abs(p.vx) < 0.05 && !slip) p.vx = 0;
+    // vent : pousse Max sur le côté
+    for (const w of R.winds) if (p.x + p.w / 2 > w.x0 && p.x + p.w / 2 < w.x1) p.x += w.f;
 
     p.coyote = p.grounded ? PHYS.coyote : p.coyote - 1;
     if (pressed.jump) p.buffer = PHYS.buffer; else p.buffer--;
     if (p.buffer > 0 && p.coyote > 0) { p.vy = PHYS.jump; p.buffer = 0; p.coyote = 0; sfx.jump(); }
     if (!input.jump && p.vy < PHYS.jumpCut && !p.spring) p.vy = PHYS.jumpCut;
     if (p.vy >= 0) p.spring = false;
-    p.vy = Math.min(p.vy + PHYS.gravity, PHYS.maxFall);
+    p.vy = Math.min(p.vy + PHYS.gravity * (inWater ? 0.55 : 1), inWater ? 2.2 : PHYS.maxFall);
+    const prevBottom = p.y + p.h;
     moveBody(p);
+    landOnMovers(p, prevBottom);
     p.anim += Math.abs(p.vx) * 0.25;
 
     if (p.grounded) {
@@ -524,6 +553,55 @@
       game.mode = "win"; game.winT = 0; sfx.door();
     }
     if (p.y > H + 20) kill();
+  }
+
+  function updateMovers() {
+    const p = R.player;
+    for (const m of R.movers) {
+      m.t++;
+      const s = (1 - Math.cos(m.t * m.sp * 0.02)) / 2;
+      const nx = m.x0 + m.dx * s, ny = m.y0 + m.dy * s;
+      m.mx = nx - m.x; m.my = ny - m.y; m.x = nx; m.y = ny;
+      // Max est transporté s'il se tient dessus
+      if (p && p.alive && p.onMover === m) { p.x += m.mx; p.y += m.my; if (rectHitsSolid(p.x, p.y, p.w, p.h)) { p.x -= m.mx; } }
+    }
+  }
+  function landOnMovers(p, prevBottom) {
+    p.onMover = null;
+    if (p.vy < 0) return;
+    for (const m of R.movers) {
+      if (p.x + p.w <= m.x + 1 || p.x >= m.x + m.w - 1) continue;
+      if (prevBottom <= m.y + 2 + Math.max(0, m.my) && p.y + p.h >= m.y - 0.5) {
+        p.y = m.y - p.h; p.vy = 0; p.grounded = true; p.onMover = m; return;
+      }
+    }
+  }
+  function updateCrushers() {
+    for (const c of R.crushers) {
+      c.t = (c.t + 1) % 170;
+      const t = c.t;
+      let off;
+      if (t < 70) off = 0;                                   // en haut, au repos
+      else if (t < 74) off = 0.02;                           // il frémit
+      else if (t < 84) off = ((t - 74) / 10) ** 2;           // chute
+      else if (t < 120) off = 1;                             // en bas
+      else off = 1 - (t - 120) / 50;                         // remonte
+      const before = c.y;
+      c.y = c.y0 + off * c.drop + (t >= 70 && t < 74 ? (Math.random() - 0.5) * 2 : 0);
+      if (t === 84) { R.shake = Math.max(R.shake, 4); sfx.crumble(); burst(c.x + c.w / 2, c.y + c.h, P.stoneTop, 6, 1.2); }
+      c.down = off > 0.15 && c.y >= before;
+    }
+  }
+  function updateFlood() {
+    const f = R.flood;
+    if (!f || game.mode !== "play") return;
+    f.level += f.top ? f.speed : -f.speed;
+    if (!f.top && f.level < 0) f.level = 0;
+  }
+  function updateTimer() {
+    if (!R.timer || game.mode !== "play") return;
+    R.timer--;
+    if (R.timer === 0) { R.shake = 10; kill("Trop tard, Max ! La salle s'effondre !"); }
   }
 
   function updateTilesFx() {
@@ -748,12 +826,27 @@
       if (Math.hypot(nx - cx, ny - cy) < 13) return kill();
     }
     for (const k of R.blocks) if (k.falling && overlap(p, k)) return kill();
+    for (const c of R.crushers) if (c.y > c.y0 + 3 && overlap(p, { x: c.x + 1, y: c.y, w: c.w - 2, h: c.h })) return kill();
+    if (R.flood) {
+      const f = R.flood;
+      if (f.top ? p.y < f.level - 2 : (f.kind === "eau" ? p.y + 3 > f.level : p.y + p.h - 5 > f.level))
+        return kill({ eau: "Glouglou ! Tu ne savais pas nager ?", sable: "Englouti par le sable. Classique.", lave: "Ouille. C'était chaud, hein ?", plafond: "Aplati comme une crêpe !" }[f.kind]);
+    }
+    if (R.mirror) {
+      // le reflet copie Max en miroir ; s'il touche des pics de son côté, c'est perdu
+      const g = mirrorPos(), gr = { x: g.x, y: g.y, w: p.w, h: p.h };
+      for (let ty = Math.floor(g.y / T); ty <= Math.floor((g.y + p.h) / T); ty++)
+        for (let tx = Math.floor(g.x / T); tx <= Math.floor((g.x + p.w) / T); tx++)
+          if (tileAt(tx, ty) === "^" && overlap(gr, { x: tx * T + 2, y: ty * T + 7, w: 12, h: 9 })) return kill("Ton reflet s'est piqué ! Ha ha !");
+    }
     // écrasé seulement par de la vraie pierre (une planche qui réapparaît ne tue pas)
     const cx0 = Math.floor((p.x + 1) / T), cx1 = Math.floor((p.x + p.w - 1.01) / T), cy0 = Math.floor((p.y + 1) / T), cy1 = Math.floor((p.y + p.h - 1.01) / T);
     for (let ty = cy0; ty <= cy1; ty++) for (let tx = cx0; tx <= cx1; tx++) if (isSolid(tileAt(tx, ty))) return kill();
   }
 
-  function kill() {
+  function mirrorPos() { const p = R.player; return { x: p.x, y: 2 * R.mirror.axis - (p.y + p.h) }; }
+
+  function kill(msg) {
     const p = R.player;
     if (!p.alive) return;
     p.alive = false;
@@ -765,7 +858,7 @@
     burst(p.x + 5, p.y + 7, C.jacket, 12, 2.2);
     burst(p.x + 5, p.y + 7, C.shirt, 8, 2);
     R.hat = { x: p.x, y: p.y, vx: -p.face * 1.2, vy: -4, r: 0 };
-    R.say = { text: TAUNTS[Math.floor(Math.random() * TAUNTS.length)], t: 0, dur: 90 };
+    R.say = { text: msg || TAUNTS[Math.floor(Math.random() * TAUNTS.length)], t: 0, dur: 100 };
   }
 
   /* ================= Déroulement ================= */
@@ -866,7 +959,12 @@
     for (const b of R.boulders) drawBoulder(b);
     for (const a of R.arrows) drawArrow(a);
     if (R.rival && R.rival.state !== "gone") drawRival(R.rival);
+    drawMovers();
+    drawCrushers();
+    if (R.mirror) drawMirror();
     drawPlayer();
+    drawWinds();
+    drawFlood();
     drawTiles(true); // faux murs par-dessus le joueur
     drawParticles();
     drawTorchLight();
@@ -875,6 +973,7 @@
     drawHud();
     drawSpeech();
     if (game.invert > 0) drawInvert();
+    drawTimerHud();
     if (game.mode === "card") drawCard();
     if (game.mode === "win") { ctx.fillStyle = `rgba(7,11,9,${Math.min(1, game.winT / 40)})`; ctx.fillRect(0, 0, view.w, view.h); }
   }
@@ -948,6 +1047,74 @@
 
   function inView(x, y, m = 2) {
     return x * T > cam.x - m * T && x * T < cam.x + view.w + m * T && y * T > cam.y - m * T && y * T < cam.y + view.h + m * T;
+  }
+
+  function drawMovers() {
+    for (const m of R.movers) {
+      ctx.fillStyle = C.wood; ctx.fillRect(m.x, m.y, m.w, m.h);
+      ctx.fillStyle = "#c79a5e"; ctx.fillRect(m.x, m.y, m.w, 1.5);
+      ctx.fillStyle = "#5a3a1c"; for (let i = 6; i < m.w; i += 8) ctx.fillRect(m.x + i, m.y + 1, 1, m.h - 1);
+      ctx.fillStyle = C.metal; ctx.fillRect(m.x + 2, m.y + m.h - 1, 3, 2); ctx.fillRect(m.x + m.w - 5, m.y + m.h - 1, 3, 2);
+      // cordes vers le haut pour les monte-charges
+      if (m.dy) { const top = Math.min(m.y0, m.y0 + m.dy) - 40; ctx.strokeStyle = "rgba(160,120,70,.6)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(m.x + 3, m.y); ctx.lineTo(m.x + 3, top); ctx.moveTo(m.x + m.w - 3, m.y); ctx.lineTo(m.x + m.w - 3, top); ctx.stroke(); }
+    }
+  }
+  function drawCrushers() {
+    for (const c of R.crushers) {
+      ctx.fillStyle = C.metal; ctx.fillRect(c.x + c.w / 2 - 2, c.y0 - 2, 4, c.y - c.y0 + 3);   // tige
+      ctx.fillStyle = P.stoneDark; ctx.fillRect(c.x - 1, c.y, c.w + 2, c.h - 4);
+      ctx.fillStyle = P.stoneTop; ctx.fillRect(c.x - 1, c.y, c.w + 2, 2);
+      ctx.fillStyle = C.danger; ctx.beginPath();
+      for (let i = 0; i < 3; i++) { const bx = c.x + i * (c.w / 3); ctx.moveTo(bx, c.y + c.h - 4); ctx.lineTo(bx + c.w / 6, c.y + c.h); ctx.lineTo(bx + c.w / 3, c.y + c.h - 4); }
+      ctx.fill();
+    }
+  }
+  function drawWinds() {
+    for (const w of R.winds) {
+      ctx.strokeStyle = "rgba(220,240,255,0.35)"; ctx.lineWidth = 1;
+      for (let i = 0; i < 10; i++) {
+        const span = w.x1 - w.x0, k = ((R.t * Math.abs(w.f) * 2 + i * 53) % span);
+        const x = w.f > 0 ? w.x0 + k : w.x1 - k, y = 30 + ((i * 37) % (H - 60));
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - Math.sign(w.f) * 10, y); ctx.stroke();
+      }
+    }
+  }
+  function drawFlood() {
+    const f = R.flood;
+    if (!f) return;
+    const wave = (x) => Math.sin(x / 9 + R.t / 12) * 1.5;
+    const col = { eau: ["rgba(60,150,200,0.55)", "rgba(170,225,250,0.8)"], sable: ["rgba(196,160,92,0.92)", "rgba(230,200,140,1)"], lave: ["rgba(230,80,20,0.9)", "rgba(255,200,80,1)"], plafond: ["rgba(40,30,26,0.97)", "rgba(229,72,60,1)"] }[f.kind] || ["rgba(60,150,200,0.55)", "#fff"];
+    const x0 = cam.x - 10, x1 = cam.x + view.w + 10;
+    if (f.top) {
+      ctx.fillStyle = col[0]; ctx.fillRect(x0, -40, x1 - x0, f.level + 40);
+      ctx.fillStyle = col[1]; ctx.beginPath();
+      for (let x = Math.floor(x0 / 8) * 8; x < x1; x += 8) { ctx.moveTo(x, f.level); ctx.lineTo(x + 4, f.level + 7); ctx.lineTo(x + 8, f.level); }
+      ctx.fill();
+      return;
+    }
+    ctx.fillStyle = col[0];
+    ctx.beginPath(); ctx.moveTo(x0, H + 80);
+    for (let x = x0; x <= x1; x += 4) ctx.lineTo(x, f.level + wave(x));
+    ctx.lineTo(x1, H + 80); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = col[1]; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let x = x0; x <= x1; x += 4) { const y = f.level + wave(x); if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.stroke();
+    if (f.kind === "lave" && R.t % 4 === 0) R.particles.push({ x: x0 + Math.random() * (x1 - x0), y: f.level, vx: 0, vy: -0.8 - Math.random(), s: 2, life: 30, color: "#ffb347", g: 0.02 });
+  }
+  function drawMirror() {
+    // reflet à l'envers sous la surface de l'eau, légèrement bleuté et transparent
+    const a = R.mirror.axis;
+    ctx.save();
+    ctx.translate(0, 2 * a); ctx.scale(1, -1);
+    ctx.globalAlpha = 0.6;
+    drawPlayer();
+    ctx.restore();
+    const p = R.player, g = mirrorPos();
+    ctx.fillStyle = "rgba(90,170,230,0.18)"; ctx.fillRect(g.x - 3, g.y, p.w + 6, p.h);
+    ctx.strokeStyle = "rgba(170,220,255,0.35)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = cam.x - 10; x < cam.x + view.w + 10; x += 6) { const y = a + Math.sin(x / 7 + R.t / 10) * 0.8; if (x === cam.x - 10) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.stroke();
   }
 
   function drawDecor() {
@@ -1125,6 +1292,20 @@
       if (R.shakeTiles.get(x + "," + y) || R.wobble.has(x + "," + y)) { ox = (Math.random() - 0.5) * 2; oy = (Math.random() - 0.5) * 1.5; }
       const px = x * T + ox, py = y * T + oy;
       if (c === "#" || c === "x") drawStone(px, py, x, y);
+      else if (c === "g") {
+        drawStone(px, py, x, y);
+        ctx.fillStyle = "rgba(150,220,255,0.55)"; ctx.fillRect(px, py, T, 2);
+        ctx.fillStyle = "rgba(220,245,255,0.7)"; ctx.fillRect(px + ((x * 5) % 10), py + 1, 4, 1);
+        ctx.fillStyle = "rgba(150,220,255,0.25)"; ctx.fillRect(px + 3, py + 2, 2, 3 + (x % 3));
+      } else if (c === "G") {
+        ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(px, py, T, T);
+        ctx.fillStyle = "#7d828a"; for (let i = 2; i < T; i += 4) ctx.fillRect(px + i, py, 2, T);
+        ctx.fillStyle = "#5d636b"; ctx.fillRect(px, py + 3, T, 2); ctx.fillRect(px, py + 11, T, 2);
+      } else if (c === "_" || c === "-") {
+        const down = c === "-";
+        ctx.fillStyle = P.stoneDark; ctx.fillRect(px + 2, py + T - (down ? 1 : 3), T - 4, down ? 1 : 3);
+        ctx.fillStyle = down ? P.stone : C.gold; ctx.fillRect(px + 3, py + T - (down ? 2 : 4), T - 6, 1);
+      }
       else if (c === "F") {
         const inside = p && p.alive && overlap(p, { x: x * T - 4, y: y * T - 4, w: T + 8, h: T + 8 });
         ctx.globalAlpha = inside ? 0.45 : 1;
@@ -1241,7 +1422,7 @@
     ctx.globalAlpha = 1;
   }
 
-  // Professeur Lecoquin : casque colonial kaki, lunettes rondes, nœud papillon rouge, veste beige
+  // Professeur Archibald : casque colonial kaki, lunettes rondes, nœud papillon rouge, veste beige
   function drawRival(r) {
     const run = r.state === "run";
     const ph = run ? Math.sin(r.t * 0.6) : 0, bob = run ? Math.abs(ph) : Math.sin(r.t / 10) * 0.4;
@@ -1473,6 +1654,16 @@
     ctx.fillStyle = C.text; ctx.fillText(String(game.deathsByRoom[R.index]), x + 11, 8);
   }
 
+  function drawTimerHud() {
+    if (!R.timer) return;
+    const s = Math.ceil(R.timer / 60), urgent = s <= 5;
+    ctx.font = `12px ${FONT_PIX}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const txt = `${s}`;
+    ctx.fillStyle = "rgba(6,10,8,0.8)"; ctx.fillRect(view.w / 2 - 22, 18, 44, 18);
+    ctx.fillStyle = urgent && Math.floor(R.t / 8) % 2 ? C.text : C.danger;
+    ctx.fillText(txt, view.w / 2, 28);
+  }
+
   function drawInvert() {
     ctx.globalAlpha = 0.6 + 0.4 * Math.sin(R.t / 5);
     ctx.font = `8px ${FONT_PIX}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -1504,7 +1695,7 @@
       ctx.fillStyle = "rgba(6,10,8,0.86)"; ctx.fillRect(bx, by, bw, bh);
       ctx.fillStyle = C.god; ctx.fillRect(bx, by, 2, bh);
       ctx.font = `6px ${FONT_PIX}`; ctx.textAlign = "left"; ctx.textBaseline = "top";
-      ctx.fillText("PROFESSEUR LECOQUIN", bx + 10, by + 4);
+      ctx.fillText("PROFESSEUR ARCHIBALD", bx + 10, by + 4);
       ctx.font = `8px ${FONT_TXT}`; ctx.fillStyle = C.text;
       let left = shown;
       lines.forEach((ln, i) => { ctx.fillText(ln.slice(0, Math.max(0, left)), bx + 10, by + 13 + i * 11); left -= ln.length + 1; });
@@ -1775,7 +1966,7 @@
     btn.dataset.level = progress.finished ? 0 : u;
     document.getElementById("accueil-stats").textContent = u > 0 || progress.deaths
       ? `Niveau ${Math.min(u + 1, LEVELS.length)} sur ${LEVELS.length} · ${progress.deaths} chute${progress.deaths > 1 ? "s" : ""}`
-      : `${LEVELS.length} niveaux · 5 actes`;
+      : `${LEVELS.length} niveaux · ${ACTS.length} actes`;
   }
   setInterval(() => {
     if (overlays.titre.hidden || !document.getElementById("accueil-citation")) return;
@@ -1823,9 +2014,9 @@
     const arr = game.deathsByRoom, mx = Math.max(...arr), worst = arr.indexOf(mx);
     document.getElementById("fin-pire").textContent = mx > 0 ? `${LEVELS[worst].name} (${mx})` : "aucune, bravo";
     document.getElementById("fin-pieces").textContent = String(game.coinsTotal);
-    document.getElementById("fin-mot").textContent = progress.deaths < 50
-      ? "« Moins de 50 chutes ? Tu as triché. C'est mon métier, pas le tien ! » — Lecoquin"
-      : "« Bon, d'accord, tu as gagné. Mais j'ai déjà une piste pour un autre trésor… » — Lecoquin";
+    document.getElementById("fin-mot").textContent = progress.deaths < 100
+      ? "« Moins de 100 chutes ? Tu as triché. C'est mon métier, pas le tien ! » — Archibald"
+      : "« Bon, d'accord, tu as gagné. Mais j'ai déjà une piste pour un autre trésor… » — Archibald";
     showOverlay("fin");
   }
 
