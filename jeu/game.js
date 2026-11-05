@@ -1181,7 +1181,7 @@
     const speed = reducedMotion ? 0 : 0.012;
     ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 1;
     for (let i = 0; i < 9; i++) {
-      const d = ((i / 9) + t * speed) % 1, e = d * d * d;
+      const d = (((i / 9) - t * speed) % 1 + 1) % 1, e = d * d * d;   // le couloir file vers le fond
       const yb = far.b + (204 - far.b) * e, yt = far.t + (-4 - far.t) * e;
       const xl = far.l + (0 - far.l) * e, xr = far.r + (Wd - far.r) * e;
       ctx.beginPath(); ctx.moveTo(xl, yb); ctx.lineTo(xr, yb); ctx.stroke();
@@ -1194,7 +1194,7 @@
       ctx.beginPath(); ctx.moveTo(Wd, -4 + 208 * f); ctx.lineTo(far.r, far.t + fh * 2 * f); ctx.stroke();
     }
     for (let i = 0; i < 4; i++) {
-      const d = ((i / 4) + t * speed + 0.12) % 1, e = d * d * d;
+      const d = (((i / 4) - t * speed + 0.12) % 1 + 1) % 1, e = d * d * d;
       const side = i % 2 ? 1 : -1;
       const x = side < 0 ? far.l + (0 - far.l) * e * 0.92 : far.r + (Wd - far.r) * e * 0.92;
       const y = far.t + 14 + (40 - far.t - 14) * e;

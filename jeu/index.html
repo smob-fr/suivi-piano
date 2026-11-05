@@ -58,26 +58,6 @@
 
   /* ---------- Héros de l'accueil (illustration vectorielle animée) ---------- */
   #heros { position: fixed; z-index: 9; pointer-events: none; overflow: visible; filter: drop-shadow(0 6px 10px rgba(0,0,0,.55)) saturate(.95); }
-  #heros .corps, #heros .jambe, #heros .bras, #heros .chapeau, #heros .yeux, #heros .bouche, #heros .goutte { transform-box: fill-box; }
-  #heros .corps { animation: rebond .46s ease-in-out infinite; transform-origin: 50% 100%; }
-  #heros .jambe { transform-origin: 50% 0%; animation: foulee .46s ease-in-out infinite; }
-  #heros .jambe-b { animation-delay: -.23s; }
-  #heros .bras { transform-origin: 50% 0%; animation: balancier .46s ease-in-out infinite; }
-  #heros .bras-d { animation-delay: -.23s; }
-  #heros .chapeau { transform-origin: 50% 100%; animation: chapeau .46s ease-in-out infinite; animation-delay: -.08s; }
-  #heros .yeux { animation: regard 3.2s steps(1) infinite; }
-  #heros .bouche { transform-origin: 50% 0%; animation: souffle .23s ease-in-out infinite alternate; }
-  #heros .goutte { opacity: 0; animation: goutte-g .9s ease-in infinite; }
-  #heros .goutte-d { animation-name: goutte-d; animation-delay: -.45s; }
-  @keyframes rebond { 0%, 50%, 100% { transform: translateY(0) } 25%, 75% { transform: translateY(-6px) } }
-  @keyframes foulee { 0%, 100% { transform: translateY(2px) scale(1.06) } 50% { transform: translateY(-14px) scale(.97, .74) } }
-  @keyframes balancier { 0%, 100% { transform: translateY(5px) rotate(16deg) scale(.95) } 50% { transform: translateY(-9px) rotate(5deg) scale(1.08) } }
-  @keyframes chapeau { 0%, 50%, 100% { transform: translateY(0) rotate(-1.5deg) } 25%, 75% { transform: translateY(-5px) rotate(1.5deg) } }
-  @keyframes regard { 0%, 60% { transform: translate(0, 0) } 61%, 80% { transform: translate(-3px, -1px) } 81%, 100% { transform: translate(3px, -1px) } }
-  @keyframes souffle { from { transform: scaleY(.85) } to { transform: scaleY(1.1) } }
-  @keyframes goutte-g { 0% { opacity: 0; transform: translate(0, 0) } 15% { opacity: 1 } 100% { opacity: 0; transform: translate(-30px, 26px) } }
-  @keyframes goutte-d { 0% { opacity: 0; transform: translate(0, 0) } 15% { opacity: 1 } 100% { opacity: 0; transform: translate(30px, 26px) } }
-  @media (prefers-reduced-motion: reduce) { #heros * { animation: none !important; } }
 
   /* ---------- Contrôles tactiles ---------- */
   .pad { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); display: none; gap: 8px; z-index: 4; }
@@ -198,109 +178,105 @@
 
 <svg id="heros" viewBox="0 0 240 340" aria-hidden="true">
   <defs>
-    <linearGradient id="g-cuir" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9a5f30"/><stop offset=".55" stop-color="#6a3b1c"/><stop offset="1" stop-color="#3f210e"/></linearGradient>
-    <linearGradient id="g-pantalon" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7a704f"/><stop offset="1" stop-color="#4f4733"/></linearGradient>
-    <linearGradient id="g-botte" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a3a22"/><stop offset="1" stop-color="#2a1a0e"/></linearGradient>
-    <linearGradient id="g-feutre" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a06a3c"/><stop offset=".6" stop-color="#6e4424"/><stop offset="1" stop-color="#47290f"/></linearGradient>
-    <radialGradient id="g-peau" cx=".42" cy=".38" r=".7"><stop offset="0" stop-color="#f4c9a0"/><stop offset=".7" stop-color="#e2a777"/><stop offset="1" stop-color="#c58658"/></radialGradient>
-    <linearGradient id="g-chemise" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e3cf9b"/><stop offset="1" stop-color="#b8a06a"/></linearGradient>
-    <clipPath id="c-visage"><ellipse cx="120" cy="100" rx="31" ry="37"/></clipPath>
+    <linearGradient id="g-cuir" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a0653a"/><stop offset=".5" stop-color="#6f3f1f"/><stop offset="1" stop-color="#3e200d"/></linearGradient>
+    <linearGradient id="g-manche" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8d5530"/><stop offset="1" stop-color="#4f2a12"/></linearGradient>
+    <linearGradient id="g-pantalon" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#857a56"/><stop offset="1" stop-color="#4e4631"/></linearGradient>
+    <linearGradient id="g-botte" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5e3d24"/><stop offset="1" stop-color="#26170c"/></linearGradient>
+    <linearGradient id="g-feutre" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a56e40"/><stop offset=".6" stop-color="#6e4424"/><stop offset="1" stop-color="#43260e"/></linearGradient>
+    <radialGradient id="g-peau" cx=".4" cy=".36" r=".72"><stop offset="0" stop-color="#f6cfa6"/><stop offset=".7" stop-color="#e2a777"/><stop offset="1" stop-color="#c08254"/></radialGradient>
+    <linearGradient id="g-chemise" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8d5a2"/><stop offset="1" stop-color="#b59d68"/></linearGradient>
+    <clipPath id="c-visage"><ellipse cx="120" cy="98" rx="31" ry="37"/></clipPath>
+    <clipPath id="c-buste"><path d="M120 140 C96 140 74 144 66 160 L70 222 Q120 234 170 222 L174 160 C166 144 144 140 120 140 Z"/></clipPath>
   </defs>
 
-  <!-- jambes (sous le corps) -->
-  <g transform="translate(101 220)"><g class="jambe jambe-a">
-    <path d="M-13 0 L13 0 L11 76 L-11 76 Z" fill="url(#g-pantalon)"/>
-    <path d="M-6 30 Q0 36 7 30" stroke="#3f3826" stroke-width="2" fill="none"/>
-    <path d="M-15 72 L15 72 Q19 94 14 100 L-14 100 Q-19 94 -15 72 Z" fill="url(#g-botte)"/>
-    <rect x="-15" y="98" width="30" height="7" rx="2" fill="#1d120a"/>
-    <path d="M-12 78 L12 78" stroke="#7a5233" stroke-width="2"/>
-  </g></g>
-  <g transform="translate(139 220)"><g class="jambe jambe-b">
-    <path d="M-13 0 L13 0 L11 76 L-11 76 Z" fill="url(#g-pantalon)"/>
-    <path d="M-7 30 Q0 36 6 30" stroke="#3f3826" stroke-width="2" fill="none"/>
-    <path d="M-15 72 L15 72 Q19 94 14 100 L-14 100 Q-19 94 -15 72 Z" fill="url(#g-botte)"/>
-    <rect x="-15" y="98" width="30" height="7" rx="2" fill="#1d120a"/>
-    <path d="M-12 78 L12 78" stroke="#7a5233" stroke-width="2"/>
-  </g></g>
+  <!-- jambe arrière, levée : on voit la semelle -->
+  <path d="M120 214 L156 214 L153 258 C151 268 149 274 146 280 L126 280 C124 272 122 266 122 258 Z" fill="url(#g-pantalon)"/>
+  <path d="M128 252 Q138 258 148 252" stroke="#3c3624" stroke-width="2" fill="none"/>
+  <path d="M123 275 L149 275 C154 284 154 293 149 300 L123 300 C118 293 118 284 123 275 Z" fill="#2a1a0e"/>
+  <path d="M126 282 L146 282 M125 288 L147 288 M126 294 L146 294" stroke="#5b4129" stroke-width="2"/>
+  <path d="M123 275 L149 275 L148 279 L124 279 Z" fill="#5e3d24"/>
 
-  <g class="corps">
-    <!-- buste -->
-    <rect x="110" y="128" width="20" height="20" fill="#c58658"/>
-    <path d="M70 158 Q72 143 100 139 L140 139 Q168 143 170 158 L165 224 Q120 232 75 224 Z" fill="url(#g-cuir)"/>
-    <path d="M104 140 L136 140 L130 214 L110 214 Z" fill="url(#g-chemise)"/>
-    <path d="M104 140 L120 158 L111 138 Z" fill="#efe0b4"/>
-    <path d="M136 140 L120 158 L129 138 Z" fill="#efe0b4"/>
-    <circle cx="120" cy="172" r="1.8" fill="#8a7448"/><circle cx="120" cy="188" r="1.8" fill="#8a7448"/><circle cx="120" cy="202" r="1.8" fill="#8a7448"/>
-    <path d="M104 141 L110 214 M136 141 L130 214" stroke="#3a1e0c" stroke-width="2.5"/>
-    <path d="M80 160 Q78 186 82 214" stroke="rgba(255,210,160,.25)" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M78 210 L162 210 L162 225 L78 225 Z" fill="#2e1b0e"/>
-    <rect x="112" y="208" width="16" height="18" rx="2" fill="none" stroke="#e2a640" stroke-width="2.5"/>
-    <!-- fouet enroulé -->
-    <circle cx="166" cy="232" r="12" fill="none" stroke="#3b2414" stroke-width="5"/>
-    <circle cx="166" cy="232" r="6" fill="none" stroke="#5a3a1f" stroke-width="3"/>
-    <rect x="171" y="226" width="5" height="18" rx="2" fill="#6b4524" transform="rotate(20 173 235)"/>
-    <!-- sangle et sacoche -->
-    <path d="M152 146 L88 214" stroke="#7d5a2e" stroke-width="8" stroke-linecap="round"/>
-    <path d="M152 146 L88 214" stroke="#a07743" stroke-width="2" stroke-dasharray="4 5"/>
-    <path d="M62 202 h34 a5 5 0 0 1 5 5 v26 a5 5 0 0 1 -5 5 h-34 a5 5 0 0 1 -5 -5 v-26 a5 5 0 0 1 5 -5 Z" fill="#a87d45"/>
-    <path d="M57 207 a5 5 0 0 1 5 -5 h34 a5 5 0 0 1 5 5 v8 q-22 9 -44 0 Z" fill="#8a6231"/>
-    <rect x="76" y="212" width="6" height="8" rx="1" fill="#e2a640"/>
+  <!-- jambe avant, posée -->
+  <path d="M84 214 L121 214 L118 262 C117 276 116 288 116 298 L92 298 C92 288 90 276 88 262 Z" fill="url(#g-pantalon)"/>
+  <path d="M92 258 Q103 265 114 258" stroke="#3c3624" stroke-width="2" fill="none"/>
+  <path d="M96 226 Q98 246 97 256" stroke="rgba(255,240,200,.18)" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M88 294 L121 294 C125 304 127 316 125 324 C116 331 94 331 85 324 C83 316 84 304 88 294 Z" fill="url(#g-botte)"/>
+  <path d="M86 324 C95 331 116 331 125 324 L125 328 C116 334 94 334 85 328 Z" fill="#160d06"/>
+  <path d="M92 300 L118 300" stroke="#7a5233" stroke-width="2"/>
+  <path d="M94 308 Q104 304 112 310" stroke="rgba(255,220,180,.25)" stroke-width="3" fill="none" stroke-linecap="round"/>
 
-    <!-- bras -->
-    <g transform="translate(72 150)"><g class="bras bras-g">
-      <path d="M-13 0 Q-19 34 -15 62 L7 64 Q11 32 11 2 Z" fill="url(#g-cuir)"/>
-      <path d="M-15 58 L7 60 L6 67 L-15 65 Z" fill="#43230f"/>
-      <ellipse cx="-4" cy="74" rx="10.5" ry="11" fill="url(#g-peau)"/>
-      <path d="M-10 70 Q-4 67 2 70 M-10 75 Q-4 72 2 75" stroke="#b9805a" stroke-width="1.5" fill="none"/>
-    </g></g>
-    <g transform="translate(168 150) scale(-1 1)"><g class="bras bras-d">
-      <path d="M-13 0 Q-19 34 -15 62 L7 64 Q11 32 11 2 Z" fill="url(#g-cuir)"/>
-      <path d="M-15 58 L7 60 L6 67 L-15 65 Z" fill="#43230f"/>
-      <ellipse cx="-4" cy="74" rx="10.5" ry="11" fill="url(#g-peau)"/>
-      <path d="M-10 70 Q-4 67 2 70 M-10 75 Q-4 72 2 75" stroke="#b9805a" stroke-width="1.5" fill="none"/>
-    </g></g>
-
-    <!-- tête paniquée -->
-    <g class="tete">
-      <ellipse cx="88" cy="102" rx="7" ry="10" fill="#d99b6c"/>
-      <ellipse cx="152" cy="102" rx="7" ry="10" fill="#d99b6c"/>
-      <ellipse cx="120" cy="100" rx="31" ry="37" fill="url(#g-peau)"/>
-      <g clip-path="url(#c-visage)">
-        <ellipse cx="120" cy="70" rx="36" ry="12" fill="rgba(110,60,30,.38)"/>
-        <path d="M89 112 Q120 150 151 112 L151 140 L89 140 Z" fill="rgba(90,55,30,.16)"/>
-      </g>
-      <path d="M90 80 Q92 92 92 100 M150 80 Q148 92 148 100" stroke="#4a2c16" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="100" cy="114" r="7" fill="rgba(225,110,90,.25)"/><circle cx="140" cy="114" r="7" fill="rgba(225,110,90,.25)"/>
-      <ellipse cx="107" cy="98" rx="8.5" ry="10" fill="#fff"/>
-      <ellipse cx="133" cy="98" rx="8.5" ry="10" fill="#fff"/>
-      <g class="yeux">
-        <circle cx="108" cy="100" r="4.2" fill="#2a1a10"/><circle cx="134" cy="100" r="4.2" fill="#2a1a10"/>
-        <circle cx="109.5" cy="98.5" r="1.4" fill="#fff"/><circle cx="135.5" cy="98.5" r="1.4" fill="#fff"/>
-      </g>
-      <path d="M96 84 Q105 74 116 81" stroke="#4a2c16" stroke-width="4.5" stroke-linecap="round" fill="none"/>
-      <path d="M124 81 Q135 74 144 84" stroke="#4a2c16" stroke-width="4.5" stroke-linecap="round" fill="none"/>
-      <path d="M121 101 Q115 112 120 115 Q124 116 126 113" stroke="#b07a52" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-      <g class="bouche">
-        <ellipse cx="120" cy="125" rx="8.5" ry="10" fill="#5a2216"/>
-        <path d="M112.5 119 Q120 115.5 127.5 119 L126.5 122.5 Q120 120.5 113.5 122.5 Z" fill="#fff"/>
-        <ellipse cx="120" cy="131" rx="5" ry="3" fill="#c0504a"/>
-      </g>
-    </g>
-
-    <!-- fedora -->
-    <g class="chapeau">
-      <path d="M78 70 C74 44 82 24 102 18 Q120 28 138 18 C158 24 166 44 162 70 Q120 62 78 70 Z" fill="url(#g-feutre)"/>
-      <path d="M110 22 Q120 34 130 22" stroke="#3d220d" stroke-width="2.5" fill="none"/>
-      <path d="M88 58 C86 42 92 30 104 24" stroke="rgba(255,220,170,.3)" stroke-width="4" fill="none" stroke-linecap="round"/>
-      <path d="M79 59 Q120 51 161 59 L162 70 Q120 62 78 70 Z" fill="#2e1b0e"/>
-      <path d="M42 74 Q120 50 198 74 Q203 82 190 84 Q120 70 50 84 Q37 82 42 74 Z" fill="url(#g-feutre)"/>
-      <path d="M50 84 Q120 70 190 84" stroke="#3d220d" stroke-width="2" fill="none"/>
-    </g>
-
-    <!-- gouttes de sueur -->
-    <path class="goutte goutte-g" d="M84 82 C87 87 88 90 84 92 C80 90 81 87 84 82 Z" fill="#d4efff" stroke="#8fbbe0" stroke-width="1"/>
-    <path class="goutte goutte-d" d="M158 78 C161 83 162 86 158 88 C154 86 155 83 158 78 Z" fill="#d4efff" stroke="#8fbbe0" stroke-width="1"/>
+  <!-- cou et buste -->
+  <path d="M109 124 L131 124 L132 146 L108 146 Z" fill="#c58658"/>
+  <path d="M120 140 C96 140 74 144 66 160 L70 222 Q120 234 170 222 L174 160 C166 144 144 140 120 140 Z" fill="url(#g-cuir)"/>
+  <g clip-path="url(#c-buste)">
+    <path d="M103 139 L137 139 L131 216 L109 216 Z" fill="url(#g-chemise)"/>
+    <path d="M103 139 L120 160 L109 137 Z" fill="#f2e4bb"/>
+    <path d="M137 139 L120 160 L131 137 Z" fill="#f2e4bb"/>
+    <circle cx="120" cy="174" r="1.8" fill="#8a7448"/><circle cx="120" cy="190" r="1.8" fill="#8a7448"/><circle cx="120" cy="204" r="1.8" fill="#8a7448"/>
+    <path d="M103 140 L109 216 M137 140 L131 216" stroke="#341a0a" stroke-width="2.5"/>
+    <path d="M78 160 Q76 190 80 218" stroke="rgba(255,210,160,.22)" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M60 208 L180 208 L180 224 L60 224 Z" fill="#2e1b0e"/>
   </g>
+  <rect x="112" y="207" width="16" height="18" rx="2" fill="none" stroke="#e2a640" stroke-width="2.5"/>
+
+  <!-- sacoche (derrière le bras) et sangle -->
+  <path d="M58 204 h36 a5 5 0 0 1 5 5 v26 a5 5 0 0 1 -5 5 h-36 a5 5 0 0 1 -5 -5 v-26 a5 5 0 0 1 5 -5 Z" fill="#a87d45"/>
+  <path d="M53 209 a5 5 0 0 1 5 -5 h36 a5 5 0 0 1 5 5 v8 q-23 9 -46 0 Z" fill="#87602f"/>
+  <rect x="73" y="214" width="6" height="8" rx="1" fill="#e2a640"/>
+  <path d="M156 146 L86 214" stroke="#7d5a2e" stroke-width="8" stroke-linecap="round"/>
+  <path d="M156 146 L86 214" stroke="#a07743" stroke-width="2" stroke-dasharray="4 5"/>
+
+  <!-- fouet enroulé -->
+  <circle cx="166" cy="230" r="12" fill="none" stroke="#3b2414" stroke-width="5"/>
+  <circle cx="166" cy="230" r="6" fill="none" stroke="#5a3a1f" stroke-width="3"/>
+
+  <!-- bras droit du héros (à gauche de l'image), ramené en arrière -->
+  <path d="M86 148 C74 150 66 156 63 168 C58 184 55 198 57 212 C58 220 61 228 64 234 L82 231 C79 222 77 212 78 202 C79 188 84 172 92 160 Z" fill="url(#g-manche)"/>
+  <path d="M86 150 C80 156 76 162 74 170" stroke="#3a1d0b" stroke-width="2" fill="none" opacity=".6"/>
+  <path d="M62 228 L83 225 L84 233 L64 237 Z" fill="#3e200d"/>
+  <ellipse cx="73" cy="242" rx="10.5" ry="11" fill="url(#g-peau)"/>
+  <path d="M66 239 Q73 236 80 239 M66 244 Q73 241 80 244" stroke="#b9805a" stroke-width="1.5" fill="none"/>
+
+  <!-- bras gauche du héros (à droite de l'image), poing en avant -->
+  <path d="M154 148 C166 150 174 156 178 166 C185 178 189 190 186 200 C182 208 172 206 164 198 L150 184 L160 176 L168 184 C170 176 166 166 158 158 Z" fill="url(#g-manche)"/>
+  <path d="M178 168 C182 180 184 190 182 198" stroke="rgba(255,210,160,.22)" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M147 182 L160 172 L166 180 L153 190 Z" fill="#3e200d"/>
+  <ellipse cx="149" cy="186" rx="13" ry="12.5" fill="url(#g-peau)"/>
+  <path d="M140 181 Q149 177 158 181 M140 187 Q149 183 158 187 M141 193 Q149 189 157 193" stroke="#b9805a" stroke-width="1.6" fill="none"/>
+
+  <!-- tête -->
+  <ellipse cx="88" cy="100" rx="7" ry="10" fill="#d99b6c"/>
+  <ellipse cx="152" cy="100" rx="7" ry="10" fill="#d99b6c"/>
+  <ellipse cx="120" cy="98" rx="31" ry="37" fill="url(#g-peau)"/>
+  <g clip-path="url(#c-visage)">
+    <ellipse cx="120" cy="68" rx="36" ry="12" fill="rgba(110,60,30,.4)"/>
+    <path d="M89 110 Q120 148 151 110 L151 140 L89 140 Z" fill="rgba(90,55,30,.17)"/>
+  </g>
+  <path d="M90 78 Q92 90 92 98 M150 78 Q148 90 148 98" stroke="#4a2c16" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="100" cy="112" r="7" fill="rgba(225,110,90,.25)"/><circle cx="140" cy="112" r="7" fill="rgba(225,110,90,.25)"/>
+  <ellipse cx="107" cy="96" rx="8.5" ry="10" fill="#fff"/>
+  <ellipse cx="133" cy="96" rx="8.5" ry="10" fill="#fff"/>
+  <circle cx="106" cy="98" r="4.2" fill="#2a1a10"/><circle cx="132" cy="98" r="4.2" fill="#2a1a10"/>
+  <circle cx="107.5" cy="96.5" r="1.4" fill="#fff"/><circle cx="133.5" cy="96.5" r="1.4" fill="#fff"/>
+  <path d="M96 82 Q105 72 116 79" stroke="#4a2c16" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+  <path d="M124 79 Q135 72 144 82" stroke="#4a2c16" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+  <path d="M121 99 Q115 110 120 113 Q124 114 126 111" stroke="#b07a52" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <ellipse cx="120" cy="123" rx="8.5" ry="10" fill="#5a2216"/>
+  <path d="M112.5 117 Q120 113.5 127.5 117 L126.5 120.5 Q120 118.5 113.5 120.5 Z" fill="#fff"/>
+  <ellipse cx="120" cy="129" rx="5" ry="3" fill="#c0504a"/>
+
+  <!-- fedora -->
+  <path d="M78 68 C74 42 82 22 102 16 Q120 26 138 16 C158 22 166 42 162 68 Q120 60 78 68 Z" fill="url(#g-feutre)"/>
+  <path d="M110 20 Q120 32 130 20" stroke="#3d220d" stroke-width="2.5" fill="none"/>
+  <path d="M88 56 C86 40 92 28 104 22" stroke="rgba(255,220,170,.3)" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M79 57 Q120 49 161 57 L162 68 Q120 60 78 68 Z" fill="#2e1b0e"/>
+  <path d="M42 72 Q120 48 198 72 Q203 80 190 82 Q120 68 50 82 Q37 80 42 72 Z" fill="url(#g-feutre)"/>
+  <path d="M50 82 Q120 68 190 82" stroke="#3d220d" stroke-width="2" fill="none"/>
+
+  <!-- sueur et traits de panique -->
+  <path d="M80 80 C83 85 84 88 80 90 C76 88 77 85 80 80 Z" fill="#d4efff" stroke="#8fbbe0" stroke-width="1"/>
+  <path d="M164 76 C167 81 168 84 164 86 C160 84 161 81 164 76 Z" fill="#d4efff" stroke="#8fbbe0" stroke-width="1"/>
+  <path d="M30 60 L44 66 M26 76 L40 78 M210 60 L196 66 M214 76 L200 78" stroke="#f1e6cc" stroke-width="3" stroke-linecap="round" opacity=".55"/>
 </svg>
 
 <button id="btn-pause" type="button" aria-label="Pause"><span></span></button>
