@@ -25,6 +25,13 @@ La dynamite sert à ouvrir les murs fissurés.
 | 9 | Les jardins suspendus | vent, Max-miroir, nuages fantômes, balançoires |
 | 10 | La chambre du trésor | sable qui monte, tous les pièges réunis, la vraie finale (niveau 100) |
 
+**Pour rester accrocheur** (objectif : 3 ou 4 essais par niveau, 6 ou 7 pour les plus durs) :
+- un drapeau de sauvegarde au milieu des niveaux longs : après une chute, on repart de là ;
+- aide automatique : tous les 3 échecs dans un niveau, les pièges ralentissent (flèches, rocher,
+  eau, écraseurs) et le compte à rebours s'allonge ;
+- flèches tirées en volées synchronisées jusqu'à l'acte 4 ; vitesses des rochers et des crues
+  plafonnées acte par acte (voir `adoucir()` dans `outils/niveaux.py`).
+
 **Passer un niveau** : après 5 chutes dans le même niveau (ou depuis la pause), on peut passer le niveau
 en regardant une vidéo sponsorisée. Dans l'appli des stores, c'est une vraie vidéo récompensée AdMob
 (plugin `@capacitor-community/admob`, identifiant à renseigner dans `PUB.adId` de `game.js`, actuellement

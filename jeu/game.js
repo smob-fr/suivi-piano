@@ -269,13 +269,22 @@
         else if (c === "b") { room.enemies.push({ kind: "b", x: x * T + 3, y: y * T + 4, by: y * T + 4, w: 10, h: 7, vx: 0.7, x0: x * T - 48, x1: x * T + 56, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "a" || c === "t") { room.pickups.push({ kind: c === "a" ? "coin" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
         else if (c === "^" || c === "v") room.spikeAnim.set(x + "," + y, 1);
-        else if (c === "<" || c === ">") room.shooters.push({ x: c === "<" ? x * T : x * T + T, y: y * T + 6, dir: c === "<" ? -1 : 1, t: (x * 7 + y * 13) % 60 });
+        else if (c === "<" || c === ">") room.shooters.push({ x: c === "<" ? x * T : x * T + T, y: y * T + 6, dir: c === "<" ? -1 : 1, t: def.arrowSync ? 0 : (x * 7 + y * 13) % 60 });
         else if (c === "B") room.bCount++;
       }
     }
     if (def.doorStart && room.door) { room.door.x = def.doorStart[0] * T + 2; room.door.y = def.doorStart[1] * T - 6; }
     room.decor = genDecor(room, act ? act.palette : "jungle");
     room.dark = !!def.dark;
+    room.assist = Math.min(3, Math.floor(room.deaths / 3));   // 0 à 3
+    room.slow = 1 - 0.12 * room.assist;                       // vitesse des pièges
+    // point de sauvegarde : si Max l'a déjà atteint, il repart de là
+    room.cp = def.checkpoint ? { x: def.checkpoint[0], y: def.checkpoint[1], on: game.cpLevel === index } : null;
+    if (room.cp && room.cp.on && room.player) {
+      room.player.x = room.cp.x * T + 3; room.player.y = room.cp.y * T + 1;
+      // la dynamite ramassée avant le drapeau est rendue, pour ne jamais rester bloqué
+      for (const it of room.pickups) if (it.x < room.cp.x * T) { it.taken = true; if (it.kind === "tnt") game.ammo.tnt++; }
+    }
     // plateformes mobiles : [x, y, largeur, dx, dy, vitesse] en cases
     room.movers = (def.movers || []).map(([x, y, w, dx, dy, sp], i) => ({ x0: x * T, y0: y * T, x: x * T, y: y * T, w: w * T, h: 6, dx: dx * T, dy: dy * T, sp, t: i * 40, mx: 0, my: 0 }));
     // écraseurs : [x, ligne du haut, décalage] ; ils tombent de 3 cases puis remontent
@@ -422,7 +431,7 @@
       case "set": setTiles(v[0], v[1], v[2], v[3], v[4], false); break;
       case "door": { const d = R.door; d.tx = v[0] * T + 2; d.ty = v[1] * T - 6; d.moving = true; sfx.flee(); break; }
       case "showdoor": { R.door.hidden = false; burst(R.door.x + 6, R.door.y + 10, C.door, 24, 2); sfx.door(); break; }
-      case "boulder": { const [x, y, dir, speed] = v; R.boulders.push({ x: x * T, y: y * T, w: 28, h: 28, vx: dir * speed, vy: 0, dir, speed, rot: 0 }); break; }
+      case "boulder": { const [x, y, dir, sp] = v; const speed = sp * R.slow; R.boulders.push({ x: x * T, y: y * T, w: 28, h: 28, vx: dir * speed, vy: 0, dir, speed, rot: 0 }); break; }
       case "fall": {
         const [x, y, w, h, delay] = v;
         R.blocks.push({ x: x * T, y: y * T, w: w * T, h: h * T, vy: 0, delay, tiles: [x, y, w, h], falling: false });
@@ -431,8 +440,8 @@
       }
       case "invert": game.invert = v[0]; sfx.invert(); R.shake = Math.max(R.shake, 3); break;
       case "dark": R.dark = !!v[0]; sfx.flee(); break;
-      case "flood": R.flood = { kind: v[0], speed: v[1], level: (v[2] != null ? v[2] : ROWS) * T, top: v[0] === "plafond" }; if (R.flood.top) R.flood.level = (v[2] || 0) * T; R.shake = 6; sfx.crumble(); break;
-      case "timer": R.timer = v[0] * 60; break;
+      case "flood": R.flood = { kind: v[0], speed: v[1] * (1 - 0.15 * R.assist), level: (v[2] != null ? v[2] : ROWS) * T, top: v[0] === "plafond" }; if (R.flood.top) R.flood.level = (v[2] || 0) * T; R.shake = 6; sfx.crumble(); break;
+      case "timer": R.timer = Math.round(v[0] * 60 * (1 + 0.2 * R.assist)); break;
       case "press": R.tiles[v[1]][v[0]] = "-"; sfx.place(); break;
       case "gate": sfx.door(); R.shake = Math.max(R.shake, 3); break;
       case "appear": {
@@ -567,6 +576,11 @@
         burst(it.x + 4, it.y + 4, C.hat, 8);
       }
     }
+    if (R.cp && !R.cp.on && overlap(p, { x: R.cp.x * T, y: R.cp.y * T - 8, w: T, h: T + 8 })) {
+      R.cp.on = true; game.cpLevel = R.index;
+      sfx.pick(); burst(R.cp.x * T + 8, R.cp.y * T, C.gold, 14, 1.6);
+      R.hint = { text: "Drapeau ! Si tu tombes, tu repartiras d'ici.", t: 0, dur: 160 };
+    }
     const d = R.door;
     if (d && !d.moving && !d.hidden && overlap(p, { x: d.x + 3, y: d.y + 4, w: d.w - 6, h: d.h - 4 })) {
       game.mode = "win"; game.winT = 0; sfx.door();
@@ -597,7 +611,8 @@
   }
   function updateCrushers() {
     for (const c of R.crushers) {
-      c.t = (c.t + 1) % 170;
+      const prevT = c.t;
+      c.t = (c.t + R.slow) % 170;
       const t = c.t;
       let off;
       if (t < 70) off = 0;                                   // en haut, au repos
@@ -607,7 +622,7 @@
       else off = 1 - (t - 120) / 50;                         // remonte
       const before = c.y;
       c.y = c.y0 + off * c.drop + (t >= 70 && t < 74 ? (Math.random() - 0.5) * 2 : 0);
-      if (t === 84) { R.shake = Math.max(R.shake, 4); sfx.crumble(); burst(c.x + c.w / 2, c.y + c.h, P.stoneTop, 6, 1.2); }
+      if (prevT < 84 && t >= 84) { R.shake = Math.max(R.shake, 4); sfx.crumble(); burst(c.x + c.w / 2, c.y + c.h, P.stoneTop, 6, 1.2); }
       c.down = off > 0.15 && c.y >= before;
     }
   }
@@ -677,13 +692,13 @@
   }
 
   function updateShooters() {
-    const rate = R.def.arrowRate || 110;
+    const rate = Math.round((R.def.arrowRate || 110) * (1 + 0.25 * R.assist));
     const p = R.player;
     for (const s of R.shooters) {
       s.t++;
       if (s.t % rate !== 0) continue;
       if (Math.abs(s.x - p.x) > 300) continue;
-      R.arrows.push({ x: s.dir < 0 ? s.x - 9 : s.x + 1, y: s.y, w: 8, h: 3, vx: s.dir * 2.6 });
+      R.arrows.push({ x: s.dir < 0 ? s.x - 9 : s.x + 1, y: s.y, w: 8, h: 3, vx: s.dir * 2.4 * R.slow });
       sfx.arrow();
     }
   }
@@ -893,6 +908,7 @@
 
   function startLevel(i) {
     game.level = i;
+    game.cpLevel = -1;   // nouvelle tentative depuis le menu : on repart du début
     statOf(i).essais++; saveProgress();
     const am = LEVELS[i].ammo || [6, 1];
     game.ammo = { tnt: am[1] };
@@ -919,6 +935,8 @@
     game.mode = "play";
     runTriggers(true);
     if (keep && !R.say) R.say = keep;
+    if (fromDeath && R.deaths > 0 && R.deaths % 3 === 0 && R.assist <= 3)
+      R.say = { text: ["Bon… je relâche un peu mes pièges. Par pitié.", "Je ralentis encore tout. Ne le dis à personne.", "Là, même Gérard roule au ralenti. Allez, Max !"][R.assist - 1] || "Courage, Max !", t: 0, dur: 200 };
     game.paused = false;
     showOverlay(null);
   }
@@ -1048,6 +1066,7 @@
     drawTiles(false);
     drawDecor();
     drawDoor();
+    if (R.cp) drawCheckpoint(R.cp);
     for (const it of R.pickups) if (!it.taken) drawPickup(it);
     for (const e of R.enemies) if (e.alive) drawEnemy(e);
     for (const k2 of R.blocks) drawBlock(k2);
@@ -1459,6 +1478,17 @@
         ctx.fillStyle = C.danger; ctx.fillRect(px + 6, top - 1, 4, 1);
       }
     }
+  }
+
+  // drapeau de sauvegarde : terne tant qu'il n'est pas atteint, doré et flottant ensuite
+  function drawCheckpoint(cp) {
+    const x = cp.x * T + 6, y = cp.y * T + T;
+    ctx.fillStyle = C.wood; ctx.fillRect(x, y - 18, 2, 18);
+    ctx.fillStyle = C.metal; ctx.fillRect(x - 2, y - 2, 6, 2);
+    const wave = Math.sin(R.t / 8) * (cp.on ? 1.5 : 0.4);
+    ctx.fillStyle = cp.on ? C.gold : "#6d6a5c";
+    ctx.beginPath(); ctx.moveTo(x + 2, y - 18); ctx.lineTo(x + 11, y - 15 + wave); ctx.lineTo(x + 2, y - 11); ctx.closePath(); ctx.fill();
+    if (cp.on) { ctx.fillStyle = "rgba(242,193,78,0.18)"; ctx.beginPath(); ctx.arc(x + 4, y - 12, 12, 0, Math.PI * 2); ctx.fill(); }
   }
 
   function drawDoor() {

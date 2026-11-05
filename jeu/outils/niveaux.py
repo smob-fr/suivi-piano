@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Générateur + vérificateur des 100 niveaux du Temple qui Triche.
 
-    python3 jeu/outils/niveaux.py        # écrit jeu/levels.js et vérifie chaque niveau
+    python3 outils/niveaux.py        # écrit jeu/levels.js et vérifie chaque niveau
 
 Les niveaux sont décrits par des « recettes » : une suite de segments (sol plat,
 fosse, ressort, mur fissuré, piège…) posés de gauche à droite. Chaque segment est
@@ -618,10 +618,10 @@ def acte2():
     n.plat(6, ennemi="m", objet="a"); n.plat(3); n.descend(1); n.plat(3); n.mur_fissure(); n.plat(3); n.porte(4)
     L.append(n.fini())
 
-    n = Niveau("Le couloir des flèches", "action", arrowRate=70)
+    n = Niveau("Le couloir des flèches", "action", arrowRate=125)
     n.depart(3); n.dit("Cours. Vraiment. Cours.", max=0)
     n.fleches(5, 1); n.plat(2)
-    n.t([["collapse", 1, 16, 4, 1, 30], ["say", "Derrière toi, le sol s'en va."]], n.Z(n.x - 1))
+    n.t([["collapse", 1, 16, 4, 1, 70], ["say", "Derrière toi, le sol s'en va."]], n.Z(n.x - 1))
     n.fleches(5, 1); n.pics(1); n.fleches(5, 1); n.plat(2); n.fleches(4, 1)
     n.plat(4); n.porte(4)
     L.append(n.fini())
@@ -1350,7 +1350,7 @@ def appliquer(lv, morts):
     return g, porte, liens
 
 
-def accessible(g, porte, liens=()):
+def accessible(g, porte, liens=(), depart=None):
     H, W = len(g), len(g[0])
 
     def libre(x, y):
@@ -1378,18 +1378,18 @@ def accessible(g, porte, liens=()):
             y += 1
         return None
 
-    start = None
+    start = depart
     for y in range(H):
         for x in range(W):
-            if g[y][x] == "P":
+            if g[y][x] == "P" and start is None:
                 start = (x, y)
     if not start:
-        return False, "pas de départ"
+        return False, "pas de départ", set()
     vus, pile = {start}, [start]
     while pile:
         x, y = pile.pop()
         if (x, y) == porte:
-            return True, ""
+            return True, "", vus
         cibles = []
         for dx in (-1, 1):
             if libre(x + dx, y) and not mortel(x + dx, y):
@@ -1438,7 +1438,7 @@ def accessible(g, porte, liens=()):
             if c not in vus:
                 vus.add(c)
                 pile.append(c)
-    return False, "porte inaccessible"
+    return False, "porte inaccessible", vus
 
 
 def verifier(niveaux):
@@ -1455,12 +1455,67 @@ def verifier(niveaux):
             print(f"✗ {i+1:2d} {lv['name']}: dynamite {tnt_dispo} < {lv['_tnt']} nécessaires"); erreurs += 1
         for morts in range(4):
             g, porte, liens = appliquer(lv, morts)
-            ok, pourquoi = accessible(g, porte, liens)
+            ok, pourquoi, _ = accessible(g, porte, liens)
             if not ok:
                 print(f"✗ {i+1:2d} {lv['name']} (morts={morts}): {pourquoi}")
                 erreurs += 1
                 break
     return erreurs
+
+
+VITESSE_ROCHER = [1.3, 1.35, 1.45, 1.5, 1.55, 1.55, 1.6, 1.6, 1.65, 1.65]
+
+
+def adoucir(lv):
+    """Courbe de difficulté : flèches synchronisées et espacées au début, rochers et crues plafonnés."""
+    a = lv["act"]
+    lv["arrowRate"] = max(lv.get("arrowRate", 110), 105 if a < 4 else 90)
+    if a < 4:
+        lv["arrowSync"] = True
+    for tr in lv["triggers"]:
+        for act in tr["act"]:
+            if act[0] == "boulder":
+                act[4] = min(act[4], VITESSE_ROCHER[a])
+            elif act[0] == "flood":
+                act[2] = round(act[2] * 0.85, 3)
+
+
+def point_de_sauvegarde(lv):
+    """Place un drapeau au milieu des niveaux longs, sur une case sûre, accessible,
+    d'où la porte reste atteignable, loin des pièges et des zones de déclenchement."""
+    W = len(lv["map"][0])
+    if W < 40 or lv.get("mirror"):
+        return
+    g, porte, liens = appliquer(lv, 0)
+    ok, _, vus = accessible(g, porte, liens)
+    if not ok:
+        return
+    interdit = set()
+    for tr in lv["triggers"]:
+        if "zone" in tr:
+            zx, _, zw, _ = tr["zone"]
+            interdit.update(range(zx - 1, zx + zw + 1))
+    for c in lv.get("crushers", []):
+        interdit.update(range(c[0] - 2, c[0] + 3))
+    for m in lv.get("movers", []):
+        interdit.update(range(m[0] - 1, m[0] + m[2] + m[3] + 1))
+    for w in lv.get("winds", []):
+        interdit.update(range(w[0] - 1, w[1] + 2))
+    rows = lv["map"]
+    def sur(x, y):
+        if x in interdit or not (0 < y < len(rows) - 1):
+            return False
+        for dx in (-1, 0, 1):
+            if rows[y][x + dx] in "^vxcoJ<>" or rows[y + 1][x + dx] not in "#":
+                return False
+        return rows[y - 1][x] == "." and rows[y][x] == "."
+    cands = sorted((c for c in vus if sur(*c)), key=lambda c: abs(c[0] - W / 2))
+    for c in cands:
+        if not (0.35 * W <= c[0] <= 0.7 * W):
+            continue
+        if accessible(g, porte, liens, depart=c)[0]:
+            lv["checkpoint"] = list(c)
+            return
 
 
 def main():
@@ -1470,6 +1525,9 @@ def main():
             lv["act"] = a
             niveaux.append(lv)
     assert len(niveaux) == 100, len(niveaux)
+    for lv in niveaux:
+        adoucir(lv)
+        point_de_sauvegarde(lv)
     err = verifier(niveaux)
     for lv in niveaux:
         lv.pop("_tnt", None)
