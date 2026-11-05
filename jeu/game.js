@@ -252,6 +252,7 @@
     }
     if (def.doorStart && room.door) { room.door.x = def.doorStart[0] * T + 2; room.door.y = def.doorStart[1] * T - 6; }
     room.decor = genDecor(room, act ? act.palette : "jungle");
+    room.dark = !!def.dark;
     // le professeur Lecoquin attend à la porte, puis file devant le joueur
     if (room.door && !def.doorHidden && !def.doorStart) room.rival = { x: room.door.x - 22, y: room.door.y + 7, w: 10, h: 15, state: "wait", t: 0, face: -1 };
     return room;
@@ -310,12 +311,19 @@
     return R.tiles[y][x];
   }
   const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">";
+  // planches qui clignotent : présentes ~1,6 s, absentes ~1 s, par groupes de deux décalés
+  const BLINK = 160, BLINK_ON = 96;
+  const blinkPhase = (x) => ((R ? R.t : 0) + (Math.floor(x / 2) % 2) * (BLINK / 2)) % BLINK;
+  const blinkOn = (x) => blinkPhase(x) < BLINK_ON;
   const looksStone = (c) => c === "#" || c === "x" || c === "F" || c === "<" || c === ">";
-  function solidAt(px, py) { return isSolid(tileAt(Math.floor(px / T), Math.floor(py / T))); }
+  function solidAt(px, py) { const tx = Math.floor(px / T), c = tileAt(tx, Math.floor(py / T)); return isSolid(c) || (c === "c" && blinkOn(tx)); }
   function rectHitsSolid(x, y, w, h) {
     const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.01) / T);
     const y0 = Math.floor(y / T), y1 = Math.floor((y + h - 0.01) / T);
-    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (isSolid(tileAt(tx, ty))) return true;
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      const c = tileAt(tx, ty);
+      if (isSolid(c) || (c === "c" && blinkOn(tx))) return true;
+    }
     return false;
   }
   function moveBody(b) {
@@ -391,6 +399,23 @@
         break;
       }
       case "invert": game.invert = v[0]; sfx.invert(); R.shake = Math.max(R.shake, 3); break;
+      case "dark": R.dark = !!v[0]; sfx.flee(); break;
+      case "appear": {
+        const [x, y, w, h] = v;
+        for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) {
+          R.tiles[ty][tx] = "#";
+          for (let i = 0; i < 4; i++) R.particles.push({ x: tx * T + Math.random() * T, y: ty * T + Math.random() * 4, vx: (Math.random() - 0.5), vy: -Math.random(), s: 2, life: 26, color: C.gold, g: 0 });
+        }
+        sfx.pick();
+        break;
+      }
+      case "dropspike": {
+        const [x, y, delay] = v;
+        if (R.tiles[y][x] !== "v") break;
+        R.blocks.push({ x: x * T, y: y * T, w: T, h: T, vy: 0, delay, tiles: [x, y, 1, 1], falling: false, spike: true });
+        R.wobble.add(x + "," + y);
+        break;
+      }
     }
   }
 
@@ -672,7 +697,8 @@
       if (rectHitsSolid(k.x, k.y, k.w, k.h)) {
         k.y = Math.floor((k.y + k.h) / T) * T - k.h;
         const tx = Math.round(k.x / T), ty = Math.round(k.y / T);
-        for (let yy = 0; yy < k.h / T; yy++) for (let xx = 0; xx < k.w / T; xx++) if (ty + yy < ROWS) R.tiles[ty + yy][tx + xx] = "#";
+        if (k.spike) { if (ty < ROWS) { R.tiles[ty][tx] = "^"; R.spikeAnim.set(tx + "," + ty, 1); } }
+        else for (let yy = 0; yy < k.h / T; yy++) for (let xx = 0; xx < k.w / T; xx++) if (ty + yy < ROWS) R.tiles[ty + yy][tx + xx] = "#";
         k.done = true;
         R.shake = Math.max(R.shake, 5);
         sfx.crumble();
@@ -707,7 +733,7 @@
     for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
       const c = tileAt(tx, ty);
       if (c === "^" && overlap(p, { x: tx * T + 2, y: ty * T + 7, w: 12, h: 9 })) return kill();
-      if (c === "v" && overlap(p, { x: tx * T + 2, y: ty * T, w: 12, h: 9 })) return kill();
+      if (c === "v" && overlap(p, { x: tx * T + 2, y: ty * T, w: 12, h: 12 })) return kill();
     }
     for (const e of R.enemies) {
       if (!e.alive || e.stun) continue;
@@ -722,7 +748,9 @@
       if (Math.hypot(nx - cx, ny - cy) < 13) return kill();
     }
     for (const k of R.blocks) if (k.falling && overlap(p, k)) return kill();
-    if (rectHitsSolid(p.x + 1, p.y + 1, p.w - 2, p.h - 2)) kill();
+    // écrasé seulement par de la vraie pierre (une planche qui réapparaît ne tue pas)
+    const cx0 = Math.floor((p.x + 1) / T), cx1 = Math.floor((p.x + p.w - 1.01) / T), cy0 = Math.floor((p.y + 1) / T), cy1 = Math.floor((p.y + p.h - 1.01) / T);
+    for (let ty = cy0; ty <= cy1; ty++) for (let tx = cx0; tx <= cx1; tx++) if (isSolid(tileAt(tx, ty))) return kill();
   }
 
   function kill() {
@@ -843,7 +871,7 @@
     drawParticles();
     drawTorchLight();
     ctx.setTransform(k, 0, 0, k, 0, 0);
-    drawVignette();
+    if (R.dark) drawDarkness(k); else drawVignette();
     drawHud();
     drawSpeech();
     if (game.invert > 0) drawInvert();
@@ -1023,6 +1051,33 @@
     ctx.restore();
   }
 
+  const darkCanvas = document.createElement("canvas");
+  function drawDarkness(k) {
+    if (darkCanvas.width !== canvas.width || darkCanvas.height !== canvas.height) { darkCanvas.width = canvas.width; darkCanvas.height = canvas.height; }
+    const d = darkCanvas.getContext("2d");
+    d.setTransform(1, 0, 0, 1, 0, 0);
+    d.globalCompositeOperation = "source-over";
+    d.clearRect(0, 0, darkCanvas.width, darkCanvas.height);
+    d.fillStyle = "rgba(2,3,4,0.97)";
+    d.fillRect(0, 0, darkCanvas.width, darkCanvas.height);
+    d.globalCompositeOperation = "destination-out";
+    const hole = (wx, wy, r) => {
+      const sx = (wx - cam.x) * k, sy = (wy - cam.y) * k, rr = r * k;
+      const g = d.createRadialGradient(sx, sy, rr * 0.25, sx, sy, rr);
+      g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(0.7, "rgba(0,0,0,0.75)"); g.addColorStop(1, "rgba(0,0,0,0)");
+      d.fillStyle = g; d.beginPath(); d.arc(sx, sy, rr, 0, Math.PI * 2); d.fill();
+    };
+    const p = R.player;
+    const flick = 1 + Math.sin(R.t / 6) * 0.03;
+    if (p) hole(p.x + p.w / 2, p.y + p.h / 2 - 2, (p.alive ? 58 : 40) * flick);
+    const dr = R.door;
+    if (dr && !dr.hidden) hole(dr.x + dr.w / 2, dr.y + dr.h / 2, 30 + Math.sin(R.t / 15) * 3);
+    for (const t of R.decor) if (t.k === "torch") hole(t.x * T + 8, t.y * T + 6, 26);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(darkCanvas, 0, 0);
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+  }
+
   // pénombre douce sur les bords de l'écran, plus claire autour de Max
   function drawVignette() {
     const p = R.player;
@@ -1100,6 +1155,20 @@
         ctx.fillStyle = C.danger;
         ctx.fillRect(left ? px + 8 : px + 5, py + 3, 2, 2);
         ctx.fillRect(left ? px + 12 : px + 1, py + 3, 2, 2);
+      } else if (c === "c") {
+        const ph = blinkPhase(x), on = ph < BLINK_ON;
+        const warn = on && ph > BLINK_ON - 36;
+        ctx.globalAlpha = on ? (warn && Math.floor(ph / 4) % 2 ? 0.35 : 1) : 0.12;
+        ctx.fillStyle = C.wood; ctx.fillRect(px, py, T, 6);
+        ctx.fillStyle = "#c79a5e"; ctx.fillRect(px, py, T, 1.5);
+        ctx.fillStyle = "#5a3a1c"; ctx.fillRect(px + 4, py + 1, 1, 5); ctx.fillRect(px + 11, py + 1, 1, 5); ctx.fillRect(px, py + 5, T, 1);
+        ctx.globalAlpha = 1;
+      } else if (c === "o") {
+        // plateforme fantôme : à peine un reflet
+        ctx.globalAlpha = 0.1 + 0.06 * Math.sin(R.t / 20 + x);
+        ctx.strokeStyle = C.gold; ctx.lineWidth = 0.8; ctx.setLineDash([2, 2]);
+        ctx.strokeRect(px + 1, py + 1, T - 2, T - 2);
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
       } else if (c === "J") {
         const sq = R.springAnim.get(x + "," + y) || 0;
         const top = py + 4 + (sq > 5 ? 3 : 0);
@@ -1277,6 +1346,12 @@
 
   function drawBlock(k) {
     if (!k.falling) return;
+    if (k.spike) {
+      ctx.fillStyle = C.danger; ctx.beginPath();
+      for (let i = 0; i < 3; i++) { const bx = k.x + 1 + i * 5; ctx.moveTo(bx, k.y); ctx.lineTo(bx + 2.5, k.y + 11); ctx.lineTo(bx + 5, k.y); }
+      ctx.fill();
+      return;
+    }
     ctx.fillStyle = P.stone; ctx.fillRect(k.x, k.y, k.w, k.h);
     ctx.fillStyle = P.stoneTop; ctx.fillRect(k.x, k.y, k.w, 2);
   }
@@ -1377,6 +1452,11 @@
     ctx.fillStyle = ty.color; ctx.fillRect(6, 4, 7, 7);
     ctx.fillStyle = C.text; ctx.textAlign = "left";
     ctx.fillText(`${R.index + 1}/${LEVELS.length}  ${R.def.name.toUpperCase()}`, 18, 8);
+    if (R.def.defi) {
+      const nw = ctx.measureText(`${R.index + 1}/${LEVELS.length}  ${R.def.name.toUpperCase()}`).width;
+      ctx.fillStyle = C.danger; ctx.fillRect(24 + nw, 3, 30, 10);
+      ctx.fillStyle = C.text; ctx.fillText("DÉFI", 27 + nw, 8);
+    }
     let x = view.w - 112 - 52 / scale;
     const fl = game.flash && game.flash.t > 0 ? game.flash : null;
     if (fl) fl.t--;
@@ -1456,6 +1536,12 @@
     const lw = ctx.measureText(ty.label.toUpperCase()).width + 16;
     ctx.fillStyle = ty.color; ctx.fillRect(VW2 - lw / 2, VH2 + 14, lw, 14);
     ctx.fillStyle = C.void; ctx.fillText(ty.label.toUpperCase(), VW2, VH2 + 21.5);
+    if (R.def.defi) {
+      const dw = ctx.measureText("DÉFI").width + 16, bx = VW2 + lw / 2 + 6;
+      ctx.fillStyle = C.danger; ctx.fillRect(bx, VH2 + 14, dw, 14);
+      ctx.fillStyle = C.text; ctx.fillText("DÉFI", bx + dw / 2, VH2 + 21.5);
+    }
+    if (R.def.dark) { ctx.fillStyle = C.dim; ctx.font = `8px ${FONT_TXT}`; ctx.fillText("Salle plongée dans le noir", VW2, VH2 + 58); ctx.font = `8px ${FONT_PIX}`; }
     if (game.deathsByRoom[R.index] === 0 && progress.best[R.index] != null) {
       ctx.fillStyle = C.dim; ctx.font = `8px ${FONT_TXT}`;
       ctx.fillText(`Ton record : ${progress.best[R.index]} mort${progress.best[R.index] > 1 ? "s" : ""}`, VW2, VH2 + 44);
@@ -1720,6 +1806,7 @@
         b.style.setProperty("--type", TYPES[lv.type].color);
         const best = progress.best[i];
         b.innerHTML = `<b>${i + 1}</b><small>${locked ? "fermé" : best != null ? `☠ ${best}` : "nouveau"}</small>`;
+        if (lv.defi) b.classList.add("defi");
         b.title = `${lv.name} · ${TYPES[lv.type].label}`;
         b.setAttribute("aria-label", `Niveau ${i + 1}, ${lv.name}${locked ? ", verrouillé" : ""}`);
         b.addEventListener("click", () => playFrom(i));

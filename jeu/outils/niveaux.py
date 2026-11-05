@@ -28,11 +28,21 @@ ACTES = [
     {"nom": "Le sanctuaire", "palette": "sanctuaire"},
 ]
 
-SOLIDE = set("#BxJ<>")
+SOLIDE = set("#BxJ<>c")
+
+# Numéro du niveau en cours de construction (les actes sont construits dans l'ordre).
+NUMERO = [0]
+# Un niveau « Défi » tous les 3 niveaux ; quand ça tombe sur un niveau Histoire (15, 30, 45),
+# c'est le niveau juste avant qui devient le défi.
+DEFIS = {n for n in range(3, 51, 3) if n not in (15, 30, 45)} | {14, 29, 44}
 
 
 class Niveau:
     def __init__(self, nom, type_, h=17, ammo=(6, 1), sol=None, **opts):
+        NUMERO[0] += 1
+        self.num = NUMERO[0]
+        self.defi = self.num in DEFIS
+        self._defi_fait = False
         self.nom, self.type, self.h = nom, type_, h
         self.ammo = list(ammo)
         self.cols = []
@@ -106,6 +116,9 @@ class Niveau:
         return x0
 
     def porte(self, n=4):
+        if self.defi and not self._defi_fait:
+            self._defi_fait = True
+            self.passage_defi()
         x0 = self.plat(n)
         self.put(x0 + n - 2, self.y, "D")
         self.porte_x = x0 + n - 2
@@ -219,6 +232,67 @@ class Niveau:
             self.put(x0 + dx, p + 1, "v")
         return x0
 
+    # ---------- nouveaux pièges ----------
+    def ressort_pique(self):
+        """Ressort qui projette droit dans des pics au plafond : il faut filer de côté sur la corniche."""
+        if self.y < 10:
+            return self.sprint()
+        bas = self.y
+        x0 = self.ressort(3)
+        for c in (x0 - 1, x0):
+            self.put(c, bas - 6, "v")
+            for r in range(1, bas - 6):
+                self.put(c, r, "#")
+        self.plat(3)
+        self.astuce("Au sommet du rebond, file sur la corniche !", x0 - 2, min=1)
+        return x0
+
+    def clignote(self, n=6):
+        """Plateformes qui apparaissent et disparaissent en rythme au-dessus du vide."""
+        x0 = self.x
+        for i in range(n):
+            c = self.colonne(fond="vide")
+            self.cols[c][self.y + 1] = "c"
+        self.astuce("Les planches disparaissent en rythme…", x0 - 2, max=0)
+        return x0
+
+    def fantome(self, n=5):
+        """Un vide trop large… dont les plateformes n'apparaissent qu'une fois qu'on a sauté."""
+        x0 = self.x
+        for i in range(n):
+            c = self.colonne(fond="vide")
+            self.cols[c][self.y + 1] = "o"
+        self.t([["appear", x0, self.y + 1, n, 1], ["say", "Un saut dans le vide ? Tu me fais confiance ? Ha !"]], [x0 - 1, 1, 2, self.h - 2], air=True)
+        self.astuce("Trop large ? Saute quand même…", x0 - 3, min=1)
+        return x0
+
+    def stalactites(self, n=9, pas=3):
+        """Couloir bas dont les stalactites tombent quand on passe dessous et restent plantées au sol."""
+        x0 = self.x
+        p = self.y - 4
+        for _ in range(n):
+            self.colonne(plafond=p)
+        for dx in range(2, n - 1, pas):
+            self.put(x0 + dx, p + 1, "v")
+            self.t([["dropspike", x0 + dx, p + 1, 10]], self.Z(max(x0, x0 + dx - 2)))
+        return x0
+
+    def sprint(self):
+        x0 = self.pics(2); self.plat(1); self.fosse(3, "vide"); self.plat(1); self.pics(2); self.plat(1)
+        return x0
+
+    def passage_defi(self):
+        """Section difficile ajoutée avant la porte des niveaux Défi, variée d'un défi à l'autre."""
+        k = self.num // 3
+        menu = [self.sprint, self.clignote, self.ressort_pique, self.fantome, self.stalactites]
+        self.plat(2)
+        menu[k % 5]()
+        if self.num > 20:
+            self.plat(2)
+            menu[(k + 2) % 5]()
+        self.plat(2)
+        self.astuce("Défi : dernier passage avant la porte !", self.x - 1, max=0)
+
     # ---------- pièges ----------
     def effondrement(self, n=2, avance=2, delai=0, **kw):
         """Sol plat ; en arrivant, les n cases devant s'effondrent (fosse mortelle)."""
@@ -247,11 +321,16 @@ class Niveau:
         rows = ["".join(self.cols[x][y] for x in range(w)) for y in range(self.h)]
         d = {"name": self.nom, "type": self.type, "ammo": self.ammo, "map": rows, "triggers": self.trig}
         d.update(self.opts)
+        if self.defi:
+            d["defi"] = True
         d["_tnt"] = self.tnt_besoin
         return d
 
 
 def brut(nom, type_, rows, triggers, **opts):
+    NUMERO[0] += 1
+    if NUMERO[0] in DEFIS:
+        opts["defi"] = True
     d = {"name": nom, "type": type_, "ammo": opts.pop("ammo", [6, 1]), "map": rows, "triggers": triggers}
     d.update(opts)
     d["_tnt"] = opts.get("_tnt", 0)
@@ -464,7 +543,7 @@ def acte2():
     n.t([["door", n.porte_x + 1, n.y], ["say", "Pardon, réflexe."]], n.Z(x), max=0)
     L.append(n.fini())
 
-    n = Niveau("Le puits", "exploration", h=22, sol=5, ammo=(6, 1))
+    n = Niveau("Le puits", "exploration", h=22, sol=5, ammo=(6, 1), dark=True)
     n.depart(4); n.dit("Il faut descendre. Tout en bas. Comme ton moral.", max=0)
     n.plateformes([(2, 3, 2), (2, 3, 2), (1, 3, 2), (2, 4, 2)])
     n.plat(2); n.sol_fissure(3, 3); n.plat(5, ennemi="s"); n.porte(4)
@@ -490,6 +569,7 @@ def acte2():
     n = Niveau("L'éboulement", "action")
     n.depart(3); n.dit("Le plafond est un peu fatigué aujourd'hui.", max=0)
     n.plafond_bas(26, chutes=[(4, 22), (8, 18), (12, 16), (15, 14), (19, 12), (22, 10)])
+    n.plat(2); n.stalactites(10, 3)
     n.plat(3); n.porte(4)
     L.append(n.fini())
 
@@ -517,6 +597,7 @@ def acte3():
     n = Niveau("Les étais", "trahison")
     n.depart(3); n.dit("Les étais sont neufs. Je les ai achetés d'occasion.", max=0)
     n.plafond_bas(10, chutes=[(6, 8)])
+    n.t([["dark", 1], ["say", "Oups. J'ai soufflé les torches. Quelle maladresse !"]], n.Z(n.x - 2))
     n.effondrement(2, 2, 0, max=0, lethal=True)
     n.dit("La même ? Non, pas la même.", min=1)
     n.effondrement(2, 3, 10, min=1)
@@ -567,7 +648,7 @@ def acte3():
 
     n = Niveau("Les ressorts fous", "exploration", h=24, ammo=(6, 1))
     n.depart(3); n.dit("Ressorts, chauves-souris, vide. Mon trio préféré.", max=0)
-    n.plat(2); n.ressort(4); n.plat(3); n.fosse(2, "vide"); n.plat(2)
+    n.plat(2); n.ressort(4); n.plat(3); n.ressort_pique(); n.fosse(2, "vide"); n.plat(2)
     n.ressort(4); n.plat(4, ennemi="b"); n.fosse(2, "vide"); n.plat(3, objet="a")
     n.ressort(4); n.plat(5, ennemi="m"); n.descend(6); n.plat(3); n.porte(4)
     L.append(n.fini())
@@ -600,7 +681,8 @@ def acte4():
     n = Niveau("Le gué", "exploration", ammo=(6, 0))
     n.depart(4); n.dit("Ne tombe pas à l'eau. Il n'y a pas d'eau, mais ne tombe pas.", max=0)
     n.plateformes([(2, 3, 0), (3, 3, 0), (2, 2, -1), (3, 4, 1)], fond="vide")
-    n.plat(6, ennemi="s", objet="a"); n.plateformes([(3, 3, 0), (2, 3, -1), (3, 4, 0)], fond="vide")
+    n.plat(6, ennemi="s", objet="a"); n.fantome(5); n.plat(3)
+    n.plateformes([(3, 3, 0), (2, 3, -1), (3, 4, 0)], fond="vide")
     n.plat(4, ennemi="s"); n.porte(4)
     L.append(n.fini())
 
@@ -619,8 +701,7 @@ def acte4():
     n = Niveau("Les marches", "exploration", arrowRate=90, ammo=(5, 1))
     n.depart(3); n.dit("Un escalier avec des flèches. L'architecte était un artiste.", max=0)
     n.fleches(5, 2); n.plat(4, ennemi="m"); n.fleches(4, 2); n.plat(5, objet="t")
-    n.fleches(4, 2); n.plat(4, ennemi="s"); n.mur_fissure(); n.plat(3); n.porte(4)
-    n.y_debut = None
+    n.fleches(4, 2); n.plat(4, ennemi="s"); n.clignote(5); n.plat(2); n.mur_fissure(); n.plat(3); n.porte(4)
     L.append(n.fini())
 
     n = Niveau("La chute", "action", sol=4, h=22)
@@ -638,7 +719,7 @@ def acte4():
     n.plat(4); n.porte(4)
     L.append(n.fini())
 
-    n = Niveau("Les piliers", "exploration", h=22, ammo=(6, 2))
+    n = Niveau("Les piliers", "exploration", h=22, ammo=(6, 2), dark=True)
     n.depart(3); n.dit("Des piliers, du vide, et quelques chauves-souris pour l'ambiance.", max=0)
     n.plateformes([(2, 2, 0), (3, 2, 0), (2, 2, -1)], fond="vide")
     n.plat(2); n.ressort(4); n.plat(4, ennemi="b"); n.mur_fissure(); n.plat(3)
@@ -707,6 +788,7 @@ def acte5():
     n.depart(3); n.dit("Trois épreuves : sauter, assommer, exploser. Comme un mardi.", max=0)
     n.plateformes([(2, 3, 0), (3, 3, -1), (2, 3, 0)])
     n.plat(5, ennemi="m"); n.fleches(5, 2); n.plat(4, ennemi="b"); n.ressort(4); n.plat(5, objet="t")
+    n.t([["dark", 1], ["say", "Et si on éteignait la lumière ? Ha ha !"]], n.Z(n.x - 2))
     n.mur_fissure(); n.plat(3); n.sol_fissure(3, 3); n.plat(5, ennemi="ss"); n.porte(4)
     L.append(n.fini())
 
@@ -726,7 +808,7 @@ def acte5():
     n.plat(4); n.porte(4)
     L.append(n.fini())
 
-    n = Niveau("Le labyrinthe", "exploration", h=22, sol=6, ammo=(4, 3))
+    n = Niveau("Le labyrinthe", "exploration", h=22, sol=6, ammo=(4, 3), dark=True)
     n.depart(4); n.dit("Un labyrinthe. Si tu te perds, c'est normal. C'est fait pour.", max=0)
     n.plat(4, ennemi="m"); n.sol_fissure(3, 4); n.plat(5, ennemi="s"); n.faux_mur(1); n.plat(4, objet="t")
     n.sol_fissure(3, 4); n.plat(4, ennemi="b"); n.mur_fissure(); n.plat(4); n.porte(4)
@@ -794,6 +876,21 @@ def appliquer(lv, morts):
             continue
         for a in tr["act"]:
             k = a[0]
+            if k == "appear":
+                x0, y0, w, h = a[1:5]
+                for yy in range(y0, y0 + h):
+                    for xx in range(x0, x0 + w):
+                        g[yy][xx] = "#"
+                continue
+            if k == "dropspike":
+                x0, y0 = a[1], a[2]
+                g[y0][x0] = "."
+                yy = y0
+                while yy + 1 < H and g[yy + 1][x0] not in "#BJ<>c":
+                    yy += 1
+                if yy + 1 < H:
+                    g[yy][x0] = "^"
+                continue
             if k in ("collapse", "set", "spikes", "fall"):
                 x0, y0, w, h = a[1:5]
                 ch = {"collapse": ".", "fall": ".", "spikes": a[5] if len(a) > 5 else "^", "set": a[5] if len(a) > 5 else "."}[k]
@@ -814,13 +911,13 @@ def accessible(g, porte):
             return False
         if y >= H:
             return True
-        return g[y][x] not in "#J<>^v"  # B, x, F sont traversables (dynamite / chute / illusion)
+        return g[y][x] not in "#J<>^vc"  # B, x, F, o sont traversables (dynamite / chute / illusion / fantôme)
 
     def mortel(x, y):
         return 0 <= y < H and 0 <= x < W and g[y][x] in "^v"
 
     def porteur(x, y):
-        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>"
+        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>c"
 
     def debout(x, y):
         return y < H - 0 and libre(x, y) and y + 1 < H and porteur(x, y + 1) and not mortel(x, y)
