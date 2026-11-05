@@ -22,10 +22,10 @@
   };
 
   const PALETTES = {
-    jungle:     { bg: "#0d1512", bg2: "#13201b", stone: "#3a5649", stoneTop: "#5f8471", stoneDark: "#25372f", crack: "#9a8656", crackDark: "#5e5232", deco: "#1f3d2c" },
+    jungle:     { moss: "#4f8a3a", bg: "#0d1512", bg2: "#13201b", stone: "#3a5649", stoneTop: "#5f8471", stoneDark: "#25372f", crack: "#9a8656", crackDark: "#5e5232", deco: "#1f3d2c" },
     crypte:     { bg: "#16100a", bg2: "#211710", stone: "#7a5d36", stoneTop: "#a8834f", stoneDark: "#4e3a21", crack: "#cdb27c", crackDark: "#7c6440", deco: "#3a2a17" },
     mines:      { bg: "#0e1014", bg2: "#171b22", stone: "#474c58", stoneTop: "#6a7283", stoneDark: "#2c3038", crack: "#9a8660", crackDark: "#584b33", deco: "#4a3522" },
-    cascades:   { bg: "#081316", bg2: "#0e2126", stone: "#2f5560", stoneTop: "#4f8796", stoneDark: "#1c373e", crack: "#a39167", crackDark: "#655a3e", deco: "#3d7f93" },
+    cascades:   { moss: "#3f8a6e", bg: "#081316", bg2: "#0e2126", stone: "#2f5560", stoneTop: "#4f8796", stoneDark: "#1c373e", crack: "#a39167", crackDark: "#655a3e", deco: "#3d7f93" },
     sanctuaire: { bg: "#0f0b15", bg2: "#1a1329", stone: "#4b3a63", stoneTop: "#73598f", stoneDark: "#2d2240", crack: "#b99c60", crackDark: "#75623c", deco: "#d9a441" },
   };
 
@@ -251,9 +251,51 @@
       }
     }
     if (def.doorStart && room.door) { room.door.x = def.doorStart[0] * T + 2; room.door.y = def.doorStart[1] * T - 6; }
+    room.decor = genDecor(room, act ? act.palette : "jungle");
     // le professeur Lecoquin attend à la porte, puis file devant le joueur
     if (room.door && !def.doorHidden && !def.doorStart) room.rival = { x: room.door.x - 22, y: room.door.y + 7, w: 10, h: 15, state: "wait", t: 0, face: -1 };
     return room;
+  }
+
+  // Décors purement visuels (toiles, lianes, herbes, torches, os…), placés selon la forme du niveau.
+  function genDecor(room, theme) {
+    const t = room.tiles, rows = t.length, cols = t[0].length, out = [];
+    const at = (x, y) => (y < 0 || y >= rows || x < 0 || x >= cols ? "#" : t[y][x]);
+    const stone = (c) => c === "#" || c === "<" || c === ">";
+    const rnd = (x, y, k) => { let h = (x * 73856093) ^ (y * 19349663) ^ (k * 83492791) ^ (room.index * 2654435761); h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const pVine = { jungle: 0.24, cascades: 0.16, crypte: 0.05, mines: 0.04, sanctuaire: 0.08 }[theme] || 0.1;
+    let lastTorch = -99;
+    for (let y = 1; y < rows - 1; y++) for (let x = 1; x < cols - 1; x++) {
+      if (at(x, y) !== ".") continue;
+      const up = at(x, y - 1), dn = at(x, y + 1), lf = at(x - 1, y), rt = at(x + 1, y);
+      // toiles d'araignée dans les coins du haut
+      if (stone(up) && (stone(lf) || stone(rt)) && rnd(x, y, 1) < 0.6) out.push({ k: "web", x, y, side: stone(lf) ? -1 : 1, s: 0.7 + rnd(x, y, 2) * 0.5 });
+      // lianes (ou chaînes dans la crypte) qui pendent du plafond
+      else if (stone(up) && dn === "." && rnd(x, y, 3) < pVine) {
+        let len = 1 + Math.floor(rnd(x, y, 4) * 4);
+        while (len > 1 && at(x, y + len - 1) !== ".") len--;
+        out.push({ k: theme === "crypte" && rnd(x, y, 5) < 0.6 ? "chain" : "vine", x, y, len, ph: rnd(x, y, 6) * 6 });
+      }
+      // gouttes d'eau dans les cascades
+      if (theme === "cascades" && stone(up) && rnd(x, y, 7) < 0.08) out.push({ k: "drip", x, y, ph: rnd(x, y, 8) * 200 });
+      // au sol : herbes, os, cailloux, cristaux
+      if (stone(dn)) {
+        const r = rnd(x, y, 9);
+        if (r < 0.04) out.push({ k: "bones", x, y, f: rnd(x, y, 10) < 0.5 ? 1 : -1 });
+        else if (theme === "sanctuaire" && r < 0.12) out.push({ k: "crystal", x, y, ph: rnd(x, y, 11) * 6 });
+        else if (theme === "mines" && r < 0.22) out.push({ k: "pebbles", x, y });
+        else if (theme !== "mines" && theme !== "crypte" && r < 0.42) out.push({ k: "tuft", x, y, s: rnd(x, y, 12) });
+        else if (theme === "crypte" && r < 0.16) out.push({ k: "pebbles", x, y });
+      }
+      // torches fixées aux murs, une tous les 9 cases au plus
+      const wallL = stone(lf) && stone(at(x - 1, y - 1)) && stone(at(x - 1, y + 1));
+      const wallR = stone(rt) && stone(at(x + 1, y - 1)) && stone(at(x + 1, y + 1));
+      if ((wallL || wallR) && dn === "." && stone(at(x, y + 2)) && x - lastTorch > 8 && rnd(x, y, 13) < 0.55) {
+        out.push({ k: "torch", x, y, side: wallL ? -1 : 1, ph: rnd(x, y, 14) * 6 });
+        lastTorch = x;
+      }
+    }
+    return out;
   }
 
   function makePlayer(tx, ty) {
@@ -787,6 +829,7 @@
     ctx.fillRect(0, 0, W, H);
     drawBackground();
     drawTiles(false);
+    drawDecor();
     drawDoor();
     for (const it of R.pickups) if (!it.taken) drawPickup(it);
     for (const e of R.enemies) if (e.alive) drawEnemy(e);
@@ -798,7 +841,9 @@
     drawPlayer();
     drawTiles(true); // faux murs par-dessus le joueur
     drawParticles();
+    drawTorchLight();
     ctx.setTransform(k, 0, 0, k, 0, 0);
+    drawVignette();
     drawHud();
     drawSpeech();
     if (game.invert > 0) drawInvert();
@@ -808,6 +853,19 @@
 
   function drawBackground() {
     const decor = R.def.decor || (ACTS[R.def.act] || {}).palette;
+    // mur du fond : grandes briques sombres, légèrement décalées par la parallaxe
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    ctx.translate(cam.x * 0.35, cam.y * 0.2);
+    ctx.fillStyle = P.bg2; ctx.globalAlpha = 0.55;
+    const bw = 28, bh = 14;
+    const sx0 = Math.floor((cam.x * 0.65) / bw) - 1, sx1 = Math.ceil((cam.x * 0.65 + view.w) / bw) + 1;
+    const sy0 = Math.floor((cam.y * 0.8) / bh) - 1, sy1 = Math.ceil((cam.y * 0.8 + view.h) / bh) + 1;
+    for (let j = sy0; j <= sy1; j++) for (let i = sx0; i <= sx1; i++) {
+      const off = j % 2 ? bw / 2 : 0;
+      ctx.fillRect(i * bw + off + 1, j * bh + 1, bw - 2, bh - 2);
+    }
+    ctx.restore();
     ctx.fillStyle = P.bg2;
     const x0 = Math.max(0, Math.floor(cam.x / 56) - 1), x1 = Math.ceil((cam.x + view.w) / 56) + 1;
     if (decor === "pillars" || decor === "sanctuaire" || decor === "eye") {
@@ -860,13 +918,145 @@
     }
   }
 
+  function inView(x, y, m = 2) {
+    return x * T > cam.x - m * T && x * T < cam.x + view.w + m * T && y * T > cam.y - m * T && y * T < cam.y + view.h + m * T;
+  }
+
+  function drawDecor() {
+    for (const d of R.decor) {
+      if (!inView(d.x, d.y)) continue;
+      const px = d.x * T, py = d.y * T;
+      switch (d.k) {
+        case "web": {
+          const s = 12 * d.s, ox = d.side < 0 ? px : px + T, dir = -d.side;
+          ctx.strokeStyle = "rgba(225,225,215,0.38)"; ctx.lineWidth = 0.6;
+          ctx.beginPath();
+          for (let i = 0; i <= 4; i++) { const a = (i / 4) * Math.PI / 2; ctx.moveTo(ox, py); ctx.lineTo(ox + dir * Math.cos(a) * s, py + Math.sin(a) * s); }
+          for (let r = 0.35; r <= 1.01; r += 0.32) {
+            for (let i = 0; i <= 4; i++) { const a = (i / 4) * Math.PI / 2, xx = ox + dir * Math.cos(a) * s * r, yy = py + Math.sin(a) * s * r; if (i === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy); }
+          }
+          ctx.stroke();
+          if (d.s > 1.05) { ctx.fillStyle = "#1a1a1a"; ctx.fillRect(ox + dir * s * 0.55 - 1, py + s * 0.5 - 1, 2, 2); }
+          break;
+        }
+        case "vine": {
+          const sway = Math.sin(R.t / 40 + d.ph) * 1.6;
+          ctx.strokeStyle = "#2f6a2a"; ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.moveTo(px + 8, py);
+          const L = d.len * T - 4;
+          for (let i = 1; i <= 8; i++) { const f = i / 8; ctx.lineTo(px + 8 + Math.sin(f * 4 + d.ph) * 1.5 + sway * f, py + L * f); }
+          ctx.stroke();
+          ctx.fillStyle = "#4f9a3a";
+          for (let i = 1; i < d.len * 3; i++) {
+            const f = i / (d.len * 3), lx = px + 8 + Math.sin(f * 4 + d.ph) * 1.5 + sway * f, ly = py + L * f;
+            ctx.beginPath(); ctx.ellipse(lx + (i % 2 ? 2.5 : -2.5), ly, 2.2, 1.2, i % 2 ? 0.5 : -0.5, 0, Math.PI * 2); ctx.fill();
+          }
+          break;
+        }
+        case "chain": {
+          const sway = Math.sin(R.t / 50 + d.ph) * 1;
+          ctx.strokeStyle = "#6b6f76"; ctx.lineWidth = 1;
+          for (let i = 0; i < d.len * 4; i++) { const yy = py + i * 4 + 2, xx = px + 8 + sway * (i / (d.len * 4)); ctx.beginPath(); ctx.ellipse(xx, yy, i % 2 ? 1 : 1.8, 2, 0, 0, Math.PI * 2); ctx.stroke(); }
+          break;
+        }
+        case "drip": {
+          const k = ((R.t + d.ph) % 160) / 160;
+          ctx.fillStyle = "rgba(170,225,240,0.8)";
+          if (k < 0.5) ctx.fillRect(px + 8, py + 1, 1, 1 + k * 3);
+          else ctx.fillRect(px + 8, py + (k - 0.5) * 2 * T * 1.6, 1, 2);
+          break;
+        }
+        case "tuft": {
+          ctx.fillStyle = P.moss || "#4f8a3a";
+          const bx = px + 3 + d.s * 8, by = py + T;
+          for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(bx + i * 2, by); ctx.lineTo(bx + i * 2 + (i - 1.5) * 1.2, by - 3 - (i % 2) * 2 - d.s * 2); ctx.lineTo(bx + i * 2 + 1.2, by); ctx.fill(); }
+          if (d.s > 0.8) { ctx.fillStyle = "#e3c14e"; ctx.fillRect(bx + 3, by - 6, 2, 2); }
+          break;
+        }
+        case "bones": {
+          ctx.fillStyle = "#d9d2bd";
+          const bx = px + 3, by = py + T - 4;
+          ctx.beginPath(); ctx.arc(bx + (d.f > 0 ? 3 : 8), by, 2.6, 0, Math.PI * 2); ctx.fill();          // crâne
+          ctx.fillStyle = "#2a241c"; ctx.fillRect(bx + (d.f > 0 ? 2 : 7), by - 1, 1, 1); ctx.fillRect(bx + (d.f > 0 ? 4 : 9), by - 1, 1, 1);
+          ctx.fillStyle = "#d9d2bd"; ctx.fillRect(bx + (d.f > 0 ? 6 : 0), by + 2, 6, 1.4); ctx.fillRect(bx + (d.f > 0 ? 6 : 0), by + 1.4, 1.4, 2.6);
+          break;
+        }
+        case "pebbles": {
+          ctx.fillStyle = P.stoneTop;
+          ctx.beginPath(); ctx.ellipse(px + 4, py + T - 1.5, 2.5, 1.5, 0, 0, Math.PI * 2); ctx.ellipse(px + 9, py + T - 1, 1.6, 1, 0, 0, Math.PI * 2); ctx.fill();
+          break;
+        }
+        case "crystal": {
+          const g = 0.5 + 0.5 * Math.sin(R.t / 30 + d.ph);
+          ctx.fillStyle = `rgba(190,120,255,${0.15 + g * 0.15})`; ctx.beginPath(); ctx.arc(px + 8, py + T - 4, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#b884ff";
+          ctx.beginPath(); ctx.moveTo(px + 6, py + T); ctx.lineTo(px + 7.5, py + T - 8); ctx.lineTo(px + 9, py + T); ctx.fill();
+          ctx.fillStyle = "#e0c8ff";
+          ctx.beginPath(); ctx.moveTo(px + 9, py + T); ctx.lineTo(px + 11, py + T - 5); ctx.lineTo(px + 12, py + T); ctx.fill();
+          break;
+        }
+        case "torch": {
+          const wx = d.side < 0 ? px + 1 : px + T - 3, fy = py + 4;
+          ctx.fillStyle = "#4a3018"; ctx.fillRect(wx, py + 6, 2, 7);
+          ctx.fillStyle = C.metal; ctx.fillRect(wx - 1, py + 5, 4, 2);
+          const fl = 1 + Math.sin(R.t / 4 + d.ph) * 0.18 + Math.sin(R.t / 7.3 + d.ph * 2) * 0.12;
+          ctx.fillStyle = "#ff8a2a"; ctx.beginPath(); ctx.ellipse(wx + 1, fy, 2.4 * fl, 3.6 * fl, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#ffe08a"; ctx.beginPath(); ctx.ellipse(wx + 1, fy + 0.8, 1.1, 2, 0, 0, Math.PI * 2); ctx.fill();
+          break;
+        }
+      }
+    }
+  }
+
+  // halos chauds des torches, ajoutés par-dessus la scène
+  function drawTorchLight() {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const d of R.decor) {
+      if (d.k !== "torch" || !inView(d.x, d.y, 5)) continue;
+      const wx = d.side < 0 ? d.x * T + 2 : d.x * T + T - 2, wy = d.y * T + 4;
+      const fl = 1 + Math.sin(R.t / 4 + d.ph) * 0.06;
+      const g = ctx.createRadialGradient(wx, wy, 2, wx, wy, 64 * fl);
+      g.addColorStop(0, "rgba(255,150,60,0.30)"); g.addColorStop(1, "rgba(255,120,40,0)");
+      ctx.fillStyle = g; ctx.fillRect(wx - 66, wy - 66, 132, 132);
+    }
+    ctx.restore();
+  }
+
+  // pénombre douce sur les bords de l'écran, plus claire autour de Max
+  function drawVignette() {
+    const p = R.player;
+    const cx = p ? p.x + p.w / 2 - cam.x : view.w / 2, cy = p ? p.y + p.h / 2 - cam.y : view.h / 2;
+    const g = ctx.createRadialGradient(cx, cy, 60, cx, cy, Math.max(view.w, view.h) * 0.75);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,0.42)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, view.w, view.h);
+  }
+
   function drawStone(px, py, x, y) {
     ctx.fillStyle = P.stone; ctx.fillRect(px, py, T, T);
+    // joints de maçonnerie : briques décalées d'une rangée à l'autre
+    ctx.fillStyle = P.stoneDark;
+    ctx.globalAlpha = 0.55;
+    ctx.fillRect(px, py + 7, T, 1);
+    ctx.fillRect(px + (y % 2 ? 4 : 11), py, 1, 7);
+    ctx.fillRect(px + (y % 2 ? 12 : 3), py + 8, 1, 8);
+    ctx.globalAlpha = 1;
+    const h = hash(x, y);
+    if (h % 7 === 0) { ctx.fillStyle = P.stoneTop; ctx.globalAlpha = 0.35; ctx.fillRect(px + 2, py + 2, 5, 1); ctx.globalAlpha = 1; }
     const up = tileAt(x, y - 1), dn = tileAt(x, y + 1);
-    if (!looksStone(up) && up !== "B") { ctx.fillStyle = P.stoneTop; ctx.fillRect(px, py, T, 2); }
+    if (!looksStone(up) && up !== "B") {
+      ctx.fillStyle = P.stoneTop; ctx.fillRect(px, py, T, 2);
+      if (P.moss && h % 3 !== 0) {
+        // mousse qui déborde sur la face
+        ctx.fillStyle = P.moss; ctx.fillRect(px, py, T, 2);
+        ctx.fillRect(px + (h % 9), py + 2, 3, 1 + (h % 2)); ctx.fillRect(px + 9 + (h % 5), py + 2, 2, 2 + (h % 3));
+      }
+    }
     if (!looksStone(dn) && dn !== "B") { ctx.fillStyle = P.stoneDark; ctx.fillRect(px, py + T - 2, T, 2); }
-    if ((x * 7 + y * 13) % 5 === 0) { ctx.fillStyle = P.stoneDark; ctx.fillRect(px + 4, py + 6, 3, 2); }
   }
+
+  // petit hachage déterministe pour placer les décors toujours au même endroit
+  function hash(x, y) { let h = (x * 374761393 + y * 668265263 + (R ? R.index * 1442695 : 0)) | 0; h = (h ^ (h >>> 13)) * 1274126177; return Math.abs(h ^ (h >>> 16)); }
 
   function drawTiles(onlyFake) {
     const x0 = Math.max(0, Math.floor(cam.x / T) - 1), x1 = Math.min(COLS - 1, Math.ceil((cam.x + view.w) / T) + 1);
@@ -982,26 +1172,41 @@
     ctx.globalAlpha = 1;
   }
 
-  // Professeur Lecoquin : costume clair, casque colonial, écharpe rouge, moustache
+  // Professeur Lecoquin : casque colonial kaki, lunettes rondes, nœud papillon rouge, veste beige
   function drawRival(r) {
     const run = r.state === "run";
     const ph = run ? Math.sin(r.t * 0.6) : 0, bob = run ? Math.abs(ph) : Math.sin(r.t / 10) * 0.4;
     const x = Math.round(r.x), y = Math.round(r.y - bob);
     ctx.save();
     if (r.face < 0) { ctx.translate(x + 10, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
-    ctx.fillStyle = C.rivalShade; ctx.fillRect(2 + ph * 2, 10, 3, 3); ctx.fillRect(5 - ph * 2, 10, 3, 3);
-    ctx.fillStyle = C.boots; ctx.fillRect(2 + ph * 2, 13, 3, 2); ctx.fillRect(5 - ph * 2, 13, 4, 2);
-    ctx.fillStyle = C.rivalSuit; ctx.fillRect(1, 5, 8, 6);
-    ctx.fillStyle = C.rivalShade; ctx.fillRect(1, 9, 8, 1); ctx.fillRect(1, 5, 1, 6);
-    ctx.fillStyle = C.rivalScarf; ctx.fillRect(3, 5, 4, 2); ctx.fillRect(6, 7, 1, 2);
-    ctx.fillStyle = C.rivalSuit; ctx.fillRect(7, 6 + (run ? 0 : 1), 2, 3);
-    ctx.fillStyle = C.skin; ctx.fillRect(8, 9 + (run ? -1 : 0), 2, 1);
-    ctx.fillStyle = C.skin; ctx.fillRect(3, 1, 6, 4);
-    ctx.fillStyle = C.void; ctx.fillRect(7, 2, 1, 1);
-    ctx.fillStyle = C.gold; ctx.fillRect(6, 1, 3, 1); ctx.fillRect(8, 2, 1, 1); // monocle
-    ctx.fillStyle = C.rivalHair; ctx.fillRect(5, 4, 5, 1); ctx.fillRect(9, 4, 1, 2); // moustache
-    ctx.fillStyle = C.rivalHelmet; ctx.fillRect(1, -1, 10, 3); ctx.fillRect(2, -3, 8, 2); ctx.fillRect(4, -4, 4, 1);
-    ctx.fillStyle = C.rivalShade; ctx.fillRect(1, 1, 10, 1);
+    // jambes (pantalon brun) et chaussures
+    ctx.fillStyle = "#6b5236"; ctx.fillRect(2 + ph * 2, 10, 3, 3); ctx.fillRect(5 - ph * 2, 10, 3, 3);
+    ctx.fillStyle = "#2b1c10"; ctx.fillRect(2 + ph * 2, 13, 3, 2); ctx.fillRect(5 - ph * 2, 13, 4, 2);
+    // veste beige à pans
+    ctx.fillStyle = "#d8c7a0"; ctx.fillRect(1, 5, 8, 6);
+    ctx.fillStyle = "#a8946a"; ctx.fillRect(1, 5, 1, 6); ctx.fillRect(4, 7, 1, 4); ctx.fillRect(0, 10, 2, 1);
+    ctx.fillStyle = "#f4ecd8"; ctx.fillRect(5, 5, 2, 3);            // chemise
+    ctx.fillStyle = "#c62f22"; ctx.fillRect(4, 5, 1, 1); ctx.fillRect(6, 5, 2, 1); ctx.fillRect(5, 5, 1, 1); // nœud papillon
+    // bras tendu (il pointe le trésor)
+    ctx.fillStyle = "#d8c7a0"; ctx.fillRect(7, 6 + (run ? 0 : 1), 3, 2);
+    ctx.fillStyle = C.skin; ctx.fillRect(10, 6 + (run ? 0 : 1), 1, 2);
+    // tête, cheveux gris, grand sourire
+    ctx.fillStyle = C.skin; ctx.fillRect(3, 0, 6, 5);
+    ctx.fillStyle = "#cfcfcf"; ctx.fillRect(2, 1, 1, 3); ctx.fillRect(3, 0, 1, 1);
+    ctx.fillStyle = "#3a2010"; ctx.fillRect(5, 4, 4, 1);
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(6, 4, 2, 1);
+    // lunettes rondes
+    ctx.strokeStyle = "#2a1a10"; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.arc(7.6, 2.2, 1.2, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#2a1a10"; ctx.fillRect(7.3, 1.9, 0.8, 0.8);
+    // casque colonial : dôme kaki, bandeau sombre, large bord tout autour
+    ctx.fillStyle = "#b5a06c";
+    ctx.beginPath(); ctx.ellipse(6, 0.4, 7.2, 1.6, 0, 0, Math.PI * 2); ctx.fill();       // bord
+    ctx.fillStyle = "#d9c48e";
+    ctx.beginPath(); ctx.ellipse(6, -0.4, 4.6, 4.3, 0, Math.PI, 0); ctx.fill();          // dôme
+    ctx.fillStyle = "#f0e2b4"; ctx.fillRect(3.6, -3.4, 2, 1);                           // reflet
+    ctx.fillStyle = "#6b5236"; ctx.fillRect(1.4, -1.2, 9.2, 1);                          // bandeau
+    ctx.fillStyle = "#8c7a4c"; ctx.fillRect(5.6, -4.9, 0.9, 0.9);                        // bouton du dessus
     ctx.restore();
   }
 
