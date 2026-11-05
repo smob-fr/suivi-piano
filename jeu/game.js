@@ -729,6 +729,7 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = C.void;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (game.mode === "title" && !overlays.titre.hidden) return; // l'accueil est une illustration en fond de page
     if (game.mode === "title" || game.mode === "end" || !R) { drawHome(); return; }
     const k = scale * dpr;
     if (game.mode !== "card") updateCamera(false);
