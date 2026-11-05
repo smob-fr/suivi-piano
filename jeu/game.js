@@ -92,6 +92,7 @@
     canvas.height = Math.floor(ch * dpr);
     view.w = cw / scale; view.h = ch / scale;
     if (R) updateCamera(true);
+    positionHero();
     checkOrientation();
   }
 
@@ -1208,27 +1209,15 @@
     }
 
     const bounce = reducedMotion ? 0 : Math.abs(Math.sin(t * 0.11)) * 4;
-    const br = 66, bx = cx, by = 108 - bounce;
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
-    ctx.beginPath(); ctx.ellipse(bx, 178, br * 0.9, 10, 0, 0, Math.PI * 2); ctx.fill();
-    const bg = ctx.createRadialGradient(bx - 22, by - 26, 8, bx, by, br);
-    bg.addColorStop(0, "#a48a63"); bg.addColorStop(0.6, "#6f5a3d"); bg.addColorStop(1, "#3a2c1c");
-    ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
-    ctx.save(); ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.clip();
-    ctx.strokeStyle = "rgba(40,28,16,0.6)"; ctx.lineWidth = 3;
-    const roll = reducedMotion ? 0 : t * 0.05;
-    for (let i = 0; i < 6; i++) {
-      const phase = ((i / 6) * Math.PI * 2 + roll) % (Math.PI * 2);
-      if (Math.sin(phase) < 0) continue;
-      const yy = by + Math.cos(phase) * br, half = Math.sin(phase) * br * 0.8;
-      ctx.beginPath(); ctx.moveTo(bx - half, yy); ctx.quadraticCurveTo(bx + (i % 2 ? 12 : -12), yy + 6, bx + half * 0.7, yy - 3); ctx.stroke();
-    }
-    ctx.restore();
+    const br = 68, bx = cx, by = 104 - bounce;
+    drawHomeBoulder(bx, by, br, t);
     if (!reducedMotion && t % 3 === 0) homeDust.push({ x: bx + (Math.random() - 0.5) * br * 1.6, y: 176, vx: (Math.random() - 0.5) * 1.4, vy: -Math.random() * 1.2, life: 40 });
     for (const d of homeDust) { d.x += d.vx; d.y += d.vy; d.vy += 0.02; d.life--; ctx.fillStyle = `rgba(170,140,100,${Math.max(0, d.life / 80)})`; ctx.fillRect(d.x, d.y, 3, 3); }
     while (homeDust.length && homeDust[0].life <= 0) homeDust.shift();
 
-    drawRunner(cx, 198, t);
+    // ombre de l'explorateur (le personnage lui-même est une illustration SVG posée par-dessus)
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.beginPath(); ctx.ellipse(cx, 197, 30, 4.5, 0, 0, Math.PI * 2); ctx.fill();
 
     const vg = ctx.createRadialGradient(cx, 110, 40, cx, 110, Wd * 0.8);
     vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.7)");
@@ -1236,6 +1225,75 @@
     const lg = ctx.createLinearGradient(0, 0, Wd * 0.55, 0);
     lg.addColorStop(0, "rgba(10,6,3,0.85)"); lg.addColorStop(1, "rgba(10,6,3,0)");
     ctx.fillStyle = lg; ctx.fillRect(0, -4, Wd * 0.55, 208);
+  }
+
+  // Rocher : une sphère dont la surface (cratères, bosses) tourne vers le spectateur.
+  const ROCK_SPOTS = (() => {
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const pts = [];
+    for (let i = 0; i < 46; i++) {
+      const u = rnd() * 2 - 1, a = rnd() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+      pts.push({ x: r * Math.cos(a), y: u, z: r * Math.sin(a), s: 0.05 + rnd() * 0.11, k: rnd() });
+    }
+    return pts;
+  })();
+  function drawHomeBoulder(bx, by, br, t) {
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.beginPath(); ctx.ellipse(bx, 176, br * 0.95, 11, 0, 0, Math.PI * 2); ctx.fill();
+    const g = ctx.createRadialGradient(bx - br * 0.35, by - br * 0.4, br * 0.1, bx, by, br * 1.02);
+    g.addColorStop(0, "#c3a57a"); g.addColorStop(0.45, "#8a6f4c"); g.addColorStop(0.85, "#4a3925"); g.addColorStop(1, "#2a1f14");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.clip();
+    // rotation autour de l'axe horizontal : la face visible descend, le rocher roule vers nous
+    const th = reducedMotion ? 0.6 : t * 0.045, c = Math.cos(th), sn = Math.sin(th);
+    const spots = ROCK_SPOTS.map((p) => ({ x: p.x, y: p.y * c + p.z * sn, z: -p.y * sn + p.z * c, s: p.s, k: p.k })).filter((p) => p.z > 0.05).sort((a, b) => a.z - b.z);
+    for (const p of spots) {
+      const sx = bx + p.x * br, sy = by + p.y * br, r = p.s * br;
+      const squash = Math.max(0.2, p.z);
+      const light = 0.55 - p.x * 0.25 - p.y * 0.3;
+      if (p.k < 0.6) {
+        // cratère : creux sombre, bord éclairé en haut à gauche
+        ctx.fillStyle = `rgba(35,24,14,${0.35 + 0.35 * p.z})`;
+        ctx.beginPath(); ctx.ellipse(sx, sy, r, r * squash, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = `rgba(230,205,160,${Math.max(0, light) * 0.6 * p.z})`; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.ellipse(sx, sy + r * squash * 0.15, r, r * squash, 0, Math.PI * 0.95, Math.PI * 1.75); ctx.stroke();
+      } else {
+        // bosse : tache claire
+        ctx.fillStyle = `rgba(214,188,145,${Math.max(0, light) * 0.45 * p.z})`;
+        ctx.beginPath(); ctx.ellipse(sx - r * 0.2, sy - r * 0.2 * squash, r * 0.8, r * 0.8 * squash, 0, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // une grande fissure qui tourne avec la pierre
+    const crack = [[-0.5, -0.2, 0.83], [-0.25, -0.05, 0.96], [0.05, 0.1, 0.99], [0.3, 0.02, 0.95], [0.55, 0.15, 0.82]];
+    ctx.strokeStyle = "rgba(30,20,12,0.7)"; ctx.lineWidth = 2.4; ctx.beginPath();
+    let started = false;
+    for (const [x, y, z] of crack) {
+      const yy = y * c + z * sn, zz = -y * sn + z * c;
+      if (zz <= 0.05) { started = false; continue; }
+      const sx = bx + x * br, sy = by + yy * br;
+      if (!started) { ctx.moveTo(sx, sy); started = true; } else ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+    // reflet de torche et ombre propre
+    const rim = ctx.createRadialGradient(bx, by + br * 0.55, br * 0.2, bx, by + br * 0.3, br * 1.1);
+    rim.addColorStop(0, "rgba(0,0,0,0)"); rim.addColorStop(1, "rgba(0,0,0,0.45)");
+    ctx.fillStyle = rim; ctx.fillRect(bx - br, by - br, br * 2, br * 2);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,190,110,0.25)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(bx, by, br - 1, Math.PI * 1.05, Math.PI * 1.55); ctx.stroke();
+  }
+
+  // Place l'illustration SVG de l'explorateur au pied du rocher, à l'échelle du décor.
+  const heros = document.getElementById("heros");
+  function positionHero() {
+    if (!heros) return;
+    const r = canvas.getBoundingClientRect();
+    const unit = r.height / 200, Wd = r.width / unit;
+    const cx = (Wd > 300 ? Wd * 0.7 : Wd / 2) * unit;
+    const h = 118 * unit, w = h * 240 / 340;
+    heros.style.width = w + "px"; heros.style.height = h + "px";
+    heros.style.left = (r.left + cx - w / 2) + "px";
+    heros.style.top = (r.top + 197 * unit - h * (330 / 340)) + "px";
   }
 
   // L'explorateur vu de face, en gros pixels (u = taille d'un pixel)
@@ -1290,6 +1348,7 @@
   function showOverlay(name) {
     for (const k in overlays) overlays[k].hidden = k !== name;
     document.body.classList.toggle("en-jeu", !name);
+    if (heros) heros.hidden = name !== "titre";
   }
 
   function togglePause() {
