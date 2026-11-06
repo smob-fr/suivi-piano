@@ -322,8 +322,18 @@
     room.cp = def.checkpoint ? { x: def.checkpoint[0], y: def.checkpoint[1], on: game.cpLevel === index } : null;
     if (room.cp && room.cp.on && room.player) {
       room.player.x = room.cp.x * T + 3; room.player.y = room.cp.y * T + 1;
-      // la dynamite ramassée avant le drapeau est rendue, pour ne jamais rester bloqué
-      for (const it of room.pickups) if (it.x < room.cp.x * T) { it.taken = true; if (it.kind === "tnt") game.ammo.tnt++; }
+      // on repart dans l'état du niveau au moment du drapeau : grilles ouvertes, murs détruits,
+      // dalles enfoncées, objets ramassés, dynamite en poche
+      const snap = game.cpSnap;
+      if (snap && snap.level === index) {
+        for (let y = 0; y < ROWS; y++) room.tiles[y] = snap.tiles[y].slice();
+        room.bCount = snap.bCount;
+        room.fired = new Set(snap.fired);
+        if (room.door && snap.door) Object.assign(room.door, snap.door);
+        room.pickups.forEach((it, k) => { if (snap.taken[k]) it.taken = true; });
+        room.enemies.forEach((e, k) => { if (snap.dead[k]) e.alive = false; });
+        game.ammo.tnt = snap.tnt;
+      }
     }
     // plateformes mobiles : [x, y, largeur, dx, dy, vitesse] en cases
     room.movers = (def.movers || []).map(([x, y, w, dx, dy, sp], i) => ({ x0: x * T, y0: y * T, x: x * T, y: y * T, w: w * T, h: 6, dx: dx * T, dy: dy * T, sp, t: i * 40, mx: 0, my: 0 }));
@@ -661,6 +671,18 @@
     }
     if (R.cp && !R.cp.on && overlap(p, { x: R.cp.x * T, y: R.cp.y * T - 8, w: T, h: T + 8 })) {
       R.cp.on = true; game.cpLevel = R.index;
+      // photo du niveau au moment du drapeau (les déclencheurs « au départ » seront rejoués)
+      game.cpSnap = {
+        level: R.index,
+        tiles: R.tiles.map((r) => r.map((c) => (c === "-" ? "-" : c))),
+        bCount: R.bCount,
+        fired: [...R.fired].filter((i) => R.def.triggers[i].zone || R.def.triggers[i].allB),
+        door: R.door ? { x: R.door.x, y: R.door.y, tx: R.door.tx, ty: R.door.ty, moving: false, hidden: R.door.hidden } : null,
+        taken: R.pickups.map((it) => it.taken),
+        dead: R.enemies.map((e) => !e.alive),
+        tnt: game.ammo.tnt,
+      };
+      if (R.door && R.door.moving) { game.cpSnap.door.x = R.door.tx; game.cpSnap.door.y = R.door.ty; }
       sfx.pick(); burst(R.cp.x * T + 8, R.cp.y * T, C.gold, 14, 1.6);
       R.hint = { text: "Drapeau ! Si tu tombes, tu repartiras d'ici.", t: 0, dur: 160 };
     }

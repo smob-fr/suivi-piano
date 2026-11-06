@@ -202,7 +202,16 @@ class Niveau:
         self.y -= (monte - 1)
         return x0
 
+    def dynamite_avant(self):
+        """Pose un bâton de dynamite deux cases avant l'obstacle : jamais bloqué faute de dynamite."""
+        for d in (2, 3, 1):
+            c = self.x - d
+            if c > 0 and self.cols[c][self.y] == "." and self.y + 1 < self.h and self.cols[c][self.y + 1] == "#":
+                self.put(c, self.y, "t")
+                return
+
     def mur_fissure(self, haut=2):
+        self.dynamite_avant()
         x0 = self.colonne()
         for r in range(1, self.y + 1):
             self.put(x0, r, "#")
@@ -213,6 +222,7 @@ class Niveau:
 
     def sol_fissure(self, n=3, chute=3):
         """Sol fissuré au-dessus d'un couloir plus bas ; un mur bloque le chemin du haut."""
+        self.dynamite_avant()
         x0 = self.x
         for _ in range(n):
             c = ["."] * self.h
