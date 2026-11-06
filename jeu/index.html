@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Max">
+<!--CONTENU-->
+<title>Max et l'Œil de Jade</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#0d0906">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Special+Elite&family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Affiche de film d'aventure : torche, pierre, or vieilli. Une seule ambiance sombre et chaude,
+     volontairement sans thème clair. Le jeu occupe tout l'écran, les menus sont posés dessus. */
+  :root {
+    --nuit: #0d0906;
+    --pierre: #3a2a18;
+    --parchemin: #ecdcb4;
+    --or: #e2a640;
+    --or-fonce: #8a5a1c;
+    --sang: #c8432f;
+    --texte: #f1e6cc;
+    --terne: #b8a682;
+    --f-titre: "Alfa Slab One", "Rockwell", Georgia, serif;
+    --f-carnet: "Special Elite", "Courier New", monospace;
+    --f-pix: "Silkscreen", "Courier New", monospace;
+    --f-txt: "JetBrains Mono", ui-monospace, "Courier New", monospace;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--nuit); color: var(--texte); font-family: var(--f-txt);
+    overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
+  }
+  /* Paysage forcé : quand le téléphone est tenu droit (rotation automatique coupée, iPhone…),
+     tout le jeu est affiché de côté ; il suffit de tourner le téléphone. */
+  #rot { position: fixed; inset: 0; }
+  body.rot #rot { inset: auto; top: 0; transform-origin: 0 0; transform: rotate(90deg); }
+  body.rot .panneau { touch-action: pan-x pan-y; }
+  #cadre { position: fixed; inset: 0; display: grid; place-items: center; }
+  #zone { width: 100%; height: 100%; display: grid; place-items: center; min-width: 0; }
+  #scene { position: relative; }
+  #jeu { display: block; width: 100%; height: 100%; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--or); outline-offset: 3px; }
+
+  #btn-pause {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px); right: calc(env(safe-area-inset-right, 0px) + 8px);
+    width: 46px; height: 40px; border: 1px solid rgba(241,230,204,.25); border-radius: 6px;
+    background: rgba(6,8,6,.6); display: none; place-items: center; cursor: pointer; z-index: 5;
+  }
+  #btn-pause span { display: block; width: 12px; height: 12px; border-left: 4px solid var(--texte); border-right: 4px solid var(--texte); box-sizing: border-box; }
+  body.en-jeu #btn-pause { display: grid; }
+  #btn-passer, #btn-amulette {
+    position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    font-family: var(--f-carnet); font-size: 14px; color: #2a1606; cursor: pointer;
+    padding: 8px 14px; border-radius: 999px; border: 2px solid #f3c66b;
+    background: linear-gradient(#f4c76c, #d38f2c); box-shadow: 0 3px 0 #6e4313, 0 6px 14px rgba(0,0,0,.45);
+    animation: invite 1.6s ease-in-out infinite;
+  }
+  #btn-passer b { font-family: var(--f-titre); font-weight: 400; margin-left: 4px; }
+  #btn-amulette { background: linear-gradient(#6fe0a8, #2a9a62); border-color: #a8f0cc; color: #062414; box-shadow: 0 3px 0 #145034, 0 6px 14px rgba(0,0,0,.45); }
+  body:not(.en-jeu) #btn-passer, body:not(.en-jeu) #btn-amulette { display: none; }
+  @keyframes invite { 0%, 100% { transform: translateX(-50%) scale(1) } 50% { transform: translateX(-50%) scale(1.05) } }
+  @media (prefers-reduced-motion: reduce) { #btn-passer, #btn-amulette { animation: none; } }
+  .compte-relance { font-family: var(--f-pix); font-size: 28px; color: var(--or); margin: 0; }
+  .offres { display: grid; gap: 10px; }
+  .offre { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid rgba(236,220,180,.25); border-radius: 6px; background: rgba(236,220,180,.05); }
+  .offre p { margin: 0; font-size: 14px; color: var(--parchemin); min-width: 0; }
+  .offre small { display: block; color: var(--terne); font-size: 12px; }
+  .solde { margin: 0; font-family: var(--f-pix); font-size: 15px; color: var(--jade, #3fd08a); }
+  .ecran-video { position: relative; aspect-ratio: 16 / 9; max-height: 34vh; width: 100%; border-radius: 6px; background: linear-gradient(135deg, #1d140c, #3a2a18); display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(236,220,180,.25); }
+  .pub-demo { margin: 0; padding: 0 18px; text-align: center; font-size: 13px; color: var(--terne); max-width: 40ch; }
+  .pub-compte { position: absolute; right: 10px; bottom: 6px; margin: 0; font-family: var(--f-pix); font-size: 18px; color: var(--or); }
+
+  /* ---------- Contrôles tactiles ---------- */
+  .pad { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); display: none; gap: 8px; z-index: 4; }
+  body.tactile.en-jeu .pad { display: flex; }
+  .pad.gauche { left: calc(env(safe-area-inset-left, 0px) + 10px); }
+  .pad.droite { right: calc(env(safe-area-inset-right, 0px) + 10px); grid-template-columns: 56px 56px; justify-items: center; }
+  body.tactile.en-jeu .pad.droite { display: grid; }
+  .pad.droite .saut { grid-column: 1 / -1; justify-self: end; }
+  .touche {
+    width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(241,230,204,.28);
+    background: rgba(6,8,6,.28); display: grid; place-items: center;
+    font-family: var(--f-pix); font-size: 11px; letter-spacing: .06em; color: rgba(241,230,204,.85);
+    touch-action: none; transition: background .06s, transform .06s;
+    position: relative;
+  }
+  /* zone de toucher plus large que le bouton dessiné : un appui un peu à côté compte quand même */
+  .touche::after { content: ""; position: absolute; inset: -10px; border-radius: 50%; }
+  .touche.saut::after { inset: -22px; }
+  .touche.on { background: rgba(226,166,64,.35); border-color: var(--or); transform: scale(.94); }
+  .touche.saut { width: 80px; height: 80px; }
+  .touche.tnt { color: var(--sang); }
+  .fleche { width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; }
+  .fleche.g { border-right: 16px solid currentColor; margin-right: 4px; }
+  .fleche.d { border-left: 16px solid currentColor; margin-left: 4px; }
+
+  /* ---------- Panneaux ---------- */
+  .panneau {
+    position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+    padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(13,9,6,.88); overflow-y: auto; touch-action: pan-y;
+  }
+  .carte { width: min(100%, 580px); display: grid; gap: 14px; }
+  /* un panneau plus haut que l'écran reste défilable depuis le haut */
+  .panneau:not(.accueil) { place-items: start center; }
+  .panneau:not(.accueil) > .carte { margin-block: auto; }
+  .surtitre { font-family: var(--f-pix); font-size: 12px; letter-spacing: .14em; color: var(--terne); margin: 0; }
+  h2 { font-family: var(--f-titre); font-weight: 400; font-size: 30px; margin: 0; color: var(--or); letter-spacing: .01em; }
+  .recit { margin: 0; color: var(--terne); line-height: 1.55; font-size: 15px; max-width: 60ch; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bouton {
+    font-family: var(--f-titre); font-size: 17px; letter-spacing: .03em; padding: 12px 22px; border-radius: 3px; cursor: pointer;
+    border: 2px solid #f3c66b; color: #2a1606;
+    background: linear-gradient(#f4c76c, #d38f2c);
+    box-shadow: 0 3px 0 #6e4313, 0 6px 14px rgba(0,0,0,.45);
+    text-shadow: 0 1px 0 rgba(255,235,190,.6);
+  }
+  .bouton:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e4313; }
+  .bouton.discret { font-family: var(--f-carnet); font-size: 15px; background: rgba(236,220,180,.08); color: var(--parchemin); border-color: rgba(236,220,180,.35); box-shadow: none; text-shadow: none; }
+
+  /* ---------- Accueil ---------- */
+  .presente { font-family: var(--f-carnet); font-size: 15px; color: var(--terne); margin: 0; letter-spacing: .04em; }
+  .titre {
+    margin: 0; font-family: var(--f-titre); font-weight: 400; line-height: .9; text-wrap: balance;
+    transform: rotate(-3deg); transform-origin: left center;
+    color: #f5c463;
+    background: linear-gradient(180deg, #fff0b8 0%, #f2b94a 45%, #b9711f 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 0 #5a3410) drop-shadow(0 4px 0 #3a210a) drop-shadow(0 10px 14px rgba(0,0,0,.7));
+  }
+  .titre .l1 { display: block; font-size: clamp(30px, 5.2vw, 56px); letter-spacing: .02em; }
+  .titre .l2 { display: block; font-size: clamp(44px, 7vw, 76px); letter-spacing: .01em; white-space: nowrap; }
+  .citation-accueil { margin: 6px 0 0; font-family: var(--f-carnet); font-size: 16px; color: var(--parchemin); max-width: 36ch; line-height: 1.4; transition: opacity .35s; min-height: 2.8em; }
+  .citation-accueil.fondu { opacity: 0; }
+  .signature { display: block; font-size: 13px; color: var(--or); margin-top: 2px; }
+  .stats-accueil { margin: 0; font-family: var(--f-carnet); font-size: 13px; color: var(--terne); }
+  .astuce { margin: 0; font-size: 12px; color: var(--terne); border-left: 2px solid var(--or); padding-left: 10px; }
+  .clavier { font-size: 12px; color: var(--terne); margin: 0; line-height: 1.6; }
+  .clavier kbd { font-family: var(--f-txt); color: var(--texte); border: 1px solid rgba(241,230,204,.25); border-radius: 3px; padding: 0 4px; }
+  body.tactile .clavier { display: none; }
+
+  /* ---------- Accueil : l'affiche, toujours entière ; boutons posés sur ceux de l'image ---------- */
+  #ecran-titre.accueil { padding: 0; place-items: center; background: var(--nuit); overflow: hidden; }
+  #ecran-titre.accueil::before {
+    content: ""; position: absolute; inset: -40px;
+    background: url("images/accueil.webp") center / cover no-repeat;
+    filter: blur(24px) brightness(.45) saturate(1.1);
+  }
+  .affiche {
+    position: relative; aspect-ratio: 1671 / 941;
+    width: min(100vw, 100vh * 1671 / 941); width: min(100vw, 100dvh * 1671 / 941);
+    width: min(var(--lw, 100vw), var(--lh, 100vh) * 1671 / 941);
+    max-width: 100%; box-shadow: 0 0 40px rgba(0,0,0,.6);
+  }
+  .affiche img { display: block; width: 100%; height: 100%; -webkit-user-drag: none; }
+  .zone { position: absolute; border: 0; padding: 0; background: transparent; cursor: pointer; border-radius: 10px; transition: background .12s, box-shadow .12s, transform .08s; }
+  .zone:hover, .zone:focus-visible { background: rgba(255,235,170,.14); box-shadow: 0 0 0 3px rgba(255,214,120,.75), 0 0 24px rgba(255,200,90,.45); outline: none; }
+  .zone:active { transform: translateY(2px); background: rgba(0,0,0,.12); }
+  .z-jouer { left: 71.2%; top: 54%; width: 25.2%; height: 11.2%; }
+  .z-options { left: 73.4%; top: 68%; width: 21.1%; height: 8.8%; }
+  .z-quitter { left: 73.4%; top: 79.1%; width: 21.1%; height: 8.8%; }
+  .progression {
+    position: absolute; right: 5.6%; bottom: 2.4%; margin: 0;
+    font-family: var(--f-carnet); font-size: clamp(11px, 1.5vw, 15px); color: var(--parchemin);
+    background: rgba(20,12,5,.62); padding: 4px 10px; border-radius: 4px;
+  }
+  @media (prefers-reduced-motion: reduce) { .zone { transition: none; } }
+
+  /* ---------- Choix du niveau ---------- */
+  #ecran-niveaux { place-items: start center; }
+  #ecran-niveaux .carte { width: min(100%, 640px); }
+  .entete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .acte { display: grid; gap: 8px; }
+  .acte h3 { margin: 0; font-family: var(--f-titre); font-weight: 400; font-size: 18px; color: var(--parchemin); }
+  .acte h3 span { font-family: var(--f-pix); font-size: 11px; color: var(--or); letter-spacing: .12em; margin-right: 6px; }
+  .grille { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
+  .case {
+    aspect-ratio: 1; max-width: 100%; min-width: 0; padding: 0; border-radius: 4px; cursor: pointer;
+    border: 1px solid rgba(236,220,180,.25); border-bottom: 3px solid var(--type);
+    background: rgba(236,220,180,.06); display: grid; place-content: center; gap: 1px;
+  }
+  .case b { font-family: var(--f-pix); font-size: 15px; font-weight: 400; color: var(--texte); }
+  .case small { font-size: 9px; color: var(--terne); font-variant-numeric: tabular-nums; }
+  .case.defi { box-shadow: inset 0 0 0 2px rgba(200,67,47,.75); }
+  .case.defi::after { content: "défi"; font-size: 8px; letter-spacing: .08em; color: #f08a78; text-transform: uppercase; }
+  .case:disabled { opacity: .35; cursor: not-allowed; border-bottom-color: rgba(236,220,180,.2); }
+  .case:not(:disabled):hover { background: rgba(226,166,64,.18); }
+  .legende { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--terne); }
+  .legende li { display: flex; align-items: center; gap: 6px; }
+  .legende i { width: 10px; height: 3px; display: inline-block; }
+  #liste-niveaux { display: grid; gap: 14px; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+  .stats div { border-top: 2px solid var(--pierre); padding-top: 8px; min-width: 0; }
+  .stats dt { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--terne); }
+  .stats dd { margin: 4px 0 0; font-family: var(--f-pix); font-size: 15px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .citation { margin: 0; color: var(--or); font-size: 16px; font-family: var(--f-carnet); }
+  .interrupteur { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--parchemin); cursor: pointer; }
+  .interrupteur input { width: 20px; height: 20px; accent-color: var(--or); }
+  .choix { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .choix legend { font-size: 13px; color: var(--terne); margin-bottom: 6px; padding: 0; }
+  .choix label { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid rgba(236,220,180,.3); border-radius: 999px; font-size: 14px; cursor: pointer; }
+  .choix label:has(input:checked) { border-color: var(--or); background: rgba(226,166,64,.16); }
+  .choix input { accent-color: var(--or); }
+  .champ { display: grid; gap: 6px; font-size: 13px; color: var(--terne); }
+  .champ textarea, .champ input { font: 15px var(--f-txt); color: var(--texte); background: rgba(0,0,0,.35); border: 1px solid rgba(236,220,180,.3); border-radius: 4px; padding: 10px; -webkit-user-select: text; user-select: text; touch-action: auto; }
+  .champ textarea:focus, .champ input:focus { outline: 2px solid var(--or); outline-offset: 1px; }
+  .apercu { margin: 0; white-space: pre-wrap; font: 12px var(--f-txt); color: var(--parchemin); background: rgba(0,0,0,.35); padding: 10px; border-radius: 4px; max-height: 30vh; overflow: auto; -webkit-user-select: text; user-select: text; }
+  .sous-titre { margin: 4px 0 0; font-family: var(--f-titre); font-weight: 400; font-size: 17px; color: var(--parchemin); }
+  .classement { margin: 0; padding-left: 22px; display: grid; gap: 4px; font-size: 14px; color: var(--parchemin); font-variant-numeric: tabular-nums; }
+  .classement li span { color: var(--terne); }
+
+  #tourner {
+    position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; text-align: center;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: var(--nuit);
+  }
+  #tourner .tel { width: 44px; height: 72px; border: 3px solid var(--or); border-radius: 8px; margin: 0 auto 18px; animation: pivot 2s ease-in-out infinite; }
+  @keyframes pivot { 0%, 30% { transform: rotate(0) } 60%, 100% { transform: rotate(-90deg) } }
+  @media (prefers-reduced-motion: reduce) { #tourner .tel { animation: none; transform: rotate(-90deg); } .touche, .citation-accueil { transition: none; } }
+  @media (max-height: 430px) {
+    #ecran-titre .carte { gap: 8px; }
+    .titre .l1 { font-size: 26px; } .titre .l2 { font-size: 44px; }
+    .citation-accueil { font-size: 14px; min-height: 2.6em; }
+    .bouton { font-size: 15px; padding: 10px 16px; }
+    .bouton.discret { font-size: 13px; padding: 9px 12px; }
+  }
+  @media (max-width: 560px) { .grille { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+</style>
+
+<div id="rot">
+<div id="cadre">
+  <div id="zone">
+    <div id="scene"><canvas id="jeu" aria-label="Zone de jeu"></canvas></div>
+  </div>
+</div>
+
+<button id="btn-pause" type="button" aria-label="Pause"><span></span></button>
+<button id="btn-passer" class="pilule" type="button" hidden>Toujours bloqué ? Passer ce niveau <b>▶ vidéo</b></button>
+<button id="btn-amulette" class="pilule jade" type="button" hidden>✦ Activer une amulette</button>
+
+<div class="pad gauche" aria-hidden="true">
+  <div class="touche" data-btn="left"><span class="fleche g"></span></div>
+  <div class="touche" data-btn="right"><span class="fleche d"></span></div>
+</div>
+<div class="pad droite" aria-hidden="true">
+  <div class="touche tnt" data-btn="tnt">TNT</div>
+  <div class="touche" data-btn="fire">COUP</div>
+  <div class="touche saut" data-btn="jump">SAUT</div>
+</div>
+
+<section id="ecran-titre" class="panneau accueil">
+  <div class="affiche">
+    <img src="images/accueil.webp" alt="Max et l'Œil de Jade : Max fuit un rocher géant, poursuivi par le professeur Archibald qui ricane" draggable="false">
+    <button id="btn-jouer" class="zone z-jouer" type="button" data-level="0" aria-label="Jouer"></button>
+    <button id="btn-options" class="zone z-options" type="button" aria-label="Options"></button>
+    <button id="btn-quitter" class="zone z-quitter" type="button" aria-label="Quitter"></button>
+    <p class="progression" id="accueil-stats">100 niveaux · 10 actes</p>
+  </div>
+</section>
+
+<section id="ecran-options" class="panneau" hidden>
+  <div class="carte">
+    <div class="entete">
+      <h2>Options</h2>
+      <button id="btn-retour-options" class="bouton discret" type="button">Retour</button>
+    </div>
+    <div class="actions">
+      <button id="btn-niveaux" class="bouton" type="button">Carte des niveaux</button>
+      <button class="bouton discret" type="button" data-avis>Donner mon avis</button>
+      <button id="btn-stats" class="bouton discret" type="button">Mes statistiques</button>
+      <button class="bouton discret" type="button" data-boutique>Boutique ✦</button>
+      <button class="bouton discret" type="button" data-son>Son : activé</button>
+      <button class="bouton discret" type="button" data-plein>Plein écran</button>
+    </div>
+    <label class="interrupteur" for="mode-testeur">
+      <input type="checkbox" id="mode-testeur">
+      <span>Mode testeur : les 100 niveaux sont débloqués</span>
+    </label>
+    <p class="astuce" id="astuce-plein" hidden></p>
+    <p class="recit">Saute sur les ennemis ou assomme-les d'un coup de massue. La dynamite ouvre les murs fissurés. Ramasse les pièces d'or et arrive à l'Œil de Jade avant le professeur Archibald.</p>
+    <p class="clavier"><kbd>←</kbd> <kbd>→</kbd> courir · <kbd>↑</kbd> sauter · <kbd>X</kbd> massue · <kbd>C</kbd> dynamite · <kbd>R</kbd> recommencer · <kbd>Échap</kbd> pause</p>
+  </div>
+</section>
+
+<section id="ecran-quitter" class="panneau" hidden>
+  <div class="carte">
+    <h2>Déjà ?</h2>
+    <p class="citation">« Tu abandonnes ? Merci, Max, l'Œil de Jade sera à moi ! » — Archibald</p>
+    <p class="recit">Sur le web, il suffit de fermer l'onglet. Ta progression est gardée.</p>
+    <div class="actions">
+      <button id="btn-rester" class="bouton" type="button">Non, je reste !</button>
+    </div>
+  </div>
+</section>
+
+<section id="ecran-niveaux" class="panneau" hidden>
+  <div class="carte">
+    <div class="entete">
+      <h2>Carte du temple</h2>
+      <button id="btn-retour-niveaux" class="bouton discret" type="button">Retour</button>
+    </div>
+    <ul class="legende">
+      <li><i style="background:#6fb58f"></i>Exploration</li>
+      <li><i style="background:#e5483c"></i>Trahison</li>
+      <li><i style="background:#e3913b"></i>Action</li>
+      <li><i style="background:#b49ae6"></i>Histoire</li>
+      <li><i style="background:#c8432f;height:10px;width:10px;border-radius:2px"></i>Défi (un niveau sur trois)</li>
+      <li>☠ = ton record de chutes</li>
+    </ul>
+    <div id="liste-niveaux"></div>
+  </div>
+</section>
+
+<section id="ecran-avis" class="panneau" hidden>
+  <form class="carte" id="form-avis">
+    <div class="entete">
+      <h2>Ton avis</h2>
+      <button id="btn-retour-avis" class="bouton discret" type="button">Retour</button>
+    </div>
+    <p class="recit" id="avis-contexte">Merci de tester le jeu ! Ton message sera envoyé avec ton niveau et tes statistiques.</p>
+    <fieldset class="choix">
+      <legend>Ce niveau, c'était…</legend>
+      <label><input type="radio" name="ressenti" value="Trop facile" id="r-facile"> Trop facile</label>
+      <label><input type="radio" name="ressenti" value="Bien dosé" id="r-bien" checked> Bien dosé</label>
+      <label><input type="radio" name="ressenti" value="Trop dur" id="r-dur"> Trop dur</label>
+      <label><input type="radio" name="ressenti" value="Bug" id="r-bug"> Un bug</label>
+    </fieldset>
+    <label class="champ" for="avis-texte">Ton message
+      <textarea id="avis-texte" rows="4" placeholder="Ce qui t'a plu, ce qui t'a énervé, ce qui ne marchait pas…"></textarea>
+    </label>
+    <label class="champ" for="avis-nom">Ton prénom (facultatif)
+      <input type="text" id="avis-nom" autocomplete="given-name">
+    </label>
+    <div class="actions">
+      <button id="btn-partager" class="bouton" type="submit">Envoyer</button>
+      <button id="btn-copier" class="bouton discret" type="button">Copier le message</button>
+    </div>
+    <p class="astuce" id="avis-retour" hidden></p>
+    <pre class="apercu" id="avis-apercu" hidden></pre>
+  </form>
+</section>
+
+<section id="ecran-stats" class="panneau" hidden>
+  <div class="carte">
+    <div class="entete">
+      <h2>Mes statistiques</h2>
+      <button id="btn-retour-stats" class="bouton discret" type="button">Retour</button>
+    </div>
+    <dl class="stats" id="stats-totaux"></dl>
+    <h3 class="sous-titre">Les niveaux où tu tombes le plus</h3>
+    <ol class="classement" id="stats-pires"></ol>
+  </div>
+</section>
+
+<section id="ecran-pub" class="panneau" hidden>
+  <div class="carte">
+    <p class="surtitre" id="pub-etiquette">VIDÉO SPONSORISÉE</p>
+    <h2 id="pub-titre">Passer le niveau</h2>
+    <div class="ecran-video" id="pub-video">
+      <p class="pub-demo">Démo pour les testeurs : dans la version des stores, une vraie publicité vidéo s'affichera ici.</p>
+      <p class="pub-compte" id="pub-compte">5</p>
+    </div>
+    <p class="recit" id="pub-texte">Regarde la vidéo jusqu'au bout pour passer ce niveau. Archibald, lui, n'a pas besoin de publicité pour tricher.</p>
+    <div class="actions">
+      <button id="btn-pub-lancer" class="bouton" type="button">▶ Regarder la vidéo</button>
+      <button id="btn-pub-annuler" class="bouton discret" type="button">Non merci, je réessaie</button>
+    </div>
+  </div>
+</section>
+
+<section id="ecran-relance" class="panneau" hidden>
+  <div class="carte">
+    <p class="surtitre">TU Y ÉTAIS PRESQUE !</p>
+    <h2>Repartir d'ici ?</h2>
+    <p class="recit">Max repart juste avant sa chute, protégé par une amulette de jade (2 coups absorbés).</p>
+    <p class="compte-relance" id="relance-compte" aria-live="polite">4</p>
+    <div class="actions">
+      <button id="btn-relance-amulette" class="bouton" type="button">✦ Oui, avec une amulette</button>
+      <button id="btn-relance-video" class="bouton discret" type="button">▶ Oui, avec une vidéo</button>
+      <button id="btn-relance-non" class="bouton discret" type="button">Non, je recommence</button>
+    </div>
+  </div>
+</section>
+
+<section id="ecran-boutique" class="panneau" hidden>
+  <div class="carte">
+    <div class="entete">
+      <h2>Boutique ✦</h2>
+      <button id="btn-retour-boutique" class="bouton discret" type="button">Retour</button>
+    </div>
+    <p class="solde" id="boutique-solde">0 pièces · 0 amulettes</p>
+    <p class="recit">Une amulette de jade absorbe 2 coups dans un niveau (pas les chutes dans le vide). Tu peux l'activer après quelques chutes, ou t'en servir pour repartir de l'endroit où tu es tombé.</p>
+    <div class="offres">
+      <div class="offre"><p>Échanger tes pièces d'or<small>Ramasse-les dans les niveaux</small></p><button id="btn-echange" class="bouton discret" type="button">Échanger 30 pièces → 1 amulette</button></div>
+      <div class="offre"><p>Regarder une vidéo<small>Gratuit</small></p><button id="btn-video-amulette" class="bouton discret" type="button">▶ +1 amulette</button></div>
+      <div class="offre"><p>10 amulettes de jade</p><button id="btn-pack-10" class="bouton" type="button">0,99 €</button></div>
+      <div class="offre"><p>Pack aventurier<small>40 amulettes + chapeau doré pour Max</small></p><button id="btn-pack-aventurier" class="bouton" type="button">2,99 €</button></div>
+    </div>
+    <p class="astuce" id="boutique-demo">Version de test : les achats et les vidéos sont simulés, rien n'est payé. Les vrais achats arriveront avec l'appli des stores.</p>
+    <p class="astuce" id="boutique-retour" hidden></p>
+  </div>
+</section>
+
+<section id="ecran-achat" class="panneau" hidden>
+  <div class="carte">
+    <p class="surtitre">ACHAT SIMULÉ · DÉMO</p>
+    <h2 id="achat-nom">10 amulettes de jade</h2>
+    <p class="recit">Prix dans l'appli : <strong id="achat-prix">0,99 €</strong>. Ici, c'est une démonstration pour les testeurs : aucun paiement n'est demandé.</p>
+    <div class="actions">
+      <button id="btn-achat-ok" class="bouton" type="button">Simuler l'achat</button>
+      <button id="btn-achat-non" class="bouton discret" type="button">Annuler</button>
+    </div>
+  </div>
+</section>
+
+<section id="ecran-pause" class="panneau" hidden>
+  <div class="carte">
+    <h2>Pause</h2>
+    <p class="recit">Recommencer le niveau compte comme une chute. Archibald, lui, ne s'arrête pas.</p>
+    <div class="actions">
+      <button id="btn-reprendre" class="bouton" type="button">Reprendre</button>
+      <button id="btn-recommencer" class="bouton discret" type="button">Recommencer</button>
+      <button id="btn-accueil" class="bouton discret" type="button">Accueil</button>
+      <button id="btn-utiliser-amulette" class="bouton discret" type="button" hidden>✦ Activer une amulette</button>
+      <button class="bouton discret" type="button" data-boutique>Boutique ✦</button>
+      <button id="btn-passer-pause" class="bouton discret" type="button">Passer ce niveau ▶ vidéo</button>
+      <button class="bouton discret" type="button" data-avis>Donner mon avis</button>
+      <button class="bouton discret" type="button" data-plein>Plein écran</button>
+      <button class="bouton discret" type="button" data-son>Son : activé</button>
+    </div>
+  </div>
+</section>
+
+<section id="ecran-fin" class="panneau" hidden>
+  <div class="carte">
+    <p class="surtitre">LES 100 NIVEAUX SONT TERMINÉS</p>
+    <h2>L'Œil de Jade est à toi !</h2>
+    <p class="citation" id="fin-mot"></p>
+    <dl class="stats">
+      <div><dt>Morts au total</dt><dd id="fin-morts">0</dd></div>
+      <div><dt>Pièces d'or</dt><dd id="fin-pieces">0</dd></div>
+      <div><dt>Niveau le plus cruel</dt><dd id="fin-pire">–</dd></div>
+    </dl>
+    <div class="actions">
+      <button id="btn-fin-accueil" class="bouton" type="button">Retour à l'accueil</button>
+    </div>
+  </div>
+</section>
+
+<div id="tourner" hidden>
+  <div>
+    <div class="tel"></div>
+    <p class="surtitre">TOURNE TON TÉLÉPHONE</p>
+    <p class="recit">Le temple se joue à l'horizontale.</p>
+  </div>
+</div>
+
+</div>
+<script src="levels.js"></script>
+<script src="game.js"></script>
+<!--/CONTENU-->
+</html>

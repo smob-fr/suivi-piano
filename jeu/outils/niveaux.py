@@ -1,0 +1,1728 @@
+#!/usr/bin/env python3
+"""Générateur + vérificateur des 100 niveaux du Temple qui Triche.
+
+    python3 outils/niveaux.py        # écrit jeu/levels.js et vérifie chaque niveau
+
+Les niveaux sont décrits par des « recettes » : une suite de segments (sol plat,
+fosse, ressort, mur fissuré, piège…) posés de gauche à droite. Chaque segment est
+franchissable par construction ; le vérificateur rejoue ensuite un parcours
+simplifié (marche, saut de 2 cases de haut et 4 de long, ressorts) sur la carte
+où tous les pièges se sont déclenchés, pour 0 à 3 morts dans la salle.
+
+Légende des cartes :
+  #  pierre            B  mur fissuré (dynamite)   ^  pics au sol    v  pics au plafond
+  P  départ            D  porte                     J  ressort        x  fausse dalle (s'effondre)
+  F  faux mur          <  >  lance-flèches          m  momie          s  serpent
+  b  chauve-souris     a  pièce d'or               t  dynamite (+1)  .  vide
+"""
+import json, os, sys
+
+ICI = os.path.dirname(os.path.abspath(__file__))
+SORTIE = os.path.join(ICI, "..", "levels.js")
+
+ACTES = [
+    {"nom": "La jungle", "palette": "jungle"},
+    {"nom": "La crypte", "palette": "crypte"},
+    {"nom": "Les mines", "palette": "mines"},
+    {"nom": "Les cascades", "palette": "cascades"},
+    {"nom": "Le sanctuaire", "palette": "sanctuaire"},
+    {"nom": "Les catacombes", "palette": "catacombes"},
+    {"nom": "La cité engloutie", "palette": "engloutie"},
+    {"nom": "Le volcan", "palette": "volcan"},
+    {"nom": "Les jardins suspendus", "palette": "jardins"},
+    {"nom": "La chambre du trésor", "palette": "tresor"},
+]
+
+SOLIDE = set("#BxJ<>cgG")
+
+# Numéro du niveau en cours de construction (les actes sont construits dans l'ordre).
+NUMERO = [0]
+# compteurs de variantes : un même piège ne revient jamais deux fois de suite sous la même forme
+VARIANTES = {"stal": 0, "pics": 0}
+# Un niveau « Défi » tous les 3 niveaux ; quand ça tombe sur un niveau Histoire (15, 30, 45),
+# c'est le niveau juste avant qui devient le défi.
+HISTOIRE = {n for n in range(1, 101) if n % 10 in (5, 0)}
+DEFIS = {(n - 1 if n in HISTOIRE else n) for n in range(3, 101, 3)}
+
+
+class Niveau:
+    def __init__(self, nom, type_, h=17, ammo=(6, 1), sol=None, **opts):
+        NUMERO[0] += 1
+        self.num = NUMERO[0]
+        self.defi = self.num in DEFIS
+        self._defi_fait = False
+        self.nom, self.type, self.h = nom, type_, h
+        self.ammo = list(ammo)
+        self.cols = []
+        self.y = (h - 2) if sol is None else sol  # ligne où se tient le joueur
+        self.trig = []
+        self.opts = opts
+        self.tnt_besoin = 0
+        self.movers, self.crushers, self.winds = [], [], []
+        self._mur()
+
+    # ---------- colonnes ----------
+    def _mur(self):
+        self.cols.append(["#"] * self.h)
+
+    def colonne(self, sol=None, plafond=0, fond="plein"):
+        """Ajoute une colonne : pierre de 0..plafond, vide, sol sous la ligne `sol`.
+        fond = plein | pics | vide (fosse mortelle) | plateforme (une seule épaisseur)."""
+        sol = self.y if sol is None else sol
+        c = ["."] * self.h
+        for r in range(0, plafond + 1):
+            c[r] = "#"
+        if fond == "plein":
+            for r in range(sol + 1, self.h):
+                c[r] = "#"
+        elif fond == "plateforme":
+            c[sol + 1] = "#"
+        elif fond == "pics":
+            c[self.h - 1] = "#"
+            c[self.h - 2] = "^"
+            if sol + 1 < self.h - 2:
+                pass
+        # fond == "vide" : rien en dessous, on tombe hors de la carte
+        self.cols.append(c)
+        return len(self.cols) - 1
+
+    @property
+    def x(self):
+        return len(self.cols)
+
+    def put(self, x, y, ch):
+        self.cols[x][y] = ch
+
+    def Z(self, x, w=1):
+        return [x, 1, w, self.h - 2]
+
+    def t(self, act, zone=None, **kw):
+        tr = {"act": act}
+        if zone is not None:
+            tr["zone"] = zone
+        tr.update(kw)
+        self.trig.append(tr)
+        return tr
+
+    # ---------- segments ----------
+    def plat(self, n, plafond=0, ennemi=None, objet=None):
+        x0 = self.x
+        for _ in range(n):
+            self.colonne(plafond=plafond)
+        if ennemi:
+            for i, e in enumerate(ennemi):
+                ex = x0 + n // 2 + i * 2 - len(ennemi) + 1
+                ex = max(x0, min(x0 + n - 1, ex))
+                yy = self.y - 2 if e == "b" else self.y
+                self.put(ex, yy, e)
+        if objet:
+            self.put(x0 + max(0, n // 2 - 1) if not ennemi else x0, self.y, objet)
+        return x0
+
+    def depart(self, n=4):
+        # un niveau sur trois cache un trésor derrière le mur de gauche (faux mur)
+        if self.num % 3 == 1 and len(self.cols) == 1 and self.y >= 4:
+            self.cachette()
+        x0 = self.plat(n)
+        self.put(x0 + 1, self.y, "P")
+        return x0
+
+    def cachette(self):
+        """Petite salle secrète à gauche du départ, entièrement cachée par un faux mur."""
+        for i in range(3):
+            c = self.colonne()
+            for r in range(1, self.y + 1):
+                self.put(c, r, "F")
+            self.put(c, self.y, "$" if i == 0 else "a")
+        return c
+
+    def corde(self, haut=5):
+        """Corde accrochée au bord d'une corniche haute : SAUT maintenu pour grimper."""
+        haut = min(haut, self.y - 3)
+        if haut < 3:
+            return self.plat(2)
+        x0 = self.colonne()
+        for r in range(self.y - haut, self.y + 1):
+            self.put(x0, r, "|")
+        self.y -= haut
+        self.plat(3)
+        self.astuce("Corde : maintiens SAUT pour grimper, ◀ ou ▶ pour sauter de côté", x0 - 2, max=0)
+        return x0
+
+    def corde_secrete(self):
+        """Corde qui monte vers une plateforme cachée en hauteur, avec des pièces et un trésor."""
+        if self.y < 8:
+            return self.plat(3)
+        x0 = self.plat(7)
+        top = self.y - 5
+        for r in range(top, self.y + 1):
+            self.put(x0 + 1, r, "|")
+        for c in range(x0 + 2, x0 + 6):
+            self.put(c, top, "#")
+        self.put(x0 + 3, top - 1, "a"); self.put(x0 + 4, top - 1, "a"); self.put(x0 + 5, top - 1, "$")
+        return x0
+
+    def porte(self, n=4):
+        if self.defi and not self._defi_fait:
+            self._defi_fait = True
+            self.passage_defi()
+        # un niveau sur quatre a une corde vers une plateforme secrète juste avant la porte
+        if self.num % 4 == 2 and not getattr(self, "_corde_faite", False) and self.y >= 8:
+            self._corde_faite = True
+            self.corde_secrete()
+        x0 = self.plat(n)
+        self.put(x0 + n - 2, self.y, "D")
+        self.porte_x = x0 + n - 2
+        return x0
+
+    def monte(self, k):
+        self.y -= k
+
+    def descend(self, k):
+        self.y += k
+
+    def fosse(self, n, fond="pics"):
+        x0 = self.x
+        for _ in range(n):
+            self.colonne(fond=fond)
+        return x0
+
+    def pics(self, n):
+        x0 = self.x
+        for _ in range(n):
+            c = self.colonne()
+            self.put(c, self.y, "^")
+        return x0
+
+    def ressort(self, monte=4):
+        """Un ressort au sol puis un mur de `monte` cases (max 4)."""
+        x0 = self.colonne()
+        self.put(x0, self.y, "J")
+        self.y -= 1  # on se tient sur le ressort
+        self.y -= (monte - 1)
+        return x0
+
+    def dynamite_avant(self):
+        """Pose un bâton de dynamite deux cases avant l'obstacle : jamais bloqué faute de dynamite."""
+        for d in (2, 3, 1):
+            c = self.x - d
+            if c > 0 and self.cols[c][self.y] == "." and self.y + 1 < self.h and self.cols[c][self.y + 1] == "#":
+                self.put(c, self.y, "t")
+                return
+
+    def mur_fissure(self, haut=2):
+        self.dynamite_avant()
+        x0 = self.colonne()
+        for r in range(1, self.y + 1):
+            self.put(x0, r, "#")
+        for r in range(self.y - haut + 1, self.y + 1):
+            self.put(x0, r, "B")
+        self.tnt_besoin += 1
+        return x0
+
+    def sol_fissure(self, n=3, chute=3):
+        """Sol fissuré au-dessus d'un couloir plus bas ; un mur bloque le chemin du haut."""
+        self.dynamite_avant()
+        x0 = self.x
+        for _ in range(n):
+            c = ["."] * self.h
+            c[0] = "#"
+            c[self.y + 1] = "B"
+            for r in range(self.y + 1 + chute, self.h):
+                c[r] = "#"
+            self.cols.append(c)
+        self.tnt_besoin += 1
+        ancien = self.y
+        self.y += chute
+        # mur qui bloque le passage du haut
+        c = ["#"] * self.h
+        for r in range(ancien + 2, self.y + 1):
+            c[r] = "."
+        self.cols.append(c)
+        return x0
+
+    def faux_mur(self, n=2):
+        x0 = self.x
+        for _ in range(n):
+            c = self.colonne()
+            for r in range(1, self.y + 1):
+                self.put(c, r, "F")
+        return x0
+
+    def pont(self, motif, fond="pics"):
+        """Pont d'une épaisseur au-dessus d'une fosse ; 'x' = fausse dalle."""
+        x0 = self.x
+        for ch in motif:
+            c = self.colonne(fond=fond)
+            self.cols[c][self.y + 1] = "#" if ch == "#" else "x"
+        return x0
+
+    def plateformes(self, liste, fond="pics"):
+        """liste de (écart, largeur, dy) : fosse d'`écart` cases puis plateforme décalée de dy."""
+        x0 = self.x
+        for ecart, larg, dy in liste:
+            for _ in range(ecart):
+                self.colonne(fond=fond)
+            self.y += dy
+            for _ in range(larg):
+                self.colonne(fond="plateforme" if fond != "plein" else "plein")
+                if fond == "pics":
+                    self.cols[-1][self.h - 1] = "#"
+                    self.cols[-1][self.h - 2] = "^" if self.y + 1 < self.h - 2 else self.cols[-1][self.h - 2]
+        return x0
+
+    def fleches(self, n=6, monte=1):
+        """Course de n cases, puis marche montante avec un lance-flèches dans la contremarche."""
+        x0 = self.plat(n)
+        ancien = self.y
+        self.y -= monte
+        c = self.colonne()
+        self.put(c, ancien, "<")
+        return x0
+
+    def plafond_bas(self, n, chutes=(), hauteur=4, pics_plafond=()):
+        """Couloir bas ; chutes = [(décalage, délai)] blocs du plafond qui tombent."""
+        x0 = self.x
+        p = self.y - hauteur
+        for _ in range(n):
+            self.colonne(plafond=p)
+        for dx, delai in chutes:
+            zx = max(x0, x0 + dx - 3)
+            self.t([["fall", x0 + dx, p, 1, 1, delai]], self.Z(zx))
+        for dx in pics_plafond:
+            self.put(x0 + dx, p + 1, "v")
+        return x0
+
+    # ---------- nouveaux pièges ----------
+    def ressort_pique(self):
+        """Ressort qui projette droit dans des pics au plafond : il faut filer de côté sur la corniche."""
+        if self.y < 10:
+            return self.sprint()
+        bas = self.y
+        x0 = self.ressort(3)
+        for c in (x0 - 1, x0):
+            self.put(c, bas - 6, "v")
+            for r in range(1, bas - 6):
+                self.put(c, r, "#")
+        self.plat(3)
+        self.astuce("Au sommet du rebond, file sur la corniche !", x0 - 2, min=1)
+        return x0
+
+    def clignote(self, n=6):
+        """Plateformes qui apparaissent et disparaissent en rythme au-dessus du vide."""
+        x0 = self.x
+        for i in range(n):
+            c = self.colonne(fond="vide")
+            self.cols[c][self.y + 1] = "c"
+        self.astuce("Les planches disparaissent en rythme…", x0 - 2, max=0)
+        return x0
+
+    def fantome(self, n=5):
+        """Un vide trop large… dont les plateformes n'apparaissent qu'une fois qu'on a sauté."""
+        x0 = self.x
+        for i in range(n):
+            c = self.colonne(fond="vide")
+            self.cols[c][self.y + 1] = "o"
+        self.t([["appear", x0, self.y + 1, n, 1], ["say", "Un saut dans le vide ? Tu me fais confiance ? Ha !"]], [x0 - 1, 1, 2, self.h - 2], air=True)
+        self.astuce("Trop large ? Saute quand même…", x0 - 3, min=1)
+        return x0
+
+    def stalactites(self, n=9, pas=3, variante=None):
+        """Couloir bas avec des stalactites qui tombent. Six comportements, jamais deux fois
+        le même d'affilée : normal, fausse alerte, cascade, au saut, au retour, mémoire."""
+        noms = ["normal", "fausse", "cascade", "saut", "retour", "memoire"]
+        if variante is None:
+            variante = noms[VARIANTES["stal"] % len(noms)]
+            VARIANTES["stal"] += 1
+        x0 = self.x
+        p = self.y - 4
+        for _ in range(n):
+            self.colonne(plafond=p)
+        cols = list(range(2, n - 1, pas))
+        for dx in cols:
+            self.put(x0 + dx, p + 1, "v")
+        Z = lambda dx: self.Z(max(x0, x0 + dx))
+        if variante == "normal":
+            for dx in cols:
+                self.t([["dropspike", x0 + dx, p + 1, 10]], Z(dx - 2))
+        elif variante == "fausse":
+            # la première tremble longtemps… et ne tombe pas ; la suivante tombe d'un coup
+            self.t([["wobble", x0 + cols[0], p + 1, 70]], Z(cols[0] - 2))
+            for dx in cols[1:]:
+                self.t([["dropspike", x0 + dx, p + 1, 3]], Z(dx - 1))
+        elif variante == "cascade":
+            # en arrivant au milieu, elles tombent l'une après l'autre en partant de derrière
+            for i, dx in enumerate(cols):
+                self.t([["dropspike", x0 + dx, p + 1, 12 + i * 14]], Z(cols[len(cols) // 2] - 1))
+            self.astuce("Elles tombent en cascade : cours !", x0, max=0)
+        elif variante == "saut":
+            # elles ne tombent que si Max saute en dessous
+            for dx in cols:
+                self.t([["dropspike", x0 + dx, p + 1, 6]], [x0 + dx - 1, 1, 3, self.h - 2], air=True)
+            self.astuce("Ne saute pas sous les stalactites…", x0, max=0)
+        elif variante == "retour":
+            # rien à l'aller ; elles tombent si Max revient sur ses pas
+            for dx in cols:
+                self.t([["dropspike", x0 + dx, p + 1, 4]], Z(dx - 1), dir=-1)
+        else:  # mémoire : la première fois elles tombent tôt, ensuite au dernier moment
+            for dx in cols:
+                self.t([["dropspike", x0 + dx, p + 1, 10]], Z(dx - 2), max=0)
+                self.t([["dropspike", x0 + dx, p + 1, 2]], Z(dx), min=1)
+        return x0
+
+    def stalactite_marche(self):
+        """Un bloc pend du plafond devant une corniche trop haute : en tombant, il fait une marche."""
+        x0 = self.plat(3)
+        b = self.colonne()
+        top = self.y - 5
+        for r in range(1, top + 1):
+            self.put(b, r, "#")
+        self.t([["fall", b, top, 1, 1, 16], ["say", "Oups, mon plafond s'effondre. Ah zut, ça t'aide."]], self.Z(x0))
+        self.monte(3)
+        self.plat(3)
+        self.astuce("Approche-toi : le bloc va tomber et te servir de marche", x0, min=1)
+        return x0
+
+    def glissant(self, n=6):
+        """Sol mouillé et glissant qui finit au bord de pics : il faut anticiper le saut."""
+        x0 = self.x
+        for _ in range(n):
+            c = self.colonne()
+            self.cols[c][self.y + 1] = "g"
+        self.pics(2); self.plat(2)
+        self.astuce("Sol glissant : Max freine mal !", x0, max=0)
+        return x0
+
+    def mobile(self, n=6, vitesse=1.0):
+        """Fosse traversée par une plateforme qui fait l'aller-retour."""
+        x0 = self.x
+        for _ in range(n):
+            self.colonne(fond="vide")
+        self.movers.append([x0, self.y + 1, 2, n - 2, 0, vitesse])
+        return x0
+
+    def ascenseur(self, haut=4, vitesse=0.9):
+        """Monte-charge qui monte et descend le long d'une paroi."""
+        x0 = self.x
+        for _ in range(2):
+            self.colonne(fond="vide")
+        self.movers.append([x0, self.y + 1, 2, 0, -haut, vitesse])
+        self._lift = (x0, self.y + 1, haut)
+        self.y -= haut
+        return x0
+
+    def ecraseurs(self, n=10, k=3, pas=3):
+        """Couloir bas où des blocs à pointes s'abattent en rythme."""
+        x0 = self.x
+        p = self.y - 4
+        for _ in range(n):
+            self.colonne(plafond=p)
+        for i in range(k):
+            self.crushers.append([x0 + 2 + i * pas, p + 1, (i * 47) % 170])
+        self.astuce("Passe sous les écraseurs quand ils remontent", x0, max=0)
+        return x0
+
+    def vent(self, liste=((2, 3, 0), (2, 3, 0), (2, 3, 0)), force=-0.45):
+        """Plateformes au-dessus du vide, balayées par un courant d'air."""
+        x0 = self.x
+        self.plateformes(list(liste), fond="vide")
+        self.winds.append([x0, self.x - 1, force])
+        self.astuce("Attention au vent !" if force < 0 else "Le vent te pousse… trop fort ?", x0 - 1, max=0)
+        return x0
+
+    def leviers(self):
+        """Deux dalles à pression devant une grille : une seule l'ouvre, l'autre est piégée.
+        Après une mort, les deux dalles échangent leur rôle."""
+        x0 = self.plat(2)
+        a = self.colonne(); self.put(a, self.y, "_")
+        self.plat(3)
+        b = self.colonne(); self.put(b, self.y, "_")
+        self.plat(2)
+        gx = self.colonne()
+        for r in range(1, self.y + 1):
+            self.put(gx, r, "G" if r >= self.y - 2 else "#")
+        self.plat(2)
+        y = self.y
+        ouvre = [["set", gx, y - 2, 1, 3, "."], ["gate"], ["say", "Clac ! La grille s'ouvre."]]
+        piege = [["spikes", gx - 1, y, 1, 1], ["say", "Mauvaise dalle ! Ha ha !"]]
+        self.t([["press", a, y]] + ouvre, [a, y, 1, 1], max=0)
+        self.t([["press", b, y]] + piege, [b, y, 1, 1], max=0)
+        self.t([["press", a, y]] + piege, [a, y, 1, 1], min=1)
+        self.t([["press", b, y]] + ouvre, [b, y, 1, 1], min=1)
+        self.astuce("Une seule dalle ouvre la grille…", x0, max=0)
+        self.astuce("Archibald a échangé les dalles !", x0, min=1)
+        return x0
+
+    def minuterie(self, marge=2.2):
+        """Compte à rebours sur tout le niveau (calculé une fois le niveau construit)."""
+        self.opts["_timer"] = marge
+
+    def crue(self, nature="eau", vitesse=0.16, texte=None):
+        depart = 0 if nature == "plafond" else self.h + 4   # le plafond part du haut, l'eau de bien plus bas (temps de réaction)
+        self.t([["flood", nature, vitesse, depart]] + ([["say", texte]] if texte else []))
+
+    def sprint(self):
+        x0 = self.pics(2); self.plat(1); self.fosse(3, "vide"); self.plat(1); self.pics(2); self.plat(1)
+        return x0
+
+    def passage_defi(self):
+        """Section difficile ajoutée avant la porte des niveaux Défi, variée d'un défi à l'autre."""
+        k = self.num // 3
+        menu = [self.sprint, self.clignote, self.ressort_pique, self.fantome, self.leviers]
+        self.plat(2)
+        menu[k % 5]()
+        if self.num > 20:
+            self.plat(2)
+            menu[(k + 2) % 5]()
+        self.plat(2)
+        self.astuce("Défi : dernier passage avant la porte !", self.x - 1, max=0)
+
+    # ---------- pièges ----------
+    def effondrement(self, n=2, avance=2, delai=0, **kw):
+        """Sol plat ; en arrivant, les n cases devant s'effondrent (fosse mortelle)."""
+        x0 = self.plat(avance + n + 1)
+        self.t([["collapse", x0 + avance, self.y + 1, n, self.h - self.y - 1, delai]], self.Z(x0), **kw)
+        return x0
+
+    def pics_surprise(self, n=2, avance=2, variante=None, **kw):
+        """Pics qui jaillissent du sol : devant (classique), loin devant, ou derrière Max une fois passé."""
+        noms = ["devant", "derriere", "loin"]
+        if variante is None:
+            variante = noms[VARIANTES["pics"] % 3]
+            VARIANTES["pics"] += 1
+        if variante == "derriere":
+            x0 = self.plat(n + 4)
+            self.t([["spikes", x0 + 1, self.y, n, 1], ["say", "Pas de retour possible, Max !"]], self.Z(x0 + n + 2), **kw)
+            return x0
+        if variante == "loin":
+            avance = avance + 2
+        x0 = self.plat(avance + n + 1)
+        self.t([["spikes", x0 + avance, self.y, n, 1]], self.Z(x0), **kw)
+        return x0
+
+    def rocher(self, x, y, sens=1, vitesse=1.4, zone=None, **kw):
+        self.t([["boulder", x, y, sens, vitesse], ["shake", 6]], zone or self.Z(x + 3 * sens), **kw)
+
+    def dit(self, texte, x=None, **kw):
+        self.t([["say", texte]], None if x is None else self.Z(x), **kw)
+
+    def astuce(self, texte, x, **kw):
+        self.t([["hint", texte]], self.Z(x), **kw)
+
+    # ---------- fin ----------
+    def fini(self):
+        self._mur()
+        w = len(self.cols)
+        rows = ["".join(self.cols[x][y] for x in range(w)) for y in range(self.h)]
+        marge = self.opts.pop("_timer", None)
+        if marge:
+            secondes = int(w * 16 / 1.8 / 60 * marge) + 6
+            self.trig.insert(0, {"act": [["timer", secondes], ["say", f"J'ai allumé une mèche, Max ! Tu as {secondes} secondes. Ha ha !"]]})
+        d = {"name": self.nom, "type": self.type, "ammo": self.ammo, "map": rows, "triggers": self.trig}
+        d.update(self.opts)
+        if self.defi:
+            d["defi"] = True
+        for k in ("movers", "crushers", "winds"):
+            if getattr(self, k):
+                d[k] = getattr(self, k)
+        d["_tnt"] = self.tnt_besoin
+        return d
+
+
+def brut(nom, type_, rows, triggers, **opts):
+    NUMERO[0] += 1
+    if NUMERO[0] in DEFIS:
+        opts["defi"] = True
+    d = {"name": nom, "type": type_, "ammo": opts.pop("ammo", [6, 1]), "map": rows, "triggers": triggers}
+    d.update(opts)
+    d["_tnt"] = opts.get("_tnt", 0)
+    return d
+
+
+# =====================================================================
+#  ACTE 1 — LA JUNGLE
+# =====================================================================
+def acte1():
+    L = []
+    L.append(brut("Le seuil", "exploration", [
+        "##############################",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................#....#",
+        "#.......................B....#",
+        "#.......................B....#",
+        "#.......................B....#",
+        "#.......t...............B....#",
+        "#.P...####^^####...s....B..D.#",
+        "##############################",
+    ], [
+        {"max": 0, "act": [["say", "Ha ! Max ! Tu arrives trop tard : l'Œil de Jade sera à moi !"]]},
+        {"min": 1, "act": [["say", "Déjà ? On n'a même pas commencé."]]},
+        {"zone": [4, 1, 1, 15], "act": [["hint", "Saute par-dessus les pics"]]},
+        {"zone": [9, 1, 1, 15], "act": [["hint", "Ramasse la dynamite"]]},
+        {"zone": [15, 1, 1, 15], "act": [["hint", "Saute sur le serpent, ou assomme-le avec ta massue"]]},
+        {"zone": [21, 1, 1, 15], "act": [["hint", "Pose la dynamite contre le mur fissuré, puis recule"]]},
+    ], _tnt=1))
+    L.append(brut("Le couloir honnête", "trahison", ["##############################"] * 11 + [
+        "#............................#",
+        "#............................#",
+        "#............................#",
+        "#............................#",
+        "#.P.........................D#",
+        "##############################",
+    ], [
+        {"max": 0, "act": [["say", "Un simple couloir. Rien de suspect."]]},
+        {"min": 1, "max": 2, "act": [["say", "Tu reviens ? J'ai un peu changé la déco."]]},
+        {"min": 3, "act": [["say", "Indice : la porte a peur de toi."]]},
+        {"max": 0, "lethal": True, "zone": [8, 11, 1, 5], "act": [["collapse", 10, 16, 4, 1, 0]]},
+        {"min": 1, "zone": [10, 11, 2, 5], "act": [["collapse", 13, 16, 3, 1, 0], ["say", "Pas la même blague deux fois."]]},
+        {"zone": [22, 11, 1, 5], "act": [["door", 2, 15], ["say", "Oups. La porte avait froid aux pieds."]]},
+    ]))
+    L.append(brut("La salle des gardes", "exploration", [
+        "##############################",
+        "#........##..................#",
+        "#........##..................#",
+        "#........##..................#",
+        "#.Pa.....##..................#",
+        "#######..##..................#",
+        "#........##..................#",
+        "#............................#",
+        "#........t.....m.............#",
+        "#....################........#",
+        "#............................#",
+        "#....................#BBBB####",
+        "#....................#....####",
+        "#....................#....####",
+        "#....................#....####",
+        "#^^^^^^^^^^^^^^^^^^^^#..D.####",
+        "##############################",
+    ], [
+        {"max": 0, "act": [["say", "Les momies de ce temple ne dorment jamais. Enfin, presque."]]},
+        {"min": 2, "act": [["say", "Le toit de la porte a l'air fragile, non ?"]]},
+        {"zone": [9, 8, 1, 1], "act": [["fall", 9, 6, 2, 1, 28], ["hint", "Ça tremble au-dessus…"]]},
+        {"zone": [21, 1, 7, 10], "act": [["hint", "La porte est en dessous…"]]},
+    ], _tnt=1))
+    L.append(brut("La course", "action", [
+        "##############################",
+        "#............................#",
+        "#............................#",
+        "#............................#",
+        "#..P.......^^................#",
+        "##########################...#",
+        "#............................#",
+        "#............................#",
+        "#............................#",
+        "#............................#",
+        "#...##########################",
+        "#............................#",
+        "#............................#",
+        "#............................#",
+        "#............................#",
+        "#..........................D.#",
+        "##############################",
+    ], [
+        {"max": 0, "act": [["say", "Tu aimes le sport ?"]]},
+        {"min": 1, "act": [["spikes", 10, 9, 2, 1]]},
+        {"min": 1, "max": 2, "act": [["say", "Cette fois, je te montre les pics. Je suis bon joueur."]]},
+        {"min": 3, "act": [["say", "Je ralentis le rocher. Ne le dis à personne."]]},
+        {"max": 2, "zone": [6, 1, 1, 4], "act": [["boulder", 1, 2, 1, 1.5], ["shake", 6]]},
+        {"min": 3, "zone": [6, 1, 1, 4], "act": [["boulder", 1, 2, 1, 1.15], ["shake", 6]]},
+        {"max": 0, "zone": [13, 6, 1, 4], "act": [["spikes", 10, 9, 2, 1]]},
+        {"zone": [14, 11, 1, 5], "act": [["collapse", 17, 16, 2, 1, 16]]},
+    ]))
+    L.append(brut("La rencontre", "histoire", ["##############################"] + ["#............................#"] * 14 + [
+        "#.P........................D.#",
+        "##############################",
+    ], [
+        {"max": 0, "act": [["say", "Tu es arrivé jusqu'ici ? Impressionnant."]]},
+        {"min": 1, "act": [["say", "Bon. Celle-là, c'était un piège. Mais c'est fini, juré."]]},
+        {"max": 0, "zone": [7, 1, 1, 15], "act": [["say", "Professeur Archibald, pour te servir. Le trésor, c'est pour moi. Les pièges, c'est pour toi."]]},
+        {"max": 0, "zone": [14, 1, 1, 15], "act": [["say", "Cette salle n'a aucun piège. Parole d'archéologue."]]},
+        {"max": 0, "lethal": True, "zone": [19, 1, 1, 15], "act": [["collapse", 21, 16, 4, 1, 0]]},
+        {"min": 1, "zone": [19, 1, 1, 15], "act": [["say", "…"]]},
+        {"min": 1, "zone": [24, 1, 1, 15], "act": [["say", "Tu vois ? Je tiens parole. Parfois."]]},
+    ], decor="pillars"))
+
+    # 6 — ressorts
+    n = Niveau("Les ressorts", "exploration", h=22)
+    n.depart(4); n.dit("Les lianes ? Non, des ressorts. On fait avec ce qu'on a.", max=0)
+    n.plat(2); n.astuce("Monte sur le ressort", n.x - 2)
+    n.ressort(4); n.plat(5, ennemi="s")
+    n.ressort(4); n.plat(3); n.fosse(2); n.plat(4, objet="a")
+    n.descend(3); n.plat(3); n.pics(2); n.plat(3)
+    n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    # 7 — le pont
+    n = Niveau("Le pont", "trahison", sol=11)
+    n.depart(4); n.dit("Un joli pont. Il a l'air solide, non ?", max=0)
+    x0 = n.pont("####xx####x####")
+    n.dit("J'ai déplacé les fausses dalles. Bonne chance.", min=1)
+    n.t([["set", x0 + 4, n.y + 1, 2, 1, "#"], ["set", x0 + 7, n.y + 1, 2, 1, "x"]], min=1)
+    n.astuce("Une dalle qui tremble va tomber : ne t'arrête pas dessus", x0 + 1, min=2)
+    n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 8 — les flèches
+    n = Niveau("Les flèches", "exploration", ammo=(6, 0), arrowRate=100)
+    n.depart(3); n.plat(4, objet="t"); n.astuce("Ramasse la dynamite, tu en auras besoin", n.x - 3)
+    n.plat(6, ennemi="m"); n.fleches(7, 1); n.astuce("Flèche en bois : casse-la d'un coup de massue, ou rebondis dessus !", n.x - 6)
+    n.plat(3); n.mur_fissure(); n.plat(3); n.porte(4)
+    n.dit("Attention, j'ai investi dans l'archerie.", max=0)
+    L.append(n.fini())
+
+    # 9 — le toboggan
+    n = Niveau("Le toboggan", "action", sol=6)
+    n.depart(4); n.dit("Encore un rocher. J'en ai acheté un lot.", max=0)
+    n.plat(8); n.rocher(1, 3, 1, 1.4, zone=n.Z(7))
+    n.descend(2); n.plat(6); n.pics(2); n.plat(5)
+    n.descend(2); n.plat(4); n.fosse(1, "vide"); n.plat(6)
+    n.descend(2); n.effondrement(2, 3, 14); n.plat(5); n.porte(4)
+    L.append(n.fini())
+
+    # 10 — la statue
+    n = Niveau("La statue", "histoire", decor="pillars")
+    n.depart(4); n.dit("Fin de l'acte 1. Je t'ai préparé une petite fête.", max=0)
+    n.dit("Encore toi ! Tu es tenace, mon petit Max.", min=1)
+    n.plat(6); n.t([["invert", 300], ["say", "Cadeau : je t'inverse les commandes !"]], n.Z(n.x - 2))
+    n.plat(3); n.pics(1); n.plat(6)
+    n.dit("La crypte t'attend. Elle sent un peu le renfermé.", n.x - 2)
+    n.porte(4)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  ACTE 2 — LA CRYPTE
+# =====================================================================
+def acte2():
+    L = []
+    n = Niveau("L'antichambre", "exploration", ammo=(4, 1))
+    n.depart(4); n.dit("Bienvenue dans la crypte. Essuie tes pieds.", max=0)
+    n.plat(6, ennemi="m"); n.monte(2); n.plat(5, objet="t"); n.mur_fissure()
+    n.plat(3); n.descend(2); n.plat(6, ennemi="m"); n.fleches(6, 1); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le faux mur", "trahison")
+    n.depart(4); n.dit("Une porte, là, juste devant. Facile.", max=0)
+    n.plat(10); n.pics_surprise(2, 2, max=0, lethal=True)
+    n.plat(3); x = n.x
+    n.plat(4)
+    fx = n.faux_mur(2); n.plat(2)
+    n.porte(3)
+    # la porte commence devant le mur puis file se cacher derrière
+    n.opts["doorStart"] = [x + 2, n.y]
+    n.t([["door", n.porte_x, n.y], ["say", "Elle est partie se cacher. Elle est timide."]], n.Z(x))
+    n.astuce("Les murs aussi peuvent mentir…", x + 2, min=1)
+    L.append(n.fini())
+
+    n = Niveau("Les sarcophages", "exploration", ammo=(3, 2))
+    n.depart(4); n.dit("Toute une famille de momies. Saute-leur dessus, si tu l'oses.", max=0)
+    n.plat(8, ennemi="mm"); n.monte(1); n.plat(6, ennemi="ms"); n.fosse(2)
+    n.plat(6, ennemi="m", objet="a"); n.plat(3); n.descend(1); n.plat(3); n.mur_fissure(); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le couloir des flèches", "action", arrowRate=125)
+    n.depart(3); n.dit("Cours. Vraiment. Cours.", max=0)
+    n.fleches(5, 1); n.plat(2)
+    n.t([["collapse", 1, 16, 4, 1, 70], ["say", "Derrière toi, le sol s'en va."]], n.Z(n.x - 1))
+    n.fleches(5, 1); n.pics(1); n.fleches(5, 1); n.plat(2); n.fleches(4, 1)
+    n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le scribe", "histoire", decor="glyphs")
+    n.depart(4); n.dit("Un scribe a gravé ici le chemin du trésor. Je l'ai un peu raturé.", max=0)
+    n.plat(6); n.dit("Il a aussi gravé : « Archibald est un tricheur ». Calomnie !", n.x - 2)
+    n.plat(8); n.dit("J'étais professeur, avant. Renvoyé pour « tricherie ». Pff.", n.x - 3)
+    n.plat(4); x = n.x; n.porte(5)
+    n.t([["door", n.porte_x + 1, n.y], ["say", "Pardon, réflexe."]], n.Z(x), max=0)
+    L.append(n.fini())
+
+    n = Niveau("Le puits", "exploration", h=22, sol=5, ammo=(6, 1), dark=True)
+    n.depart(4); n.dit("Il faut descendre. Tout en bas. Comme ton moral.", max=0)
+    n.plateformes([(2, 3, 2), (2, 3, 2), (1, 3, 2), (2, 4, 2)])
+    n.plat(2); n.sol_fissure(3, 3); n.plat(5, ennemi="s"); n.porte(4)
+    n.astuce("Le sol est fissuré : dynamite !", n.x - 12)
+    L.append(n.fini())
+
+    n = Niveau("Les dalles", "trahison", sol=11)
+    n.depart(4); n.dit("Le sol de cette salle est… original.", max=0)
+    a = n.pont("##x###xx###x##")
+    n.t([["set", a + 2, n.y + 1, 1, 1, "#"], ["set", a + 4, n.y + 1, 1, 1, "x"]], min=1)
+    n.dit("J'ai remélangé les dalles. Je m'ennuyais.", min=1)
+    n.plat(2); n.pics_surprise(1, 2); n.plat(2)
+    b = n.pont("###xx###")
+    n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La chambre du serpent", "exploration", h=22, ammo=(8, 0))
+    n.depart(3); n.dit("Ce sont des serpents. Pourquoi faut-il toujours des serpents ?", max=0)
+    n.plat(6, ennemi="s"); n.ressort(4); n.plat(5, ennemi="s"); n.fosse(2)
+    n.plat(6, ennemi="ss"); n.descend(4); n.plat(6, ennemi="s", objet="a"); n.pics(2); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("L'éboulement", "action")
+    n.depart(3); n.dit("Le plafond est un peu fatigué aujourd'hui.", max=0)
+    n.plafond_bas(26, chutes=[(4, 22), (8, 18), (12, 16), (15, 14), (19, 12), (22, 10)])
+    n.plat(2); n.stalactites(10, 3)
+    n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le pharaon déguisé", "histoire", decor="glyphs")
+    n.depart(4); n.dit("Fin de l'acte 2. Le pharaon voulait te dire au revoir.", max=0)
+    n.plat(6); n.dit("En fait, le pharaon, c'est moi avec un faux nez.", n.x - 2)
+    n.plat(5); x = n.x; n.plat(6)
+    n.t([["invert", 240], ["say", "Allez, une dernière pour la route."]], n.Z(x))
+    n.pics(1); n.plat(4); n.porte(4)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  ACTE 3 — LES MINES
+# =====================================================================
+def acte3():
+    L = []
+    n = Niveau("Le puits de mine", "exploration", ammo=(5, 0))
+    n.depart(4); n.dit("Les mines. Attention aux chauves-souris, elles mordent.", max=0)
+    n.plat(8, ennemi="b"); n.monte(2); n.plat(6, ennemi="b"); n.fosse(2, "vide")
+    n.plat(5, objet="t"); n.mur_fissure(); n.plat(6, ennemi="m"); n.plat(3, ennemi="b"); n.stalactite_marche(); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les étais", "trahison")
+    n.depart(3); n.dit("Les étais sont neufs. Je les ai achetés d'occasion.", max=0)
+    n.plafond_bas(10, chutes=[(6, 8)])
+    n.t([["dark", 1], ["say", "Oups. J'ai soufflé les torches. Quelle maladresse !"]], n.Z(n.x - 2))
+    n.effondrement(2, 2, 0, max=0, lethal=True)
+    n.dit("La même ? Non, pas la même.", min=1)
+    n.effondrement(2, 3, 10, min=1)
+    n.plafond_bas(8, chutes=[(3, 12), (6, 6)])
+    n.pics_surprise(2, 3); n.plat(3); n.stalactites(9, 3); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les chauves-souris", "exploration", ammo=(8, 1))
+    n.depart(4); n.dit("Elles adorent les chapeaux. Surtout avec une tête dedans.", max=0)
+    n.plateformes([(2, 4, 0), (2, 4, -1), (2, 3, 0), (3, 4, 1)], fond="vide")
+    n.plat(6, ennemi="b"); n.plateformes([(2, 3, -1), (2, 3, 0), (2, 4, 1)], fond="vide")
+    n.plat(3, ennemi="b"); n.plat(2); n.corde(5); n.porte(4)
+    for x in range(len(n.cols)):
+        pass
+    L.append(n.fini())
+
+    n = Niveau("La poursuite", "action", sol=5, h=20)
+    n.depart(4); n.dit("Mon rocher a un nom : Gérard. Dis bonjour à Gérard.", max=0)
+    n.plat(6); n.rocher(1, 2, 1, 1.5, zone=n.Z(6))
+    n.descend(2); n.plat(5); n.fosse(1, "vide"); n.plat(4); n.pics(1); n.plat(4)
+    n.descend(2); n.plat(5); n.fosse(1, "vide"); n.plat(5)
+    n.descend(3); n.plat(4); n.pics(2); n.plat(4); n.descend(2)
+    n.effondrement(2, 3, 12); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le contremaître", "histoire", decor="beams")
+    n.depart(4); n.dit("Il n'y a jamais eu de mineurs ici.", max=0)
+    n.plat(7); n.dit("Juste moi, une pioche, et beaucoup trop de temps libre.", n.x - 3)
+    n.plat(6); x = n.x; n.plat(4)
+    n.t([["spikes", x + 2, n.y, 1, 1], ["say", "Oups, mon coude a glissé."]], n.Z(x))
+    n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La dynamite", "exploration", ammo=(2, 3), sol=10)
+    n.depart(4); n.dit("Trois bâtons de dynamite. Ne fais pas de bêtise. Fais-en plein.", max=0)
+    n.plat(4, ennemi="m"); n.mur_fissure(); n.plat(4); n.sol_fissure(3, 3); n.plat(5, ennemi="s")
+    n.mur_fissure(); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le plafond bas", "trahison")
+    n.depart(3); n.dit("Ne saute pas trop haut. Ou alors si. Je ne sais plus.", max=0)
+    x = n.plafond_bas(6, hauteur=4); n.pics(1)
+    n.t([["spikes", x + 7, n.y - 3, 4, 1, "v"]], [x + 4, 1, 3, n.h - 2], air=True)
+    n.plafond_bas(6, hauteur=4); n.pics(2)
+    n.plafond_bas(8, hauteur=4, pics_plafond=(2, 3, 6)); n.pics_surprise(1, 2)
+    n.plat(2); n.stalactites(10, 3); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les ressorts fous", "exploration", h=24, ammo=(6, 1))
+    n.depart(3); n.dit("Ressorts, chauves-souris, vide. Mon trio préféré.", max=0)
+    n.plat(2); n.ressort(4); n.plat(3); n.ressort_pique(); n.fosse(2, "vide"); n.plat(2)
+    n.ressort(4); n.plat(4, ennemi="b"); n.fosse(2, "vide"); n.plat(3, objet="a")
+    n.ressort(4); n.plat(5, ennemi="m"); n.descend(6); n.plat(3); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Deux rochers", "action", sol=6)
+    n.depart(4); n.dit("Gérard a un frère. Il s'appelle aussi Gérard.", max=0)
+    n.plat(6); n.rocher(1, 3, 1, 1.4, zone=n.Z(6))
+    n.descend(2); n.plat(8)
+    x = n.x; n.fosse(2, "vide"); n.monte(1); n.plat(10)
+    n.rocher(x + 9, n.y - 1, -1, 1.2, zone=n.Z(x - 3))
+    n.dit("Il arrive par devant ! Ne bouge pas, il va tomber.", x - 3, max=1)
+    n.descend(3); n.plat(5); n.fosse(1, "vide"); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La galerie", "histoire", decor="beams")
+    n.depart(4); n.dit("Fin de l'acte 3. Tu sens l'eau ? Ce sont les cascades.", max=0)
+    n.plat(8); n.dit("Là-bas, j'ai inversé le sens de l'eau. Et parfois le tien.", n.x - 3)
+    n.plat(6); x = n.x; n.plat(5)
+    n.t([["door", 3, n.y], ["say", "La porte a eu peur du noir."]], n.Z(x), max=0)
+    n.porte(4)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  ACTE 4 — LES CASCADES
+# =====================================================================
+def acte4():
+    L = []
+    n = Niveau("Le gué", "exploration", ammo=(6, 0))
+    n.depart(4); n.dit("Ne tombe pas à l'eau. Il n'y a pas d'eau, mais ne tombe pas.", max=0)
+    n.plateformes([(2, 3, 0), (3, 3, 0), (2, 2, -1), (3, 4, 1)], fond="vide")
+    n.plat(6, ennemi="s", objet="a"); n.fantome(5); n.plat(3)
+    n.plateformes([(3, 3, 0), (2, 3, -1), (3, 4, 0)], fond="vide")
+    n.plat(4, ennemi="s"); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le miroir", "trahison")
+    n.depart(4); n.dit("Ici, gauche et droite se disputent souvent.", max=0)
+    n.plat(4); x = n.x; n.plat(3); n.pics(2)
+    n.t([["invert", 200]], n.Z(x), max=0)
+    n.t([["invert", 200], ["say", "Je préviens, cette fois : ça s'inverse."]], n.Z(x - 2), min=1)
+    n.plat(5); x = n.x; n.plat(2); n.pics(2); n.plat(3)
+    n.t([["invert", 150]], n.Z(x))
+    n.plat(4); x = n.x; n.plat(3); n.fosse(2, "vide"); n.plat(3)
+    n.t([["invert", 180]], n.Z(x))
+    n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les marches", "exploration", arrowRate=90, ammo=(5, 1))
+    n.depart(3); n.dit("Un escalier avec des flèches. L'architecte était un artiste.", max=0)
+    n.fleches(5, 2); n.plat(4, ennemi="m"); n.fleches(4, 2); n.plat(5, objet="t")
+    n.fleches(4, 2); n.plat(4, ennemi="s"); n.clignote(5); n.plat(2); n.mur_fissure(); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La chute", "action", sol=4, h=22)
+    n.depart(4); n.dit("Gérard est de retour. Il a fait du sport.", max=0)
+    n.plat(6); n.rocher(1, 1, 1, 1.6, zone=n.Z(6))
+    n.descend(2); n.effondrement(2, 3, 10); n.descend(2); n.plat(5); n.pics(2); n.plat(3)
+    n.descend(3); n.plat(4); n.fosse(1, "vide"); n.plat(3); n.descend(2); n.pics_surprise(2, 3)
+    n.plat(3); n.descend(2); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("L'écho", "histoire", decor="water")
+    n.depart(4); n.dit("Écho… écho… écho…", max=0)
+    n.plat(6); n.dit("Tu croyais que c'était l'écho ? C'était moi.", n.x - 3)
+    n.plat(6); n.dit("Je fais aussi les bruits de pas derrière toi.", n.x - 3)
+    n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les piliers", "exploration", h=22, ammo=(6, 2), dark=True)
+    n.depart(3); n.dit("Des piliers, du vide, et quelques chauves-souris pour l'ambiance.", max=0)
+    n.plateformes([(2, 2, 0), (3, 2, 0), (2, 2, -1)], fond="vide")
+    n.plat(2); n.ressort(4); n.plat(4, ennemi="b"); n.mur_fissure(); n.plat(3)
+    n.plateformes([(3, 2, 0), (2, 2, 1), (3, 3, 0)], fond="vide")
+    n.plat(4, ennemi="m"); n.mur_fissure(); n.plat(3); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le doute", "trahison", sol=11)
+    n.depart(4); n.dit("Cette salle est parfaitement normale. Je te le jure sur ma tête.", max=0)
+    n.pont("###x###")
+    n.plat(3); n.effondrement(2, 2, 0, max=0, lethal=True); n.effondrement(2, 3, 12, min=1)
+    n.plat(2); x = n.x; n.plat(6)
+    fx = n.faux_mur(1); n.plat(2); n.porte(3)
+    n.opts["doorStart"] = [x + 4, n.y]
+    n.t([["door", n.porte_x, n.y], ["invert", 120], ["say", "Où est la porte ? Où est la droite ?"]], n.Z(x))
+    L.append(n.fini())
+
+    n = Niveau("La cascade", "action", sol=5, h=20, arrowRate=80)
+    n.depart(4); n.dit("Gérard a appris à nager. Enfin, à rouler mouillé.", max=0)
+    n.plat(6); n.rocher(1, 2, 1, 1.5, zone=n.Z(6))
+    n.descend(2); n.plat(6, ennemi="b"); n.fosse(1, "vide"); n.plat(4)
+    n.descend(2); n.plat(5); n.pics(2); n.plat(4, ennemi="b"); n.descend(3)
+    n.effondrement(2, 3, 10); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les gardiens", "exploration", ammo=(6, 2))
+    n.depart(4); n.dit("J'ai réveillé les gardiens du temple. Ils sont nuls, mais nombreux.", max=0)
+    n.plat(8, ennemi="mm"); n.fosse(2); n.plat(6, ennemi="ss", objet="a"); n.monte(2)
+    n.plat(6, ennemi="mb"); n.mur_fissure(); n.plat(5, ennemi="ms"); n.descend(2); n.plat(6, ennemi="mm", objet="t")
+    n.mur_fissure(); n.plat(3); n.stalactites(9, 3); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le seuil du trésor", "histoire", decor="water")
+    n.depart(4); n.dit("Fin de l'acte 4. Derrière cette porte, le sanctuaire de l'Œil de Jade.", max=0)
+    n.plat(8); n.dit("Personne n'est jamais allé aussi loin. À part moi. Et Gérard.", n.x - 3)
+    n.plat(5); x = n.x; n.plat(4)
+    n.t([["spikes", x + 2, n.y, 2, 1], ["say", "Ah non, pas ça ! Bon, saute."]], n.Z(x))
+    n.plat(4); n.porte(4)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  ACTE 5 — LE SANCTUAIRE
+# =====================================================================
+def acte5():
+    L = []
+    n = Niveau("L'entrée sacrée", "exploration", ammo=(6, 2), arrowRate=90)
+    n.depart(4); n.dit("Le sanctuaire ! Enlève ton chapeau. Non, garde-le, il est ridicule.", max=0)
+    n.plat(6, ennemi="m"); n.fleches(5, 1); n.fosse(2); n.plat(4, ennemi="b")
+    n.ressort(4); n.plat(5, objet="t"); n.mur_fissure(); n.descend(3); n.plat(5, ennemi="ms")
+    n.pics(2); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Archibald s'amuse", "trahison")
+    n.depart(4); n.dit("Je vais déplacer la porte. Plusieurs fois. Parce que je peux.", max=0)
+    n.plat(6); x1 = n.x; n.plat(4); n.pics(2); n.plat(6); x2 = n.x; n.plat(5); n.fosse(2, "vide"); n.plat(4); x3 = n.x
+    n.porte(4)
+    n.t([["door", 3, n.y], ["say", "Hop ! Derrière toi."]], n.Z(x3 - 2))
+    n.t([["door", x2 + 1, n.y], ["say", "Non, en fait, là."]], n.Z(5))
+    n.t([["door", n.porte_x, n.y], ["say", "Bon, d'accord, tout au bout."]], n.Z(x2 - 1))
+    n.t([["spikes", x1 + 1, n.y, 1, 1]], n.Z(x1 - 1), max=0)
+    L.append(n.fini())
+
+    n = Niveau("Les épreuves", "exploration", h=22, sol=12, ammo=(6, 2), arrowRate=85)
+    n.depart(3); n.dit("Trois épreuves : sauter, assommer, exploser. Comme un mardi.", max=0)
+    n.plateformes([(2, 3, 0), (3, 3, -1), (2, 3, 0)])
+    n.plat(5, ennemi="m"); n.fleches(5, 2); n.plat(4, ennemi="b"); n.ressort(4); n.plat(5, objet="t")
+    n.t([["dark", 1], ["say", "Et si on éteignait la lumière ? Ha ha !"]], n.Z(n.x - 2))
+    n.mur_fissure(); n.plat(3); n.sol_fissure(3, 3); n.plat(5, ennemi="ss"); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le grand rocher", "action", sol=4, h=22)
+    n.depart(4); n.dit("Je te présente la maman de Gérard.", max=0)
+    n.plat(6); n.rocher(1, 1, 1, 1.65, zone=n.Z(6))
+    n.descend(2); n.plat(5); n.fosse(1, "vide"); n.plat(4); n.pics(2); n.plat(3)
+    n.descend(2); n.effondrement(2, 2, 8); n.plat(3); n.descend(3); n.plat(4, ennemi="b"); n.fosse(1, "vide")
+    n.plat(4); n.descend(2); n.pics_surprise(2, 3); n.plat(3); n.descend(2); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La confidence", "histoire", decor="pillars")
+    n.depart(4); n.dit("Je peux te dire un secret ?", max=0)
+    n.plat(6); n.dit("Je n'ai jamais rien trouvé tout seul. Toujours en suivant quelqu'un.", n.x - 3)
+    n.plat(6); n.dit("Alors cette fois, je voulais être le premier. Quitte à tricher un peu.", n.x - 3)
+    n.plat(5); n.dit("Beaucoup.", n.x - 2)
+    n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le labyrinthe", "exploration", h=22, sol=6, ammo=(4, 3), dark=True)
+    n.depart(4); n.dit("Un labyrinthe. Si tu te perds, c'est normal. C'est fait pour.", max=0)
+    n.plat(4, ennemi="m"); n.sol_fissure(3, 4); n.plat(5, ennemi="s"); n.faux_mur(1); n.plat(4, objet="t")
+    n.sol_fissure(3, 4); n.plat(4, ennemi="b"); n.mur_fissure(); n.plat(4); n.porte(4)
+    n.astuce("Certains murs ne sont que des illusions", 12, min=2)
+    L.append(n.fini())
+
+    n = Niveau("Tout est faux", "trahison", sol=11)
+    n.depart(4); n.dit("Dans cette salle, tout est faux. Même cette phrase.", max=0)
+    n.pont("##x##x#")
+    n.effondrement(2, 2, 0, max=0, lethal=True); n.effondrement(2, 3, 10, min=1)
+    n.plat(2); x = n.x; n.plat(4); n.t([["invert", 150]], n.Z(x))
+    n.pics(2); n.plat(3); n.pont("#xx##"); n.plat(2); x = n.x; n.plat(5)
+    n.faux_mur(1); n.plat(2); n.stalactites(9, 3); n.plat(2); n.porte(3)
+    n.opts["doorStart"] = [x + 3, n.y]
+    n.t([["door", n.porte_x, n.y], ["say", "La porte aussi était fausse. Enfin, ailleurs."]], n.Z(x))
+    L.append(n.fini())
+
+    n = Niveau("L'armée", "exploration", ammo=(8, 2), arrowRate=80)
+    n.depart(4); n.dit("Tous les gardiens du temple sont là. Ils ont mis leurs plus beaux bandages.", max=0)
+    n.plat(8, ennemi="mms"); n.fleches(5, 1); n.plat(6, ennemi="bm", objet="a"); n.fosse(2)
+    n.plat(7, ennemi="smm"); n.mur_fissure(); n.plat(6, ennemi="bs", objet="a"); n.fleches(5, 1)
+    n.plat(5, ennemi="mm"); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La fuite", "action", sol=3, h=24, arrowRate=90)
+    n.depart(4); n.dit("Toute la famille Gérard est venue te dire au revoir.", max=0)
+    n.plat(6); n.rocher(1, 1, 1, 1.6, zone=n.Z(6))
+    n.descend(2); n.plat(5, ennemi="b"); n.fosse(1, "vide"); n.plat(4); n.pics(2); n.plat(3)
+    n.descend(3); n.effondrement(2, 2, 8); n.plat(3); n.descend(2); n.plafond_bas(8, chutes=[(4, 6)])
+    n.descend(2); n.plat(4); n.fosse(1, "vide"); n.plat(4); n.pics_surprise(2, 3)
+    n.descend(3); n.plat(5); n.porte(4)
+    L.append(n.fini())
+
+    # 50 — finale : détruire les trois idoles pour faire apparaître la porte
+    n = Niveau("Le faux Œil", "histoire", ammo=(6, 3), decor="eye", doorHidden=True)
+    n.depart(4); n.dit("Le coffre de l'Œil de Jade est fermé par trois sceaux de pierre.", max=0)
+    n.dit("J'ai oublié ma dynamite. Toi, non ? Zut, zut et zut.", 6)
+    n.plat(6); i1 = n.mur_fissure(1); n.plat(3, objet="t"); n.fosse(2)
+    n.plat(5, ennemi="m"); i2 = n.mur_fissure(1); n.plat(4); n.pics(1); n.plat(3, objet="t")
+    n.plat(4, ennemi="b"); i3 = n.mur_fissure(1); n.plat(4); n.porte(4)
+    n.t([["showdoor"], ["say", "L'Œil de Jade… en plâtre ?! C'est un FAUX ! Le vrai est plus bas. Rendez-vous en bas, Max !"], ["shake", 10]], allB=True)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  Outils pour les actes 6 à 10
+# =====================================================================
+def grimpe(n, marches=6, ressorts=(), ennemis=()):
+    """Montée en escalier vers la droite (pour fuir l'eau, le sable ou la lave)."""
+    for i in range(marches):
+        if i in ressorts:
+            n.ressort(4); n.plat(3)
+        else:
+            n.monte(2); n.plat(3, ennemi=("b" if i in ennemis else None))
+
+
+def miroir(nom, type_, pics_reflet, pics_max=(), largeur=40, dits=()):
+    """Max en haut ; sous la surface de l'eau, son reflet à l'envers.
+    Quand Max saute, le reflet plonge vers les pics du bas : il faut sauter par-dessus
+    ses propres pics sans planter son reflet dans les siens (les petits sauts passent)."""
+    NUMERO[0] += 1
+    h = 12
+    rows = [["#"] * largeur for _ in range(h)]
+    for y in list(range(1, 6)) + list(range(7, 10)):
+        for x in range(1, largeur - 1):
+            rows[y][x] = "."
+    rows[5][2] = "P"; rows[5][largeur - 3] = "D"
+    for x in pics_reflet:
+        rows[9][x] = "^"
+    for x in pics_max:
+        rows[5][x] = "^"
+    trig = [{"act": [["say", t]]} if i == 0 else {"zone": [z, 1, 1, h - 2], "act": [["say", t]]} for i, (z, t) in enumerate(dits)]
+    trig.append({"zone": [4, 1, 1, h - 2], "max": 0, "act": [["hint", "Si tu sautes trop haut, ton reflet plonge dans ses pics !"]]})
+    d = {"name": nom, "type": type_, "ammo": [6, 0], "map": ["".join(r) for r in rows], "triggers": trig, "mirror": 6.5, "decor": "water", "_tnt": 0}
+    if NUMERO[0] in DEFIS:
+        d["defi"] = True
+    return d
+
+
+# =====================================================================
+#  ACTE 6 — LES CATACOMBES
+# =====================================================================
+def acte6():
+    L = []
+    n = Niveau("Les ossements", "exploration", ammo=(6, 1))
+    n.depart(4); n.dit("Bienvenue dans les catacombes, Max. Les anciens locataires sont restés.", max=0)
+    n.plat(6, ennemi="m"); n.leviers(); n.plat(3); n.ecraseurs(10, 2); n.plat(5, ennemi="m"); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le plafond qui descend", "trahison")
+    n.depart(4); n.crue("plafond", 0.12, "J'ai trouvé un levier « plafond ». Je l'ai tiré. Pour voir.")
+    n.plat(6); n.pics(2); n.plat(5); n.fosse(2, "vide"); n.plat(4); n.effondrement(2, 2, 10)
+    n.plat(4); n.pics(1); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La crypte aux leviers", "exploration", ammo=(6, 2), sol=10)
+    n.depart(4); n.dit("Des dalles, des grilles. Choisis bien. Ou pas, ça m'amuse aussi.", max=0)
+    n.leviers(); n.plat(4, ennemi="s"); n.sol_fissure(3, 3); n.plat(3, objet="t"); n.leviers(); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les pilons", "action", sol=6)
+    n.depart(4); n.dit("Gérard est revenu. Et il a des amis qui tapent fort.", max=0)
+    n.plat(6); n.rocher(1, 3, 1, 1.4, zone=n.Z(6))
+    n.descend(2); n.plat(3); n.ecraseurs(10, 3); n.descend(2); n.plat(4); n.fosse(1, "vide"); n.plat(3)
+    n.ecraseurs(9, 3); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("L'ossuaire", "histoire", dark=True, decor="glyphs")
+    n.depart(4); n.dit("Max, je vais te dire un secret : le faux Œil, c'est moi qui l'avais acheté au marché.", max=0)
+    n.plat(8); n.dit("Je voulais te faire croire que j'avais gagné. Raté.", n.x - 3)
+    n.plat(8); n.dit("Le vrai est au fond du temple. Et j'y serai avant toi !", n.x - 3)
+    n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les gardiens de pierre", "exploration", h=22, ammo=(6, 1))
+    n.depart(3); n.dit("Des momies, des pilons, des ressorts. Une journée normale.", max=0)
+    n.plat(5, ennemi="m"); n.ecraseurs(9, 2); n.ressort(4); n.plat(5, ennemi="mm"); n.ecraseurs(10, 3)
+    n.descend(4); n.plat(5, ennemi="s", objet="a"); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La dalle de trop", "trahison", sol=11)
+    n.depart(4); n.dit("Ici, chaque dalle a une personnalité. Certaines sont méchantes.", max=0)
+    n.leviers(); n.pont("##x##x###"); n.plat(2); n.pics_surprise(2, 2); n.leviers(); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le couloir sombre", "exploration", dark=True, ammo=(6, 1))
+    n.depart(4); n.dit("Il fait noir. Tu entends ce battement d'ailes ? Moi non plus.", max=0)
+    n.plat(8, ennemi="b"); n.ecraseurs(10, 3); n.plat(6, ennemi="mb"); n.fosse(2, "vide"); n.plat(5, ennemi="b"); n.stalactites(10, 3); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La fuite des catacombes", "action")
+    n.depart(3); n.crue("plafond", 0.18, "Le plafond tombe ! Cours, Max, cours !")
+    n.plat(4); n.sprint(); n.plat(3); n.pics(2); n.plat(3); n.fosse(3, "vide"); n.plat(3); n.ecraseurs(9, 2); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le passage secret", "histoire")
+    n.depart(4); n.dit("Fin des catacombes. Il y a un passage secret par ici… je ne te dirai pas où.", max=0)
+    n.plat(8); x = n.x; n.plat(4); n.faux_mur(2); n.plat(3); n.porte(3)
+    n.dit("Tu l'as trouvé ? Bon. La cité engloutie t'attend. Prends un maillot.", x)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  ACTE 7 — LA CITÉ ENGLOUTIE
+# =====================================================================
+def acte7():
+    L = []
+    n = Niveau("Les quais", "exploration", ammo=(6, 0))
+    n.depart(4); n.dit("La cité engloutie ! Attention, ça glisse. Moi, j'ai des semelles spéciales.", max=0)
+    n.plat(3); n.glissant(6); n.plat(4, ennemi="s"); n.mobile(6, 1.0); n.plat(4, objet="a"); n.glissant(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La marée", "trahison", h=26, sol=24)
+    n.depart(4); n.crue("eau", 0.15, "Oups, j'ai ouvert les vannes. L'eau monte, Max !")
+    grimpe(n, 7, ressorts=(3,)); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les canaux", "exploration", h=22, ammo=(6, 1))
+    n.depart(4); n.dit("Des canaux, des barques… enfin, des planches. Ça flotte, je crois.", max=0)
+    n.mobile(6, 0.9); n.plat(4, ennemi="s"); n.ascenseur(4); n.plat(4); n.glissant(5); n.plat(3, ennemi="m"); n.stalactite_marche(); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le grand déluge", "action", h=26, sol=24)
+    n.depart(4); n.crue("eau", 0.22, "Tout le lac arrive ! Nage, Max ! Enfin, grimpe !")
+    grimpe(n, 8, ressorts=(2, 5), ennemis=(4,)); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le palais noyé", "histoire", decor="water")
+    n.depart(4); n.dit("Ce palais était magnifique, avant que je casse la digue.", max=0)
+    n.plat(8); n.dit("Bon, d'accord, la digue était déjà fissurée. J'ai juste soufflé dessus.", n.x - 3)
+    n.plat(6); n.glissant(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les écluses", "exploration", h=22, ammo=(6, 1))
+    n.depart(4); n.dit("Une écluse, ça s'ouvre avec la bonne dalle. La bonne… ou l'autre.", max=0)
+    n.leviers(); n.mobile(7, 1.1); n.plat(3, ennemi="s"); n.ascenseur(4, 1.0); n.plat(4, ennemi="b"); n.stalactites(9, 3); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le pont flottant", "trahison")
+    n.depart(4); n.dit("Un pont flottant. Il flotte. Parfois.", max=0)
+    n.mobile(7, 1.2); n.plat(3); n.fantome(5); n.plat(3); n.clignote(5); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les monte-charges", "exploration", h=26, sol=24, ammo=(6, 0))
+    n.depart(4); n.dit("Trois monte-charges. Un seul a été entretenu. Je ne sais plus lequel.", max=0)
+    n.ascenseur(5); n.plat(4, ennemi="b"); n.ascenseur(5, 1.1); n.plat(4, ennemi="s"); n.ascenseur(5, 1.2); n.plat(4); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La vague", "action", h=26, sol=24)
+    n.depart(4); n.crue("eau", 0.28, "La vague ! LA VAGUE ! Ha ha ha !")
+    grimpe(n, 7, ressorts=(1, 4)); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le temple immergé", "histoire", decor="water")
+    n.depart(4); n.dit("Fin de la cité engloutie. Tu es trempé, Max. Moi, je suis sec. Le secret ? Je triche.", max=0)
+    n.plat(8); n.dit("Prochaine étape : le volcan. Tu vas sécher très vite.", n.x - 3)
+    n.plat(5); n.porte(4)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  ACTE 8 — LE VOLCAN
+# =====================================================================
+def acte8():
+    L = []
+    n = Niveau("Les cendres", "exploration", ammo=(6, 1))
+    n.depart(4); n.dit("Le volcan ! Il fait un peu chaud. Enlève ta veste. Non, garde-la.", max=0)
+    n.plat(4); n.mobile(6, 1.0); n.plat(4, ennemi="s"); n.ecraseurs(9, 2); n.plat(2); n.stalactites(9, 3); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La coulée", "trahison", h=26, sol=24)
+    n.depart(4); n.crue("lave", 0.17, "Ce n'est pas de l'eau, cette fois. C'est de la lave. Bonne chance !")
+    grimpe(n, 7, ressorts=(3,), ennemis=(5,)); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La forge", "exploration", arrowRate=80, ammo=(6, 1))
+    n.depart(4); n.dit("La forge des anciens. Les marteaux marchent encore. Très bien, même.", max=0)
+    n.ecraseurs(10, 3); n.fleches(5, 1); n.plat(3, ennemi="m"); n.ecraseurs(12, 4); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La mèche", "action")
+    n.depart(3); n.minuterie(1.7)
+    n.plat(3); n.sprint(); n.plat(3); n.pics(2); n.plat(3); n.fosse(3, "vide"); n.plat(3); n.pics(1); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le cœur du volcan", "histoire", decor="eye")
+    n.depart(4); n.dit("Le cœur du volcan. On l'entend battre. Ou c'est le tien ?", max=0)
+    n.plat(8); n.dit("Tu sais, Max, tu me rappelles moi, jeune. En moins tricheur.", n.x - 3)
+    n.plat(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les cheminées", "exploration", h=26, sol=24, ammo=(6, 0))
+    n.depart(4); n.crue("lave", 0.10, "La lave monte doucement. Prends ton temps. Enfin, pas trop.")
+    n.ascenseur(5); n.plat(3, ennemi="b"); n.ressort(4); n.plat(3); n.ascenseur(5, 1.1); n.plat(3); n.ressort(4); n.plat(3); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le sol brûlant", "trahison", sol=11)
+    n.depart(4); n.dit("Le sol est brûlant. Les dalles sont fausses. Le reste est vrai. Peut-être.", max=0)
+    n.pont("###xx##x###"); n.plat(2); n.stalactites(9, 3); n.pics_surprise(2, 2); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les pistons", "exploration", ammo=(6, 1))
+    n.depart(4); n.dit("Pistons, grilles, dalles. Le volcan est très bien équipé.", max=0)
+    n.ecraseurs(10, 3); n.leviers(); n.ecraseurs(12, 4, 3); n.plat(3, ennemi="m"); n.stalactites(9, 3); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("L'éruption", "action", h=26, sol=24)
+    n.depart(4); n.crue("lave", 0.26, "ÉRUPTION ! Ce n'est pas moi, cette fois. Promis. Enfin, un peu.")
+    grimpe(n, 8, ressorts=(2, 6), ennemis=(4,)); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La sortie de lave", "histoire")
+    n.depart(4); n.dit("Fin du volcan. Tu as survécu ? Mince.", max=0)
+    n.plat(8); n.dit("Les jardins suspendus sont juste au-dessus. Il y a du vent. Beaucoup.", n.x - 3)
+    n.plat(5); n.porte(4)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  ACTE 9 — LES JARDINS SUSPENDUS
+# =====================================================================
+def acte9():
+    L = []
+    n = Niveau("Les terrasses", "exploration", ammo=(6, 0))
+    n.depart(4); n.dit("Les jardins suspendus ! Ne regarde pas en bas. Moi, je regarde, c'est drôle.", max=0)
+    n.vent(((2, 3, 0), (2, 3, 0), (2, 4, 0)), 0.35); n.plat(3, ennemi="s"); n.mobile(6, 1.0); n.plat(4, objet="a"); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    L.append(miroir("Le miroir d'eau", "trahison", pics_reflet=(8, 9, 16, 24, 25, 31), pics_max=(12, 20, 28), dits=((0, "Voici ton reflet, Max. S'il se pique, tu perds. C'est la règle. Ma règle."),)))
+
+    n = Niveau("Les ponts de lianes", "exploration", ammo=(6, 0))
+    n.depart(4); n.dit("Des ponts de lianes. Enfin, ce qu'il en reste.", max=0)
+    n.vent(((2, 3, 0), (2, 3, -1), (2, 3, 1)), -0.4); n.plat(3, ennemi="b"); n.clignote(5); n.plat(3); n.fantome(5); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La tempête", "action", sol=6)
+    n.depart(4); n.dit("La tempête ET Gérard. Quelle belle journée !", max=0)
+    n.plat(6); n.rocher(1, 3, 1, 1.5, zone=n.Z(6))
+    x = n.x; n.descend(2); n.plat(6); n.pics(2); n.plat(5); n.descend(2); n.plat(4); n.fosse(1, "vide"); n.plat(5)
+    n.winds.append([x, n.x - 1, 0.35])
+    n.descend(2); n.effondrement(2, 3, 10); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La fontaine", "histoire", decor="water")
+    n.depart(4); n.dit("Une fontaine magique. On dit qu'elle exauce les vœux.", max=0)
+    n.plat(8); n.dit("J'ai souhaité que tu tombes. Ça marche souvent.", n.x - 3)
+    n.plat(5); n.porte(4)
+    L.append(n.fini())
+
+    L.append(miroir("Le double", "exploration", pics_reflet=(6, 7, 13, 14, 15, 22, 27, 28, 35), pics_max=(10, 18, 24, 31, 32), largeur=42, dits=((0, "Ton reflet est revenu. Et toi aussi tu as des pics, maintenant."),)))
+
+    n = Niveau("Les nuages", "trahison")
+    n.depart(4); n.dit("On marche sur les nuages ici. Enfin, sur ce qu'on croit être des nuages.", max=0)
+    n.fantome(5); n.plat(3); n.clignote(6); n.plat(3); n.vent(((2, 3, 0), (3, 3, 0)), -0.4); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les balançoires", "exploration", ammo=(6, 0))
+    n.depart(4); n.dit("Des planches qui se balancent. Comme ma morale.", max=0)
+    n.mobile(6, 1.0); n.plat(3, ennemi="b"); n.mobile(7, 1.2); n.plat(3, ennemi="s"); n.mobile(7, 1.4); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La grande bourrasque", "action")
+    n.depart(3); n.minuterie(1.9)
+    n.vent(((2, 3, 0), (2, 3, 0), (2, 3, 0), (2, 4, 0)), -0.45); n.plat(3); n.pics(2); n.plat(3)
+    n.vent(((2, 3, 0), (2, 3, 0)), 0.5); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le belvédère", "histoire", decor="pillars")
+    n.depart(4); n.dit("Fin des jardins. D'ici, on voit la chambre du trésor.", max=0)
+    n.plat(8); n.dit("Dernière ligne droite, Max. Que le meilleur tricheur gagne !", n.x - 3)
+    n.plat(5); n.porte(4)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  ACTE 10 — LA CHAMBRE DU TRÉSOR
+# =====================================================================
+def acte10():
+    L = []
+    n = Niveau("Les gardiens d'or", "exploration", ammo=(6, 2))
+    n.depart(4); n.dit("Les derniers gardiens. Ils sont en or. Enfin, plaqués or.", max=0)
+    n.plat(6, ennemi="mm"); n.leviers(); n.ecraseurs(10, 3); n.plat(5, ennemi="ms"); n.mur_fissure(); n.plat(3); n.stalactite_marche(); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    L.append(miroir("Le miroir d'or", "trahison", pics_reflet=(5, 6, 11, 12, 16, 22, 23, 29, 34, 35), pics_max=(8, 14, 19, 26, 31, 37), largeur=42, dits=((0, "Le miroir d'or. Ton reflet est plus beau que toi. Et plus prudent, j'espère."),)))
+
+    n = Niveau("L'escalier sans fin", "exploration", h=28, sol=26, ammo=(6, 0))
+    n.depart(4); n.crue("sable", 0.14, "Du sable ! Le sablier géant s'est renversé. Grimpe !")
+    n.ascenseur(5); n.plat(3, ennemi="b"); n.ressort(4); n.plat(3); n.ascenseur(5, 1.1); n.plat(3); grimpe(n, 3); n.plat(2); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Le sablier", "action", h=26, sol=24)
+    n.depart(4); n.crue("sable", 0.22, "Le sablier est retourné. Il te reste… pas beaucoup de sable.")
+    n.minuterie(3.2)
+    grimpe(n, 8, ressorts=(3, 6), ennemis=(1, 5)); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Les aveux", "histoire", decor="eye")
+    n.depart(4); n.dit("Max… je vais t'avouer quelque chose.", max=0)
+    n.plat(6); n.dit("Je n'ai jamais voulu l'Œil pour l'argent. Je voulais qu'on parle de moi dans les livres.", n.x - 3)
+    n.plat(6); n.dit("Mais bon, je vais quand même essayer de te battre. Par principe.", n.x - 3)
+    n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("Tous les pièges", "exploration", h=22, ammo=(6, 2), arrowRate=80)
+    n.depart(4); n.dit("J'ai rassemblé tous mes pièges préférés. C'est mon album souvenir.", max=0)
+    n.glissant(5); n.mobile(6, 1.2); n.plat(3); n.ecraseurs(9, 2); n.leviers(); n.fleches(5, 1); n.clignote(5); n.plat(3)
+    n.ressort_pique(); n.plat(3, ennemi="m"); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La dernière trahison", "trahison")
+    n.depart(4); n.dit("Pour la dernière trahison, j'ai mis le paquet.", max=0)
+    n.leviers(); x = n.x; n.plat(4); n.t([["invert", 220], ["say", "Gauche, droite… tout se mélange !"]], n.Z(x))
+    n.pics(2); n.plat(4); x2 = n.x; n.plat(6); n.fosse(2, "vide"); n.plat(4)
+    n.porte(4)
+    n.t([["door", 3, n.y], ["say", "La porte retourne au début. Je plaisante. Ou pas."]], n.Z(x2))
+    n.t([["door", n.porte_x, n.y], ["say", "Bon, d'accord, elle est revenue."]], n.Z(4))
+    L.append(n.fini())
+
+    n = Niveau("Le labyrinthe d'or", "exploration", h=22, sol=6, ammo=(4, 3), dark=True)
+    n.depart(4); n.dit("Un labyrinthe dans le noir. Je t'ai laissé une lampe. Elle est éteinte.", max=0)
+    n.plat(4, ennemi="m"); n.sol_fissure(3, 4); n.plat(4, ennemi="b"); n.faux_mur(1); n.plat(4, objet="t"); n.ecraseurs(9, 2)
+    n.sol_fissure(3, 4); n.plat(4, ennemi="s"); n.stalactites(9, 3); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    n = Niveau("La course finale", "action", sol=5, h=24)
+    n.depart(4); n.dit("La course finale ! Gérard, le plafond et moi, on est tous là.", max=0)
+    n.plat(6); n.rocher(1, 2, 1, 1.6, zone=n.Z(6)); n.crue("plafond", 0.06)
+    n.descend(2); n.plat(5); n.fosse(1, "vide"); n.plat(4); n.pics(2); n.plat(3); n.descend(3); n.ecraseurs(9, 2)
+    n.descend(2); n.effondrement(2, 2, 8); n.plat(3); n.descend(2); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 100 — finale : briser les quatre sceaux du coffre de l'Œil de Jade
+    n = Niveau("L'Œil de Jade", "histoire", ammo=(6, 2), decor="eye", doorHidden=True)
+    n.depart(4); n.dit("Le vrai coffre de l'Œil de Jade ! Quatre sceaux. Et cette fois, j'ai ma dynamite !", max=0)
+    n.dit("… Elle est mouillée. Depuis la cité engloutie. Zut.", 6)
+    n.plat(6); n.mur_fissure(1); n.plat(3, objet="t"); n.ecraseurs(8, 2); n.mur_fissure(1); n.plat(3, ennemi="m")
+    n.leviers(); n.mur_fissure(1); n.plat(3, objet="t"); n.fosse(2); n.plat(4, ennemi="b"); n.mur_fissure(1); n.plat(4); n.porte(4)
+    n.t([["showdoor"], ["say", "Tu as gagné, Max. L'Œil de Jade est à toi. … On fait équipe pour le prochain trésor ?"], ["shake", 10]], allB=True)
+    L.append(n.fini())
+    return L
+
+
+# =====================================================================
+#  Vérification
+# =====================================================================
+def appliquer(lv, morts):
+    g = [list(r) for r in lv["map"]]
+    H, W = len(g), len(g[0])
+    porte = None
+    for y in range(H):
+        for x in range(W):
+            if g[y][x] == "D":
+                porte = (x, y)
+    # plateformes mobiles : un trajet horizontal sert de pont ; un monte-charge relie le bas et le haut
+    liens = []
+    for (mx, my, mw, dx, dy, _v) in lv.get("movers", []):
+        if dy == 0:
+            for xx in range(mx, mx + mw + dx):
+                if g[my][xx] == ".":
+                    g[my][xx] = "="
+        else:
+            for yy in (my, my + dy):
+                for xx in range(mx, mx + mw):
+                    if g[yy][xx] == ".":
+                        g[yy][xx] = "="
+            for xx in range(mx, mx + mw):
+                liens.append(((xx, my - 1), (xx, my + dy - 1)))
+                liens.append(((xx, my + dy - 1), (xx, my - 1)))
+    for tr in lv["triggers"]:
+        if tr.get("lethal"):
+            continue
+        if tr.get("min") is not None and morts < tr["min"]:
+            continue
+        if tr.get("max") is not None and morts > tr["max"]:
+            continue
+        for a in tr["act"]:
+            k = a[0]
+            if k == "appear":
+                x0, y0, w, h = a[1:5]
+                for yy in range(y0, y0 + h):
+                    for xx in range(x0, x0 + w):
+                        g[yy][xx] = "#"
+                continue
+            if k == "dropspike":
+                x0, y0 = a[1], a[2]
+                g[y0][x0] = "."
+                yy = y0
+                while yy + 1 < H and g[yy + 1][x0] not in "#BJ<>c":
+                    yy += 1
+                if yy + 1 < H:
+                    g[yy][x0] = "^"
+                continue
+            if k == "fall":
+                x0, y0, w, h = a[1:5]
+                for xx in range(x0, x0 + w):
+                    g[y0][xx] = "."
+                    yy = y0
+                    while yy + 1 < H and g[yy + 1][xx] not in "#BJ<>cgG":
+                        yy += 1
+                    if yy + 1 < H:
+                        g[yy][xx] = "#"
+                continue
+            if k == "wobble":
+                continue
+            if k in ("collapse", "set", "spikes", "fall"):
+                x0, y0, w, h = a[1:5]
+                ch = {"collapse": ".", "fall": ".", "spikes": a[5] if len(a) > 5 else "^", "set": a[5] if len(a) > 5 else "."}[k]
+                for yy in range(y0, y0 + h):
+                    for xx in range(x0, x0 + w):
+                        if 0 <= yy < H and 0 <= xx < W:
+                            g[yy][xx] = ch
+            elif k == "door":
+                porte = (a[1], a[2])
+    return g, porte, liens
+
+
+def accessible(g, porte, liens=(), depart=None):
+    H, W = len(g), len(g[0])
+
+    def libre(x, y):
+        if x < 0 or x >= W or y < 0:
+            return False
+        if y >= H:
+            return True
+        return g[y][x] not in "#J<>()^vcgG="  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
+
+    def mortel(x, y):
+        return 0 <= y < H and 0 <= x < W and g[y][x] in "^v"
+
+    def porteur(x, y):
+        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG="
+
+    def debout(x, y):
+        if 0 <= y < H and 0 <= x < W and g[y][x] == "|":
+            return True
+        return y < H - 0 and libre(x, y) and y + 1 < H and porteur(x, y + 1) and not mortel(x, y)
+
+    def chute(x, y):
+        while y < H:
+            if mortel(x, y) or not libre(x, y):
+                return None
+            if debout(x, y):
+                return (x, y)
+            y += 1
+        return None
+
+    start = depart
+    for y in range(H):
+        for x in range(W):
+            if g[y][x] == "P" and start is None:
+                start = (x, y)
+    if not start:
+        return False, "pas de départ", set()
+    vus, pile = {start}, [start]
+    while pile:
+        x, y = pile.pop()
+        if (x, y) == porte:
+            return True, "", vus
+        cibles = []
+        for dx in (-1, 1):
+            if libre(x + dx, y) and not mortel(x + dx, y):
+                c = chute(x + dx, y)
+                if c:
+                    cibles.append(c)
+        ressort = y + 1 < H and g[y + 1][x] == "J"
+        haut = 6 if ressort else 2
+        for apex in range(haut, 0, -1):
+            if all(libre(x, y - r) for r in range(1, apex + 1)):
+                break
+        else:
+            apex = 0
+        if apex:
+            for dx in range(-4, 5):
+                for dy in range(-apex, 8):
+                    if dx == 0 and dy == 0:
+                        continue
+                    lim = 4 if dy >= -1 else (2 if dy >= -2 else 3)
+                    if ressort:
+                        lim = 3
+                    if abs(dx) > lim:
+                        continue
+                    tx, ty = x + dx, y + dy
+                    if not debout(tx, ty):
+                        continue
+                    a = y - apex
+                    pas = 1 if dx > 0 else -1
+                    ok = True
+                    for c in range(x + pas, tx + pas, pas) if dx else []:
+                        bas = ty if c == tx else y - 1
+                        for r in range(a, bas + 1):
+                            if not libre(c, r) or mortel(c, r):
+                                ok = False
+                                break
+                        if not ok:
+                            break
+                    if ok and dx == 0:
+                        ok = all(libre(x, r) for r in range(a, ty + 1)) if ty < y else ok
+                    if ok:
+                        cibles.append((tx, ty))
+        if g[y][x] == "|":
+            for dy in (-1, 1):
+                if 0 <= y + dy < H and (g[y + dy][x] == "|" or debout(x, y + dy)):
+                    cibles.append((x, y + dy))
+        for a_, b_ in liens:
+            if a_ == (x, y):
+                cibles.append(b_)
+        for c in cibles:
+            if c not in vus:
+                vus.add(c)
+                pile.append(c)
+    return False, "porte inaccessible", vus
+
+
+def verifier(niveaux):
+    erreurs = 0
+    for i, lv in enumerate(niveaux):
+        rows = lv["map"]
+        if len(set(len(r) for r in rows)) != 1:
+            print(f"✗ {i+1:2d} {lv['name']}: lignes de longueurs différentes"); erreurs += 1; continue
+        txt = "".join(rows)
+        if txt.count("P") != 1 or txt.count("D") != 1:
+            print(f"✗ {i+1:2d} {lv['name']}: P={txt.count('P')} D={txt.count('D')}"); erreurs += 1; continue
+        tnt_dispo = lv["ammo"][1] + txt.count("t")
+        if lv.get("_tnt", 0) > tnt_dispo:
+            print(f"✗ {i+1:2d} {lv['name']}: dynamite {tnt_dispo} < {lv['_tnt']} nécessaires"); erreurs += 1
+        for morts in range(4):
+            g, porte, liens = appliquer(lv, morts)
+            ok, pourquoi, _ = accessible(g, porte, liens)
+            if not ok:
+                print(f"✗ {i+1:2d} {lv['name']} (morts={morts}): {pourquoi}")
+                erreurs += 1
+                break
+    return erreurs
+
+
+VITESSE_ROCHER = [1.3, 1.35, 1.45, 1.5, 1.55, 1.55, 1.6, 1.6, 1.65, 1.65]
+
+
+def adoucir(lv):
+    """Courbe de difficulté : flèches synchronisées et espacées au début, rochers et crues plafonnés."""
+    a = lv["act"]
+    lv["arrowRate"] = max(lv.get("arrowRate", 110), 105 if a < 4 else 90)
+    if a < 4:
+        lv["arrowSync"] = True
+    for tr in lv["triggers"]:
+        for act in tr["act"]:
+            if act[0] == "boulder":
+                act[4] = min(act[4], VITESSE_ROCHER[a])
+            elif act[0] == "flood":
+                act[2] = round(act[2] * 0.85, 3)
+
+
+def fleches_poison(lv, deja):
+    """Lanceurs ( et ) = flèches empoisonnées. Actes 1-3 : bois uniquement ; actes 4-5 : un sur deux ;
+    actes 6-10 : surtout empoisonnées (tout empoisonné dans les Défis)."""
+    a = lv["act"]
+    rows = [list(r) for r in lv["map"]]
+    n_poison = 0
+    for y, r in enumerate(rows):
+        for x, c in enumerate(r):
+            if c not in "<>":
+                continue
+            if a < 3:
+                poison = False
+            elif a < 5:
+                poison = (x + y) % 2 == 0 or lv.get("defi")
+            else:
+                poison = lv.get("defi") or x % 3 != 0
+            if poison:
+                r[x] = "(" if c == "<" else ")"
+                n_poison += 1
+    lv["map"] = ["".join(r) for r in rows]
+    if n_poison and not deja[0]:
+        deja[0] = True
+        lv["triggers"].insert(0, {"zone": [3, 1, 1, len(rows) - 2], "act": [["hint", "Pointe rouge = flèche empoisonnée : impossible à casser, évite-la !"]]})
+
+
+def pieces(lv):
+    """Sème des pièces d'or sur des cases sûres et accessibles (elles servent à gagner des amulettes)."""
+    W = len(lv["map"][0])
+    g, porte, liens = appliquer(lv, 0)
+    ok, _, vus = accessible(g, porte, liens)
+    if not ok:
+        return
+    rows = lv["map"]
+    interdit = set()
+    for tr in lv["triggers"]:
+        if "zone" in tr:
+            zx, _, zw, _ = tr["zone"]
+            interdit.update(range(zx - 1, zx + zw + 1))
+    def sur(x, y):
+        return x not in interdit and rows[y][x] == "." and rows[y + 1][x] in "#" and rows[y - 1][x] == "." \
+            and all(rows[y][x + d] not in "^vx" for d in (-1, 1))
+    cands = sorted(c for c in vus if sur(*c) and 3 < c[0] < W - 4)
+    voulu = max(3, min(7, W // 12))
+    if not cands:
+        return
+    pas = max(1, len(cands) // voulu)
+    lv["coins"] = [list(c) for c in cands[pas // 2::pas][:voulu]]
+
+
+def point_de_sauvegarde(lv):
+    """Place un drapeau au milieu des niveaux longs, sur une case sûre, accessible,
+    d'où la porte reste atteignable, loin des pièges et des zones de déclenchement."""
+    W = len(lv["map"][0])
+    if W < 40 or lv.get("mirror"):
+        return
+    g, porte, liens = appliquer(lv, 0)
+    ok, _, vus = accessible(g, porte, liens)
+    if not ok:
+        return
+    interdit = set()
+    for tr in lv["triggers"]:
+        if "zone" in tr:
+            zx, _, zw, _ = tr["zone"]
+            interdit.update(range(zx - 1, zx + zw + 1))
+    for c in lv.get("crushers", []):
+        interdit.update(range(c[0] - 2, c[0] + 3))
+    for m in lv.get("movers", []):
+        interdit.update(range(m[0] - 1, m[0] + m[2] + m[3] + 1))
+    for w in lv.get("winds", []):
+        interdit.update(range(w[0] - 1, w[1] + 2))
+    rows = lv["map"]
+    def sur(x, y):
+        if x in interdit or not (0 < y < len(rows) - 1):
+            return False
+        for dx in (-1, 0, 1):
+            if rows[y][x + dx] in "^vxcoJ<>" or rows[y + 1][x + dx] not in "#":
+                return False
+        return rows[y - 1][x] == "." and rows[y][x] == "."
+    cands = sorted((c for c in vus if sur(*c)), key=lambda c: abs(c[0] - W / 2))
+    for c in cands:
+        if not (0.35 * W <= c[0] <= 0.7 * W):
+            continue
+        if accessible(g, porte, liens, depart=c)[0]:
+            lv["checkpoint"] = list(c)
+            return
+
+
+def main():
+    niveaux = []
+    for a, fn in enumerate([acte1, acte2, acte3, acte4, acte5, acte6, acte7, acte8, acte9, acte10]):
+        for lv in fn():
+            lv["act"] = a
+            niveaux.append(lv)
+    assert len(niveaux) == 100, len(niveaux)
+    deja = [False]
+    for lv in niveaux:
+        adoucir(lv)
+        fleches_poison(lv, deja)
+        point_de_sauvegarde(lv)
+        pieces(lv)
+    err = verifier(niveaux)
+    for lv in niveaux:
+        lv.pop("_tnt", None)
+    with open(SORTIE, "w", encoding="utf-8") as f:
+        f.write("/* Généré par outils/niveaux.py — ne pas modifier à la main. */\n")
+        f.write("window.TEMPLE_ACTS = " + json.dumps(ACTES, ensure_ascii=False) + ";\n")
+        f.write("window.TEMPLE_LEVELS = [\n")
+        for lv in niveaux:
+            f.write("  " + json.dumps(lv, ensure_ascii=False) + ",\n")
+        f.write("];\n")
+    tailles = [len(lv["map"][0]) for lv in niveaux]
+    print(f"{len(niveaux)} niveaux écrits, largeur {min(tailles)}–{max(tailles)} cases, {err} erreur(s)")
+    sys.exit(1 if err else 0)
+
+
+if __name__ == "__main__":
+    main()
