@@ -165,6 +165,9 @@ class Niveau:
         return x0
 
     def porte(self, n=4):
+        if getattr(self, "motifs", None) and not getattr(self, "_allonge", False):
+            self._allonge = True
+            allonger(self)
         if self.defi and not self._defi_fait:
             self._defi_fait = True
             self.passage_defi()
@@ -1623,6 +1626,189 @@ def acte10():
 
 
 
+
+
+# =====================================================================
+#  Rallonge des niveaux : 2 ou 3 parties de plus, faites avec les mécaniques du niveau
+# =====================================================================
+def _haut(n, k):
+    return n.y - k >= 2
+
+
+def _m_pics(n, d, r): n.plat(2); n.pics(1 + (d > 0)); n.plat(2)
+def _m_fosse(n, d, r): n.plat(2); n.fosse(2 + (d > 1)); n.plat(2)
+def _m_vide(n, d, r): n.plat(2); n.fosse(2 + (d > 0), "vide"); n.plat(2)
+def _ennemi(e, long=6):
+    def f(n, d, r): n.plat(long + d, ennemi=e * (1 + (d > 1 and e not in "jYA")))
+    return f
+def _m_liane(n, d, r):
+    if not _haut(n, 6): return False
+    n.plat(2); n.liane(7 + d, 5, ph=r.random() * 6); n.plat(2)
+def _m_liane2(n, d, r):
+    if not _haut(n, 6): return False
+    n.plat(2); n.liane(7, 5, ph=r.random() * 6); n.plat(2); n.liane(8, 5, ph=r.random() * 6); n.plat(2)
+def _m_ressort(n, d, r):
+    if not _haut(n, 7): return False
+    n.plat(2); n.ressort(4); n.plat(3 + d, ennemi=r.choice([None, None, "s"])); n.descend(4); n.plat(2)
+def _m_fragile(n, d, r):
+    if not _haut(n, 7): return False
+    n.plat(2); n.ressort_fragile(4); n.plat(3); n.descend(4); n.plat(2)
+def _m_corde(n, d, r):
+    if not _haut(n, 8): return False
+    n.plat(2); n.corde(5); n.plat(3); n.descend(5); n.plat(2)
+def _m_fleches(n, d, r): n.fleches(5 + d, 1); n.plat(2); n.descend(1); n.plat(2)
+def _m_mur(n, d, r): n.plat(3, objet="t"); n.mur_fissure(); n.plat(2)
+def _m_effondre(n, d, r): n.effondrement(2, 2 + (d == 0), delai=(2 - d) * 6)
+def _m_surprise(n, d, r): n.pics_surprise(2 if d < 2 else 3, 2)
+def _m_plateformes(n, d, r): n.plateformes([(2, 3 - (d > 1), 0), (2 + (d > 0), 3, 0), (2, 3, 0)], fond=r.choice(["pics", "vide"]))
+def _m_fantome(n, d, r): n.plat(2); n.fantome(5 + (d > 1)); n.plat(2)
+def _m_clignote(n, d, r): n.plat(2); n.clignote(5 + d); n.plat(2)
+def _m_stalactites(n, d, r):
+    if not _haut(n, 5): return False
+    n.stalactites(9 + d, 3)
+def _m_plafond(n, d, r):
+    if not _haut(n, 5): return False
+    n.plafond_bas(10 + 2 * d, chutes=[(3, 18 - 3 * d), (7, 14 - 2 * d)] + ([(10, 10)] if d > 0 else []))
+def _m_feu(n, d, r):
+    if not _haut(n, 7): return False
+    n.tete_feu(6 + d); n.plat(2); n.descend(2); n.plat(2)
+def _m_feu2(n, d, r): n.tete_feu_plafond(7 + d)
+def _m_soleil(n, d, r):
+    if not _haut(n, 5): return False
+    n.soleil(16 + 2 * d, piliers=(4, 9, 14) if d < 2 else (4, 8, 12, 16))
+def _m_coule(n, d, r): n.coule(tuple((2, 2 - (d > 1)) for _ in range(3 + d)))
+def _m_ecraseurs(n, d, r):
+    if not _haut(n, 5): return False
+    n.ecraseurs(9 + 2 * d, 2 + d)
+def _m_rocher(n, d, r):
+    if not _haut(n, 4): return False
+    n.plat(3); x = n.x; n.plat(14 + 2 * d)
+    n.rocher(x + 1, n.y - 3, 1, 1.35 + 0.05 * d, zone=n.Z(x + 8)); n.fosse(2, "vide"); n.plat(3)
+def _m_glissant(n, d, r): n.glissant(5 + d)
+def _m_fleche_marche(n, d, r):
+    if not _haut(n, 6): return False
+    n.fleche_marche(3); n.plat(2); n.descend(3); n.plat(2)
+def _m_torche(n, d, r): n.plat(2, objet="T"); n.plateformes([(2, 3, 0), (2, 3, 0)])
+def _m_sablier(n, d, r): n.plat(3, objet="w")
+def _m_inversion(n, d, r):
+    x = n.x; n.plat(3); n.pics(2); n.plat(3)
+    n.t([["invert", 150 + 30 * d]] + ([["hint", "⇄ Inversé !"]] if r.random() < 0.5 else []), n.Z(x))
+def _m_pont(n, d, r): n.pont(r.choice(["##x##x###", "###xx###", "#x###x#x##"]))
+def _m_faux_mur(n, d, r): n.plat(2); n.faux_mur(2); n.plat(2, ennemi=r.choice([None, "s"]))
+# Himalaya
+def _m_neige(n, d, r): n.neige(6 + 2 * d, ennemi=r.choice([None, "S"]))
+def _m_glace(n, d, r): n.glace_crevasse(5 + 2 * d, 2 + (d > 1))
+def _m_pont_corde(n, d, r): n.plat(2); n.pont_corde(8 + 2 * d); n.plat(2)
+def _m_lac(n, d, r): n.plat(2); n.lac(8 + 2 * d); n.plat(2)
+def _m_geyser(n, d, r):
+    if not _haut(n, 8): return False
+    n.geyser(5); n.plat(2 + d); n.descend(5); n.plat(2)
+def _m_ski(n, d, r):
+    if n.y + 4 > n.h - 3: return False
+    n.ski(3, 4, ("pics", "trou"))
+def _m_avalanche(n, d, r):
+    if not _haut(n, 4): return False
+    n.plat(3); x = n.x; n.plat(14 + 2 * d)
+    n.t([["boulder", x + 1, n.y - 2, 1, 1.4 + 0.05 * d, 0, 1], ["shake", 8]], n.Z(x + 8)); n.fosse(3, "vide"); n.plat(3)
+def _m_crevasse(n, d, r): n.crevasse_cachee(8 + 2 * d, tuple(sorted(r.sample(range(1, 7 + 2 * d), 2 + d))))
+def _m_aigle(n, d, r): n.plat(3, ennemi="A"); n.plateformes([(2, 3, 0), (2 + (d > 0), 3, 0)], fond="vide")
+def _m_vent(n, d, r): n.vent(((2, 3, 0), (2, 3, 0), (2, 3, 0)), r.choice([-0.35, 0.35]) * (1 + 0.15 * d))
+def _m_vent_tourne(n, d, r): n.vent(((2, 3, 0), (2, 3, 0), (2, 3, 0)), 0.4); n.winds[-1].append(150 - 20 * d)
+def _m_mobile(n, d, r): n.plat(2); n.mobile(7 + d, 0.9 + 0.15 * d); n.plat(2)
+def _m_brasero(n, d, r): n.plat(3, objet="f")
+
+MOTIFS = {
+    "pics": _m_pics, "fosse": _m_fosse, "vide": _m_vide, "serpent": _ennemi("s"), "momie": _ennemi("m"), "singe": _ennemi("k"),
+    "jaguar": _ennemi("j", 7), "chauve": _ennemi("b", 7), "liane": _m_liane, "liane2": _m_liane2, "ressort": _m_ressort,
+    "fragile": _m_fragile, "corde": _m_corde, "fleches": _m_fleches, "mur": _m_mur, "effondre": _m_effondre,
+    "surprise": _m_surprise, "plateformes": _m_plateformes, "fantome": _m_fantome, "clignote": _m_clignote,
+    "stalactites": _m_stalactites, "plafond": _m_plafond, "feu": _m_feu, "feu2": _m_feu2, "soleil": _m_soleil,
+    "coule": _m_coule, "ecraseurs": _m_ecraseurs, "rocher": _m_rocher, "glissant": _m_glissant,
+    "fleche_marche": _m_fleche_marche, "torche": _m_torche, "sablier": _m_sablier, "inversion": _m_inversion,
+    "pont": _m_pont, "faux_mur": _m_faux_mur,
+    "neige": _m_neige, "glace": _m_glace, "pont_corde": _m_pont_corde, "lac": _m_lac, "geyser": _m_geyser, "ski": _m_ski,
+    "avalanche": _m_avalanche, "crevasse": _m_crevasse, "loup": _ennemi("L", 9), "aigle": _m_aigle, "yeti": _ennemi("Y", 6),
+    "chevre": _ennemi("C", 7), "bonhomme": _ennemi("S", 6), "vent": _m_vent, "vent_tourne": _m_vent_tourne,
+    "mobile": _m_mobile, "brasero": _m_brasero,
+}
+
+# mécaniques de chaque niveau (la première est la vedette : elle revient le plus souvent)
+MOTIFS_NIVEAUX = {
+    (1, 1): ["liane", "pics", "serpent", "mur", "fosse"],
+    (1, 2): ["effondre", "surprise", "pics", "singe", "fosse"],
+    (1, 3): ["momie", "singe", "plafond", "mur", "fosse"],
+    (1, 4): ["rocher", "surprise", "pics", "effondre", "fosse"],
+    (1, 5): ["ressort", "fragile", "corde", "liane", "serpent"],
+    (1, 6): ["pont", "jaguar", "fosse", "pics", "plateformes"],
+    (1, 7): ["fleches", "fleche_marche", "feu", "momie", "mur"],
+    (1, 8): ["rocher", "fantome", "singe", "pics", "effondre"],
+    (1, 9): ["faux_mur", "soleil", "serpent", "surprise", "fosse"],
+    (1, 10): ["torche", "serpent", "fosse", "ressort"],
+    (1, 11): ["plafond", "stalactites", "jaguar", "effondre", "pics"],
+    (1, 12): ["liane2", "chauve", "mur", "ressort", "vide"],
+    (1, 13): ["plafond", "stalactites", "feu", "singe", "surprise"],
+    (1, 14): ["coule", "fantome", "liane", "serpent", "plateformes"],
+    (1, 15): ["inversion", "jaguar", "liane", "pics"],
+    (1, 16): ["jaguar", "surprise", "fosse", "pics", "serpent"],
+    (1, 17): ["ecraseurs", "momie", "feu2", "surprise", "pics"],
+    (1, 18): ["clignote", "sablier", "soleil", "pics", "vide"],
+    (2, 1): ["neige", "glissant", "bonhomme", "chevre", "fosse"],
+    (2, 2): ["glace", "chevre", "surprise", "neige", "vide"],
+    (2, 3): ["pont_corde", "loup", "vide", "neige"],
+    (2, 4): ["avalanche", "pics", "neige", "fosse"],
+    (2, 5): ["mobile", "brasero", "ressort", "bonhomme"],
+    (2, 6): ["stalactites", "yeti", "glace", "fosse"],
+    (2, 7): ["crevasse", "chevre", "neige", "bonhomme"],
+    (2, 8): ["loup", "ressort", "mur", "neige", "fosse"],
+    (2, 9): ["ski", "bonhomme", "neige"],
+    (2, 10): ["vent", "bonhomme", "brasero", "vide"],
+    (2, 11): ["geyser", "yeti", "fosse", "bonhomme"],
+    (2, 12): ["lac", "loup", "neige", "vide"],
+    (2, 13): ["aigle", "plateformes", "chevre"],
+    (2, 14): ["neige", "chevre", "bonhomme", "glissant", "fosse"],
+    (2, 16): ["corde", "vent", "aigle", "chevre"],
+    (2, 17): ["plafond", "stalactites", "yeti", "effondre"],
+    (2, 18): ["vent_tourne", "loup", "vide", "vent"],
+    (2, 19): ["neige", "glace", "pont_corde", "geyser", "lac", "stalactites", "loup", "yeti", "aigle", "crevasse"],
+}
+
+
+def allonger(n):
+    """Ajoute 2 ou 3 parties au niveau, faites de ses propres mécaniques, de plus en plus difficiles."""
+    import random
+    rng = random.Random(n.monde * 1000 + n.num)
+    motifs = n.motifs
+    cible = n.cible
+    n.plat(4)
+    debut = n.x
+    total = max(1, cible - debut)
+    prec, garde, compte = None, 0, {}
+    dernier_brasero = n.x
+    while n.x < cible and garde < 80:
+        garde += 1
+        d = min(2, int(3 * (n.x - debut) / total))
+        choix = [m for m in motifs if m != prec and compte.get(m, 0) < (4 if m == motifs[0] else 2)] or [m for m in motifs if m != prec] or motifs
+        # la mécanique vedette revient plus souvent
+        poids = [3 if m == motifs[0] else 1 for m in choix]
+        m = rng.choices(choix, poids)[0]
+        if MOTIFS[m](n, d, rng) is False:
+            prec = m
+            continue
+        prec = m
+        compte[m] = compte.get(m, 0) + 1
+        n.plat(rng.choice((2, 3, 3, 4)))
+        # du relief entre deux passages : on monte ou on descend d'une ou deux marches
+        if rng.random() < 0.6 and not n.opts.get("ski"):
+            k = rng.choice((-2, -1, -1, 1, 1, 2))
+            if k < 0 and n.y + k >= 7:
+                n.monte(-k); n.plat(rng.choice((3, 4, 5)))
+            elif k > 0 and n.y + k <= n.h - 2:
+                n.descend(k); n.plat(rng.choice((3, 4, 5)))
+        if n.opts.get("froid") and n.x - dernier_brasero > 22:
+            n.plat(2, objet="f"); dernier_brasero = n.x
+    n.plat(3)
+
+
 # =====================================================================
 #  MONDE 1 — L'EMPIRE INCA (20 niveaux, validés dans l'Atlas)
 # =====================================================================
@@ -1651,9 +1837,14 @@ FIN_INCA = {
 }
 
 
+def _cible(n):
+    return 150 if n.type == "histoire" else 195 if n.defi else 180
+
+
 def I(nom, type_, **kw):
     n = Niveau(nom, type_, monde=1, **kw)
     n.defi = n.num in DEFIS_MONDE
+    n.motifs = MOTIFS_NIVEAUX.get((1, n.num)); n.cible = _cible(n)
     return n
 
 
@@ -1799,6 +1990,7 @@ def monde_inca():
     n = I("Le faux mur", "trahison")
     n.depart(4); n.plat(4); n.leviers(); n.plat(3)
     n.soleil(20, piliers=(5, 11, 16)); n.plat(3, ennemi="s"); n.salle_secrete("bloc_faux"); n.plat(3)
+    n._allonge = True; allonger(n)
     n.passage_defi(); n._defi_fait = True
     trois_murs(n)
     L.append(n.fini())
@@ -1901,9 +2093,11 @@ def monde_inca():
     L.append(n.fini())
 
     # 19 — Le sablier (grande épreuve) : le sable monte, on grimpe par ressorts, cordes et liane
-    n = I("Le sablier", "action", h=34, sol=32)
+    n = I("Le sablier", "action", h=50, sol=48)
+    n.motifs = None
     n.depart(4); n.crue("sable", 0.2)
     grimpe(n, 3, ressorts=(1,), ennemis=(0,)); n.plat(2, ennemi="j"); n.corde(5); n.plat(3, ennemi="b")
+    n.liane(7, 4); n.plat(3); grimpe(n, 2, ressorts=(1,), ennemis=(1,)); n.plat(2, ennemi="j"); n.corde(5); n.plat(3)
     n.liane(7, 4); n.plat(3); grimpe(n, 2, ressorts=(0,)); n.salle_secrete("bloc_faux")
     n.plat(2); n.ressort_fragile(4); n.plat(3, ennemi="b"); n.corde(5); n.plat(3); n.porte(4)
     L.append(n.fini())
@@ -2099,6 +2293,7 @@ def H_(nom, type_, palette="himalaya", **kw):
     n = Niveau(nom, type_, monde=2, **kw)
     n.defi = n.num in DEFIS_MONDE
     n._palette = palette
+    n.motifs = MOTIFS_NIVEAUX.get((2, n.num)); n.cible = _cible(n)
     return n
 
 
@@ -2185,7 +2380,7 @@ def monde_himalaya():
     L.append(n.fini())
 
     # 9 — La pente de ski (Défi) : Max glisse tout seul
-    n = H_("La pente de ski", "action", h=22, sol=4)
+    n = H_("La pente de ski", "action", h=30, sol=4)
     n.depart(4); n.plat(4); n.ski(6, 5, ("pics", "trou", None)); n.salle_secrete("bloc_faux")
     n.plat(3, ennemi="S"); n.ski(5, 4, ("trou", "pics")); n.plat(4); n.porte(4)
     L.append(n.fini())
@@ -2228,7 +2423,8 @@ def monde_himalaya():
     L.append(n.fini())
 
     # 15 — La grotte de glace (Histoire) : le reflet de Max dans le sol gelé
-    lv = miroir("La grotte de glace", "histoire", pics_reflet=(9, 10, 18, 27, 28, 37, 46, 47), pics_max=(13, 23, 32, 41, 51), largeur=60)
+    lv = miroir("La grotte de glace", "histoire", pics_reflet=(9, 10, 18, 27, 28, 37, 46, 47, 58, 59, 70, 81, 82, 93, 104, 105, 116, 127, 128),
+                pics_max=(13, 23, 32, 41, 51, 63, 75, 87, 98, 110, 121, 132), largeur=140)
     lv["monde"] = 2; lv["palette"] = "glace"; lv["decor"] = "glace"
     lv["triggers"].append({"zone": [4, 1, 1, 10], "max": 0, "act": [["hint", "La glace reflète Max… et son reflet a ses propres pics !"]]})
     L.append(lv)
@@ -2643,7 +2839,7 @@ def drapeaux(lv):
     lv.pop("checkpoint", None)
     if W < 40:
         return
-    zones = [(0.25, 0.42), (0.58, 0.76)] if W >= 95 else [(0.38, 0.66)]
+    zones = [(0.2, 0.33), (0.45, 0.58), (0.7, 0.83)] if W >= 160 else [(0.25, 0.42), (0.58, 0.76)] if W >= 95 else [(0.38, 0.66)]
     pris = []
     for a, b in zones:
         lv["checkpoint"] = None

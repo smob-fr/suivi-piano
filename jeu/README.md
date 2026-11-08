@@ -16,8 +16,8 @@ qui est déjà ouvert. Chaque monde finit par un boss qu'on **assomme** (jamais 
 
 | Monde | État | Contenu |
 |---|---|---|
-| 1. L'Empire inca | **terminé** | 19 niveaux rallongés (2 à 3 parties, drapeaux) + le boss, le Jaguar de pierre |
-| 2. Les neiges de l'Himalaya | **terminé** | 19 niveaux + le boss, le Yéti grognon |
+| 1. L'Empire inca | **terminé** | 19 niveaux longs (160 à 240 cases, 3 drapeaux) + le boss, le Jaguar de pierre |
+| 2. Les neiges de l'Himalaya | **terminé** | 19 niveaux longs + le boss, le Yéti grognon |
 | 3. Les abysses | **essai** | niveaux 1 à 3 : nage, oxygène, bulles, méduses, crabes, anguilles (toujours ouverts pour tester) ; la suite = anciens niveaux |
 | 4. Le royaume des nuages | provisoire | idem |
 | 5. La cité d'or | provisoire | idem |
