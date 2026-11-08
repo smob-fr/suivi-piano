@@ -181,24 +181,43 @@
   @media (prefers-reduced-motion: reduce) { .zone { transition: none; } }
 
   /* ---------- Choix du niveau ---------- */
-  #ecran-niveaux { place-items: start center; }
-  #ecran-niveaux .carte { width: min(100%, 640px); }
+  /* ---------- Carte des mondes ---------- */
+  .panneau.mondes { padding: 0; place-items: stretch; background: radial-gradient(circle at 50% 40%, #4a3020, #1a0f08 75%); overflow: hidden; }
+  .mondes-carte { position: absolute; inset: 0; display: grid; place-items: center;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  .mo-svg { width: 100%; height: 100%; display: block; }
+  .mo-retour { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 8px); left: calc(env(safe-area-inset-left, 0px) + 10px); z-index: 2; background: rgba(20,12,6,.75) !important; }
+  .mo-fleche { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 8px); z-index: 2; min-width: 52px; padding: 10px 0 !important; background: rgba(20,12,6,.75) !important; }
+  .mo-prec { right: calc(env(safe-area-inset-right, 0px) + 70px); }
+  .mo-suiv { right: calc(env(safe-area-inset-right, 0px) + 10px); }
+  .mo-msg { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); margin: 0; z-index: 3; background: rgba(20,12,6,.9); color: var(--parchemin);
+    border: 1px solid var(--or); border-radius: 6px; padding: 8px 14px; font-family: var(--f-carnet); font-size: 15px; white-space: nowrap; }
+  .mo-titre { font-family: var(--f-titre); font-size: 34px; fill: #fff3d6; letter-spacing: .02em; }
+  .mo-sous { font-family: var(--f-carnet); font-size: 24px; fill: #fff3d6; paint-order: stroke; stroke: #1a0f06; stroke-width: 5px; }
+  .mo-nom { font-family: var(--f-titre); font-size: 21px; fill: #3b2a1a; }
+  .mo-score { font-family: var(--f-carnet); font-size: 21px; fill: #3b2a1a; paint-order: stroke; stroke: #f3e2b8; stroke-width: 6px; }
+  .mo-num { font-family: var(--f-titre); font-size: 20px; fill: #fff3d6; paint-order: stroke; stroke: #3b2a1a; stroke-width: 5px; }
+  .mo-bientot, .mo-petit { font-family: var(--f-carnet); font-size: 20px; fill: #6b5a3a; }
+  .mo-etiq { font-family: var(--f-pix); font-size: 13px; fill: #3b2a1a; }
+  .mo-chiffre { font-family: var(--f-titre); font-size: 32px; fill: #fff6dc; paint-order: stroke; stroke: #3b2a1a; stroke-width: 5px; }
+  .mo-chiffre.eteint { fill: #9a8c78; stroke: #2a221c; }
+  .mo-record { font-family: var(--f-pix); font-size: 14px; fill: #fff3d6; }
+  .mo-cart-num { font-family: var(--f-pix); font-size: 16px; fill: #fff3d6; letter-spacing: .06em; }
+  .mo-cart-titre { font-family: var(--f-titre); font-size: 28px; fill: #3b2a1a; }
+  .mo-cart-info { font-family: var(--f-carnet); font-size: 19px; fill: #6b5236; }
+  .mo-jouer-txt { font-family: var(--f-titre); font-size: 32px; fill: #2a1606; letter-spacing: .06em; }
+  .mo-monde, .mo-niv, .mo-jouer { cursor: pointer; outline: none; }
+  .mo-monde.ferme, .mo-niv.ferme { cursor: not-allowed; }
+  .mo-monde:not(.ferme):hover > circle:nth-of-type(4), .mo-monde:focus-visible > circle:nth-of-type(4) { stroke: #fff3c4; }
+  .mo-niv:not(.ferme):hover > circle, .mo-niv:focus-visible > circle { filter: brightness(1.12); }
+  .mo-jouer:hover rect, .mo-jouer:focus-visible rect { filter: brightness(1.1); stroke: #fff3c4; }
+  #mo-max { transition: transform 1.6s cubic-bezier(.45,.05,.35,1); }
+  .mo-saut { animation: mo-saut 1.2s ease-in-out infinite; }
+  @keyframes mo-saut { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  .mo-halo { animation: mo-halo 1.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes mo-halo { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .mo-saut, .mo-halo { animation: none; } #mo-max { transition: none; } }
   .entete { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  .acte { display: grid; gap: 8px; }
-  .acte h3 { margin: 0; font-family: var(--f-titre); font-weight: 400; font-size: 18px; color: var(--parchemin); }
-  .acte h3 span { font-family: var(--f-pix); font-size: 11px; color: var(--or); letter-spacing: .12em; margin-right: 6px; }
-  .grille { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
-  .case {
-    aspect-ratio: 1; max-width: 100%; min-width: 0; padding: 0; border-radius: 4px; cursor: pointer;
-    border: 1px solid rgba(236,220,180,.25); border-bottom: 3px solid var(--type);
-    background: rgba(236,220,180,.06); display: grid; place-content: center; gap: 1px;
-  }
-  .case b { font-family: var(--f-pix); font-size: 15px; font-weight: 400; color: var(--texte); }
-  .case small { font-size: 9px; color: var(--terne); font-variant-numeric: tabular-nums; }
-  .case.defi { box-shadow: inset 0 0 0 2px rgba(200,67,47,.75); }
-  .case.defi::after { content: "défi"; font-size: 8px; letter-spacing: .08em; color: #f08a78; text-transform: uppercase; }
-  .case:disabled { opacity: .35; cursor: not-allowed; border-bottom-color: rgba(236,220,180,.2); }
-  .case:not(:disabled):hover { background: rgba(226,166,64,.18); }
   .legende { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--terne); }
   .legende li { display: flex; align-items: center; gap: 6px; }
   .legende i { width: 10px; height: 3px; display: inline-block; }
@@ -239,7 +258,6 @@
     .bouton { font-size: 15px; padding: 10px 16px; }
     .bouton.discret { font-size: 13px; padding: 9px 12px; }
   }
-  @media (max-width: 560px) { .grille { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 </style>
 
 <div id="rot">
@@ -280,7 +298,7 @@
       <button id="btn-retour-options" class="bouton discret" type="button">Retour</button>
     </div>
     <div class="actions">
-      <button id="btn-niveaux" class="bouton" type="button">Carte des niveaux</button>
+      <button id="btn-niveaux" class="bouton" type="button">Carte des mondes</button>
       <button class="bouton discret" type="button" data-avis>Donner mon avis</button>
       <button id="btn-stats" class="bouton discret" type="button">Mes statistiques</button>
       <button class="bouton discret" type="button" data-boutique>Boutique ✦</button>
@@ -308,22 +326,12 @@
   </div>
 </section>
 
-<section id="ecran-niveaux" class="panneau" hidden>
-  <div class="carte">
-    <div class="entete">
-      <h2>Carte du temple</h2>
-      <button id="btn-retour-niveaux" class="bouton discret" type="button">Retour</button>
-    </div>
-    <ul class="legende">
-      <li><i style="background:#6fb58f"></i>Exploration</li>
-      <li><i style="background:#e5483c"></i>Trahison</li>
-      <li><i style="background:#e3913b"></i>Action</li>
-      <li><i style="background:#b49ae6"></i>Histoire</li>
-      <li><i style="background:#c8432f;height:10px;width:10px;border-radius:2px"></i>Défi (un niveau sur trois)</li>
-      <li>☠ = ton record de chutes</li>
-    </ul>
-    <div id="liste-niveaux"></div>
-  </div>
+<section id="ecran-mondes" class="panneau mondes" hidden>
+  <div id="mondes-carte" class="mondes-carte"></div>
+  <button id="btn-mondes-retour" class="bouton discret mo-retour" type="button">◀ Retour</button>
+  <button id="btn-mondes-prec" class="bouton discret mo-fleche mo-prec" type="button" aria-label="Monde précédent" hidden>◀</button>
+  <button id="btn-mondes-suiv" class="bouton discret mo-fleche mo-suiv" type="button" aria-label="Monde suivant" hidden>▶</button>
+  <p id="mondes-msg" class="mo-msg" role="status" hidden></p>
 </section>
 
 <section id="ecran-avis" class="panneau" hidden>
@@ -435,6 +443,7 @@
     <div class="actions">
       <button id="btn-reprendre" class="bouton" type="button">Reprendre</button>
       <button id="btn-recommencer" class="bouton discret" type="button">Recommencer</button>
+      <button id="btn-carte-pause" class="bouton discret" type="button">Carte du monde</button>
       <button id="btn-accueil" class="bouton discret" type="button">Accueil</button>
       <button id="btn-utiliser-amulette" class="bouton discret" type="button" hidden>✦ Activer une amulette</button>
       <button class="bouton discret" type="button" data-boutique>Boutique ✦</button>
@@ -472,6 +481,7 @@
 
 </div>
 <script src="levels.js"></script>
+<script src="mondes.js"></script>
 <script src="game.js"></script>
 <!--/CONTENU-->
 </html>

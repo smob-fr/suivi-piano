@@ -85,7 +85,7 @@
   document.body.classList.toggle("tactile", isTouch);
 
   const canvas = document.getElementById("jeu");
-  const ctx = canvas.getContext("2d");
+  let ctx = canvas.getContext("2d");
   const stage = document.getElementById("scene");
   let scale = 1, dpr = 1;
   const view = { w: W, h: H };
@@ -162,7 +162,7 @@
     if (e.code === "Escape" || e.code === "KeyP") { togglePause(); e.preventDefault(); return; }
     if (e.code === "KeyR" && game.mode === "play" && !game.paused) { restartRoom(); return; }
     if (e.code === "KeyM") { toggleMute(); return; }
-    if (e.code === "Enter" && game.mode === "title" && !overlays.titre.hidden) { playFrom(Number(document.getElementById("btn-jouer").dataset.level || 0)); return; }
+    if (e.code === "Enter" && game.mode === "title" && !overlays.titre.hidden) { ouvrirCarte(); return; }
     const n = keyMap[e.code];
     if (n && (game.mode === "play" || game.mode === "card")) { setInput(n, true); e.preventDefault(); }
   });
@@ -1308,7 +1308,8 @@
     progress.unlocked = Math.max(progress.unlocked, Math.min(LEVELS.length - 1, i + 1));
     if (i + 1 >= LEVELS.length) progress.finished = true;
     saveProgress();
-    if (i + 1 < LEVELS.length) startLevel(i + 1);
+    if (window.MondesUI && MondesUI.finitUnMonde(i)) { game.mode = "title"; R = null; releaseAll(); resize(); MondesUI.finDeMonde(i); }
+    else if (i + 1 < LEVELS.length) startLevel(i + 1);
     else { game.mode = "end"; R = null; showEnd(); }
   }
 
@@ -2380,7 +2381,7 @@
   /* ================= Interface DOM ================= */
   const overlays = {
     titre: document.getElementById("ecran-titre"),
-    niveaux: document.getElementById("ecran-niveaux"),
+    mondes: document.getElementById("ecran-mondes"),
     options: document.getElementById("ecran-options"),
     avis: document.getElementById("ecran-avis"),
     stats: document.getElementById("ecran-stats"),
@@ -2432,9 +2433,10 @@
     const btn = document.getElementById("btn-jouer");
     btn.setAttribute("aria-label", progress.finished ? "Jouer : recommencer depuis le début" : u > 0 ? `Jouer : continuer au niveau ${u + 1}` : "Jouer");
     btn.dataset.level = progress.finished ? 0 : u;
+    const nm = window.MondesUI ? MondesUI.NIV : 20, nbM = Math.ceil(LEVELS.length / nm);
     document.getElementById("accueil-stats").textContent = u > 0 || progress.deaths
-      ? `Niveau ${Math.min(u + 1, LEVELS.length)} sur ${LEVELS.length} · ${progress.deaths} chute${progress.deaths > 1 ? "s" : ""}`
-      : `${LEVELS.length} niveaux · ${ACTS.length} actes`;
+      ? `Monde ${Math.floor(Math.min(u, LEVELS.length - 1) / nm) + 1} · niveau ${(Math.min(u, LEVELS.length - 1) % nm) + 1} · ${progress.deaths} chute${progress.deaths > 1 ? "s" : ""}`
+      : `${nbM} mondes · ${LEVELS.length} niveaux`;
   }
   setInterval(() => {
     if (overlays.titre.hidden || !document.getElementById("accueil-citation")) return;
@@ -2443,39 +2445,6 @@
     q.classList.add("fondu");
     setTimeout(() => { q.textContent = QUOTES[quoteI]; q.classList.remove("fondu"); }, 350);
   }, 5000);
-
-  function buildLevelGrid() {
-    const box = document.getElementById("liste-niveaux");
-    box.innerHTML = "";
-    ACTS.forEach((act, a) => {
-      const sec = document.createElement("section");
-      sec.className = "acte";
-      const h = document.createElement("h3");
-      h.innerHTML = `<span>Acte ${a + 1}</span> ${act.nom}`;
-      sec.appendChild(h);
-      const grid = document.createElement("div");
-      grid.className = "grille";
-      LEVELS.forEach((lv, i) => {
-        if (lv.act !== a) return;
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "case";
-        const locked = i > progress.unlocked && !progress.tester;
-        b.disabled = locked;
-        b.style.setProperty("--type", TYPES[lv.type].color);
-        const best = progress.best[i];
-        const passe = progress.stats[i] && progress.stats[i].passe && best == null;
-        b.innerHTML = `<b>${i + 1}</b><small>${locked ? "fermé" : best != null ? `☠ ${best}` : passe ? "passé ▶" : "nouveau"}</small>`;
-        if (lv.defi) b.classList.add("defi");
-        b.title = `${lv.name} · ${TYPES[lv.type].label}`;
-        b.setAttribute("aria-label", `Niveau ${i + 1}, ${lv.name}${locked ? ", verrouillé" : ""}`);
-        b.addEventListener("click", () => playFrom(i));
-        grid.appendChild(b);
-      });
-      sec.appendChild(grid);
-      box.appendChild(sec);
-    });
-  }
 
   function fmtTime(frames) { const s = Math.floor(frames / 60); return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`; }
   function showEnd() {
@@ -2586,9 +2555,40 @@
     game.paused = false; showOverlay(null);
   });
 
-  document.getElementById("btn-jouer").addEventListener("click", (e) => playFrom(Number(e.currentTarget.dataset.level || 0)));
-  document.getElementById("btn-niveaux").addEventListener("click", () => { buildLevelGrid(); showOverlay("niveaux"); });
-  document.getElementById("btn-retour-niveaux").addEventListener("click", () => showOverlay("options"));
+  /* ---------- Carte des mondes ---------- */
+  // les personnages de la carte sont dessinés par les mêmes fonctions que dans le jeu
+  function sprite(dessin) {
+    const c = document.createElement("canvas"), k = 8;
+    c.width = 20 * k; c.height = 24 * k;
+    const vrai = ctx, vraiR = R;
+    ctx = c.getContext("2d"); ctx.imageSmoothingEnabled = false; ctx.scale(k, k);
+    try { dessin(); } catch (_) {} finally { ctx = vrai; R = vraiR; }
+    return c.toDataURL();
+  }
+  let sprites = null;
+  function lesSprites() {
+    if (sprites) return sprites;
+    sprites = {
+      max: sprite(() => { R = { t: 0, hat: null, player: { x: 5, y: 7, w: 10, h: 15, vx: 0, vy: 0, face: 1, grounded: true, alive: true, anim: 0, club: 0, shield: 0, invuln: 0 } }; drawPlayer(); }),
+      archibald: sprite(() => { R = { t: 0 }; drawRival({ x: 4, y: 7, state: "wait", t: 0, face: -1 }); }),
+    };
+    return sprites;
+  }
+  function ouvrirCarte() {
+    unlockAudio();
+    if (!window.MondesUI) { playFrom(Number(document.getElementById("btn-jouer").dataset.level || 0)); return; }
+    MondesUI.afficherCarte();
+  }
+  function quitterVersMonde() {
+    const i = R ? R.index : game.level;
+    game.mode = "title"; game.paused = false; R = null;
+    releaseAll(); resize();
+    MondesUI.afficherMonde(MondesUI.mondeDe(i));
+  }
+  if (window.MondesUI) MondesUI.init({ progress, LEVELS, playFrom, showOverlay, goHome, get sprites() { return lesSprites(); } });
+  document.getElementById("btn-jouer").addEventListener("click", ouvrirCarte);
+  document.getElementById("btn-niveaux").addEventListener("click", ouvrirCarte);
+  document.getElementById("btn-carte-pause").addEventListener("click", quitterVersMonde);
   document.getElementById("btn-options").addEventListener("click", () => { unlockAudio(); showOverlay("options"); });
   document.getElementById("btn-retour-options").addEventListener("click", () => { showOverlay("titre"); refreshHome(); });
   document.getElementById("btn-rester").addEventListener("click", () => showOverlay("titre"));
