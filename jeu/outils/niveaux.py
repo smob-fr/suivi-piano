@@ -59,7 +59,7 @@ class Niveau:
         self.opts = opts
         self.tnt_besoin = 0
         self.movers, self.crushers, self.winds = [], [], []
-        self.vines, self.flames, self.beams, self.secrets, self.liens = [], [], [], [], []
+        self.vines, self.flames, self.beams, self.secrets, self.liens, self.glacons = [], [], [], [], [], []
         self.monde = opts.pop("monde", None)
         self._mur()
 
@@ -115,7 +115,7 @@ class Niveau:
             for i, e in enumerate(ennemi):
                 ex = x0 + n // 2 + i * 2 - len(ennemi) + 1
                 ex = max(x0, min(x0 + n - 1, ex))
-                yy = self.y - 2 if e == "b" else self.y
+                yy = self.y - 2 if e == "b" else self.y - 5 if e == "A" else self.y
                 self.put(ex, yy, e)
         if objet:
             self.put(x0 + max(0, n // 2 - 1) if not ennemi else x0, self.y, objet)
@@ -619,6 +619,81 @@ class Niveau:
         self.astuce("Tout s'effondre : ne t'arrête pas !", x0, max=0)
         return x0
 
+    # ---------- monde de l'Himalaya ----------
+    def neige(self, n=6, ennemi=None, objet=None):
+        """Neige profonde : Max y court moins vite et saute moins haut."""
+        x0 = self.plat(n, ennemi=ennemi, objet=objet)
+        for c in range(x0, x0 + n):
+            self.cols[c][self.y + 1] = "z"
+        return x0
+
+    def glace_crevasse(self, n=6, trou=2):
+        """Glace vive qui finit au bord d'une crevasse : on glisse, il faut sauter à temps."""
+        x0 = self.x
+        for _ in range(n):
+            c = self.colonne()
+            self.cols[c][self.y + 1] = "g"
+        self.fosse(trou, "vide"); self.plat(2)
+        return x0
+
+    def pont_corde(self, n=8):
+        """Pont de corde au-dessus du vide : chaque planche lâche peu après le passage de Max."""
+        x0 = self.x
+        for _ in range(n):
+            c = self.colonne(fond="vide")
+            self.cols[c][self.y + 1] = "y"
+        self.astuce("Les planches lâchent derrière toi : ne t'arrête pas !", x0 - 2, max=0)
+        return x0
+
+    def lac(self, n=10):
+        """Lac gelé : la glace fine craque et cède si Max reste immobile."""
+        x0 = self.x
+        for _ in range(n):
+            c = self.colonne(fond="vide")
+            self.cols[c][self.y + 1] = "i"
+        self.astuce("Glace fine : ne reste jamais immobile dessus !", x0 - 2, max=0)
+        return x0
+
+    def geyser(self, monte=5):
+        """Une source chaude crache de la vapeur en rythme et propulse Max sur une corniche haute."""
+        x0 = self.plat(2)
+        c = self.colonne()
+        self.cols[c][self.y + 1] = "V"
+        self.y -= monte
+        self.plat(3)
+        self.astuce("Attends le jet du geyser pour monter", x0, max=0)
+        return x0
+
+    def ski(self, pentes=5, longueur=5, obstacles=("pics", "trou")):
+        """Pente de ski : Max glisse tout seul vers la droite, on ne gère que les sauts."""
+        x0 = self.x
+        for i in range(pentes):
+            self.plat(longueur)
+            o = obstacles[i % len(obstacles)] if obstacles else None
+            if o == "pics":
+                self.pics(1); self.plat(2)
+            elif o == "trou":
+                self.fosse(2, "vide"); self.plat(2)
+            if self.y + 2 < self.h - 1:
+                self.descend(1)
+        self.opts.setdefault("ski", []).append([x0, self.x - 1])
+        self.astuce("Pente de ski ! Tu glisses tout seul : saute au bon moment", x0 - 1, max=0)
+        self.plat(6)
+        return x0
+
+    def crevasse_cachee(self, n=10, trous=(2, 3, 6, 7)):
+        """La neige cache des crevasses ; les traces des chèvres montrent le bon chemin."""
+        x0 = self.x
+        for i in range(n):
+            if i in trous:
+                c = self.colonne(fond="vide")
+                self.cols[c][self.y + 1] = "x"
+            else:
+                c = self.colonne()
+                self.opts.setdefault("traces", []).append([c, self.y])
+        self.astuce("Suis les traces des chèvres…", x0 - 2, max=0)
+        return x0
+
     # ---------- pièges ----------
     def effondrement(self, n=2, avance=2, delai=0, **kw):
         """Sol plat ; en arrivant, les n cases devant s'effondrent (fosse mortelle)."""
@@ -664,13 +739,15 @@ class Niveau:
         d.update(self.opts)
         if self.defi:
             d["defi"] = True
-        for k in ("movers", "crushers", "winds", "vines", "flames", "beams", "secrets"):
+        for k in ("movers", "crushers", "winds", "vines", "flames", "beams", "secrets", "glacons"):
             if getattr(self, k):
                 d[k] = getattr(self, k)
         if self.liens:
             d["_liens"] = self.liens
         if self.monde:
             d["monde"] = self.monde
+        if getattr(self, "_palette", None):
+            d["palette"] = self._palette
         d["_tnt"] = self.tnt_besoin
         return d
 
@@ -1989,6 +2066,214 @@ def abysses_essai():
     return L
 
 
+
+
+# =====================================================================
+#  MONDE 2 — LES NEIGES DE L'HIMALAYA (20 niveaux)
+# =====================================================================
+FIN_HIMALAYA = {
+    1: "Archibald, emmitouflé jusqu'au nez : « Il fait moins quarante, Max. Ma moustache a gelé. Rentre chez toi ! »",
+    2: "Archibald glisse sur les fesses : « Cette glace est très bien. Je l'ai cirée moi-même. »",
+    3: "Archibald, de l'autre côté du gouffre : « Le pont ? Il tenait très bien. Pour une personne. »",
+    4: "Archibald, tout blanc : « J'ai juste éternué. Je ne savais pas qu'une montagne était aussi susceptible. »",
+    5: "Histoire. Les moines du monastère ont vu passer Archibald : il cherche le deuxième morceau de la carte, caché au sommet, dans la caverne du Yéti. « Ne réveillez pas le Yéti », disent-ils. Archibald n'écoute jamais les moines.",
+    6: "Archibald se gratte la tête : « Une stalactite m'est tombée dessus. Je l'ai prise pour un compliment. »",
+    7: "Archibald, coincé dans une crevasse : « Ne me regarde pas. Je cherchais… un caillou. »",
+    8: "Archibald court plus vite que d'habitude : « Les loups sont de mon côté ! Enfin, je crois. »",
+    9: "Archibald, les skis à l'envers : « Je descends toujours comme ça. C'est une technique. »",
+    10: "Histoire. Dans la tempête, Max entend une voix : c'est Archibald, perdu. Il crie : « Max ! Par où est le sommet ? » Max lui montre le chemin. Archibald file sans dire merci.",
+    11: "Archibald sort d'un bain chaud : « Ne juge pas. Même les tricheurs ont besoin de vacances. »",
+    12: "Archibald pêche dans un trou de la glace : « Silence, ça mord ! … Ah non, c'est un phoque. »",
+    13: "Archibald se protège la tête : « Ces aigles en veulent à mon chapeau. Ils ont bon goût. »",
+    14: "Archibald claque des dents : « J'ai brûlé ma carte pour me réchauffer. C'était une copie. Presque sûr. »",
+    15: "Histoire. Dans la grotte, les murs de glace reflètent Max… et derrière, Archibald enfant, avec son grand-père, devant une carte. Max comprend que l'Œil est une histoire de famille.",
+    16: "Archibald, accroché à un drapeau : « Ces drapeaux portent bonheur. Pas à moi, visiblement. »",
+    17: "Archibald, sous un bloc de glace : « Je vais très bien. Je me rafraîchis. »",
+    18: "Archibald, retourné comme un parapluie : « Le vent change tout le temps ! C'est de la triche ! »",
+    19: "Archibald, à l'entrée de la caverne : « Le Yéti dort. Vas-y en premier, toi. Moi, je… surveille. »",
+    20: "Le Yéti ronfle, une bosse sur la tête. Archibald, qui s'était caché, attrape le deuxième morceau de carte… Max le lui reprend. « La carte mène sous la mer ! » souffle Archibald. Rendez-vous dans les abysses !",
+}
+
+
+def H_(nom, type_, palette="himalaya", **kw):
+    n = Niveau(nom, type_, monde=2, **kw)
+    n.defi = n.num in DEFIS_MONDE
+    n._palette = palette
+    return n
+
+
+def boss_yeti():
+    NUMERO[0] += 1
+    W, h, y = 40, 17, 15
+    rows = [["#"] * W for _ in range(h)]
+    for r in range(1, y + 1):
+        for x in range(1, W - 1):
+            rows[r][x] = "."
+    rows[y][3] = "P"; rows[y][W - 4] = "D"
+    return {"name": "Le Yéti grognon", "type": "histoire", "ammo": [6, 0], "map": ["".join(r) for r in rows],
+            "triggers": [{"zone": [6, 1, 1, h - 2], "max": 0, "act": [["hint", "Attire le yéti sous une grosse stalactite : quand il frappe le sol, elle lui tombe dessus ! Saute quand il retombe."]]}],
+            "glacons": [[9, 1], [19, 1], [29, 1]], "boss": "yeti", "doorHidden": True, "monde": 2, "palette": "glace", "decor": "glace", "_tnt": 0}
+
+
+def monde_himalaya():
+    NUMERO[0] = 0
+    L = []
+
+    # 1 — Le camp de base : la neige profonde ralentit, premières glissades
+    n = H_("Le camp de base", "exploration")
+    n.depart(4); n.plat(2, objet="f"); n.neige(6); n.astuce("Neige profonde : Max avance moins vite et saute moins haut", 6)
+    n.plat(3); n.glissant(5); n.plat(4, ennemi="S"); n.astuce("Un bonhomme de neige ! Saute-lui dessus", n.x - 6, max=0)
+    n.neige(8); n.salle_secrete("bloc_faux"); n.plat(4)
+    n.plat(5, ennemi="C"); n.astuce("Les chèvres foncent ! Rebondis sur leur dos", n.x - 7, max=0)
+    n.plat(3); n.fosse(2); n.plat(3, objet="f"); n.neige(6); n.monte(1); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 2 — La glace vive : on glisse jusqu'au bord des crevasses
+    n = H_("La glace vive", "trahison")
+    n.depart(4); n.glace_crevasse(6); n.plat(3); n.glace_crevasse(8, 3)
+    n.plat(4, ennemi="C"); n.salle_secrete("plafond"); n.plat(3)
+    n.glace_crevasse(10, 2); n.pics_surprise(1, 2); n.plat(3); n.glissant(6); n.plat(3)
+    n.neige(5); n.glace_crevasse(7, 3); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 3 — Le pont de cordes (Défi) : les planches lâchent derrière Max
+    n = H_("Le pont de cordes", "action")
+    n.depart(4); n.plat(3); n.pont_corde(8); n.plat(4)
+    n.pont_corde(11); n.plat(5, ennemi="L"); n.astuce("Un loup ! Il fonce sur toi dès qu'il te voit", n.x - 7, max=0)
+    n.salle_secrete("bloc_fissure"); n.plat(3); n.pont_corde(14); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 4 — L'avalanche : une boule de neige qui grossit en roulant
+    n = H_("L'avalanche", "action", h=22, sol=5)
+    n.depart(4); n.plat(6)
+    n.t([["boulder", 1, n.y - 2, 1, 1.4, 0, 1], ["shake", 8]], n.Z(6))
+    n.descend(2); n.plat(6); n.pics(1); n.plat(5); n.descend(2); n.neige(4); n.plat(4)
+    n.descend(2); n.plat(6); n.fosse(3, "vide"); n.astuce("La boule est trop grosse : elle tombe dans le trou !", n.x - 6, max=0)
+    x = n.x; n.plat(12); n.salle_secrete("bloc_faux"); n.plat(3)
+    n.t([["boulder", x + 1, n.y - 2, 1, 1.5, 0, 1], ["shake", 8]], n.Z(x + 10))
+    n.descend(2); n.plat(5); n.pics(2); n.plat(5); n.descend(2); n.plat(6); n.fosse(3, "vide"); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 5 — Le monastère (Histoire) : moulins à prières qui servent de plateformes
+    n = H_("Le monastère", "histoire", h=20)
+    n.depart(4); n.plat(3, objet="f"); n.mobile(7, 0.9); n.plat(4); n.ascenseur(4); n.plat(4, objet="f")
+    n.mobile(8, 1.0); n.plat(3); n.salle_secrete("bloc_fissure"); n.plat(3)
+    n.ressort(4); n.plat(4); n.mobile(7, 1.2); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 6 — Les stalactites de glace (Défi) : toutes les façons de tomber
+    n = H_("Les stalactites de glace", "trahison", palette="glace")
+    n.depart(3); n.stalactites(9, 3); n.plat(3); n.stalactites(10, 3); n.plat(4, ennemi="Y")
+    n.astuce("Petit yéti : il lance des boules de neige", n.x - 6, max=0)
+    n.stalactites(9, 3); n.plat(3); n.salle_secrete("plafond"); n.stalactites(10, 3); n.plat(3)
+    n.stalactites(9, 3); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 7 — La crevasse cachée : suivre les traces des chèvres
+    n = H_("La crevasse cachée", "trahison")
+    n.depart(4); n.plat(3); n.crevasse_cachee(10, (2, 3, 6, 7)); n.plat(5, ennemi="C")
+    n.neige(6); n.crevasse_cachee(12, (1, 4, 5, 8, 9)); n.plat(3); n.salle_secrete("bloc_faux"); n.plat(3, ennemi="S")
+    n.crevasse_cachee(10, (3, 4, 7)); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 8 — La meute : des loups qui chassent à plusieurs
+    n = H_("La meute", "action", ammo=(6, 1))
+    n.depart(4); n.plat(6); n.ressort(3); n.plat(3); n.descend(3); n.plat(10, ennemi="L"); n.ressort(4); n.plat(5); n.descend(4)
+    n.plat(12, ennemi="LL"); n.astuce("Saute-leur dessus, ou monte hors de leur portée", n.x - 14, max=0)
+    n.plat(3, objet="t"); n.mur_fissure(); n.plat(4); n.salle_secrete("bloc_fissure")
+    n.plat(10, ennemi="LL"); n.fosse(2); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 9 — La pente de ski (Défi) : Max glisse tout seul
+    n = H_("La pente de ski", "action", h=22, sol=4)
+    n.depart(4); n.plat(4); n.ski(6, 5, ("pics", "trou", None)); n.salle_secrete("bloc_faux")
+    n.plat(3, ennemi="S"); n.ski(5, 4, ("trou", "pics")); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 10 — Le blizzard (Histoire) : vent et visibilité réduite
+    n = H_("Le blizzard", "histoire", blizzard=True)
+    n.depart(4); n.plat(3, objet="f")
+    n.vent(((2, 3, 0), (2, 3, 0), (2, 4, -1)), -0.35); n.plat(5, ennemi="S"); n.plat(3, objet="f")
+    n.vent(((2, 3, 0), (3, 3, 1), (2, 3, 0)), -0.4); n.plat(4); n.salle_secrete("bloc_faux")
+    n.plat(3, objet="f"); n.vent(((2, 4, 0), (2, 3, 0)), -0.3); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 11 — Les sources chaudes : geysers qui propulsent, vapeur
+    n = H_("Les sources chaudes", "exploration", h=24)
+    n.depart(4); n.plat(3); n.geyser(5); n.plat(4, ennemi="Y"); n.fosse(2); n.plat(3)
+    n.geyser(5); n.plat(5, ennemi="S"); n.salle_secrete("bloc_fissure"); n.plat(3); n.descend(6); n.plat(4)
+    n.geyser(6); n.plat(4, ennemi="Y"); n.porte(4)
+    L.append(n.fini())
+
+    # 12 — Le lac gelé (Défi) : la glace craque si on reste immobile
+    n = H_("Le lac gelé", "trahison")
+    n.depart(4); n.plat(3); n.lac(10); n.plat(4, ennemi="L"); n.lac(14); n.plat(3)
+    n.salle_secrete("plafond"); n.lac(12); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 13 — Les aigles : ils piquent pendant les sauts
+    n = H_("Les aigles", "action")
+    n.depart(4); n.plat(4, ennemi="A"); n.astuce("Les aigles piquent quand tu sautes : saute quand ils sont loin", 4, max=0)
+    n.plateformes([(2, 3, 0), (3, 3, -1), (2, 3, 0)], fond="vide"); n.plat(4, ennemi="A")
+    n.plateformes([(3, 3, 1), (2, 2, 0), (3, 3, -1)], fond="vide"); n.plat(4, ennemi="C")
+    n.salle_secrete("bloc_faux"); n.plat(3, ennemi="A"); n.plateformes([(2, 3, 0), (3, 4, 0)], fond="vide"); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 14 — Le froid mordant : de brasero en brasero
+    n = H_("Le froid mordant", "exploration", froid=True)
+    n.depart(4); n.plat(2, objet="f"); n.astuce("Le froid te gagne : réchauffe-toi aux braseros", 3)
+    n.neige(10); n.plat(3, ennemi="C"); n.plat(3, objet="f"); n.neige(8, ennemi="S"); n.fosse(2); n.neige(8)
+    n.plat(2, objet="f"); n.salle_secrete("bloc_fissure"); n.neige(10); n.glissant(5); n.plat(2, objet="f")
+    n.neige(8, ennemi="C"); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 15 — La grotte de glace (Histoire) : le reflet de Max dans le sol gelé
+    lv = miroir("La grotte de glace", "histoire", pics_reflet=(9, 10, 18, 27, 28, 37, 46, 47), pics_max=(13, 23, 32, 41, 51), largeur=60)
+    lv["monde"] = 2; lv["palette"] = "glace"; lv["decor"] = "glace"
+    lv["triggers"].append({"zone": [4, 1, 1, 10], "max": 0, "act": [["hint", "La glace reflète Max… et son reflet a ses propres pics !"]]})
+    L.append(lv)
+
+    # 16 — Les drapeaux de prière : grimper aux cordes dans le vent
+    n = H_("Les drapeaux de prière", "exploration", h=22)
+    n.depart(4); n.plat(3); n.corde(5); n.plat(3, ennemi="A"); n.vent(((2, 3, 0), (2, 3, 0)), 0.35)
+    n.plat(3); n.corde(5); n.plat(4, ennemi="C"); n.salle_secrete("bloc_faux"); n.plat(3)
+    n.descend(6); n.plat(3); n.corde(6); n.plat(3, ennemi="A"); n.vent(((2, 3, 0), (3, 3, 0)), -0.35); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 17 — La chute de séracs : des blocs de glace tombent en cascade
+    n = H_("La chute de séracs", "action", palette="glace")
+    n.depart(3); n.plafond_bas(24, chutes=[(4, 20), (8, 16), (12, 14), (16, 12), (20, 10)])
+    n.plat(3, ennemi="Y"); n.stalactites(10, 3, "cascade"); n.plat(3); n.salle_secrete("plafond"); n.plat(2)
+    x = n.fuite_effondrement(18)
+    for tr in n.trig:
+        if tr.get("zone") and tr["act"][0][0] == "collapse" and tr["act"][0][1] >= x:
+            tr["lethal"] = True
+    n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 18 — Le col du vent (Défi) : le vent change de sens
+    n = H_("Le col du vent", "action")
+    n.depart(4); n.plat(3)
+    x = n.vent(((2, 3, 0), (2, 3, 0), (2, 3, -1)), 0.4); n.winds[-1].append(150)
+    n.plat(5, ennemi="L"); n.salle_secrete("bloc_faux"); n.plat(3)
+    x = n.vent(((2, 3, 0), (3, 3, 1), (2, 3, 0), (2, 3, 0)), -0.45); n.winds[-1].append(120)
+    n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 19 — La caverne du yéti (grande épreuve) : tout le monde de la neige réuni
+    n = H_("La caverne du yéti", "action", palette="glace", h=22)
+    n.depart(4); n.neige(6); n.glace_crevasse(6); n.plat(3, ennemi="L"); n.pont_corde(9); n.plat(3, ennemi="Y")
+    n.geyser(5); n.plat(3); n.lac(8); n.plat(3, ennemi="C"); n.stalactites(9, 3); n.salle_secrete("bloc_fissure")
+    n.plat(3, ennemi="A"); n.crevasse_cachee(8, (2, 5)); n.plat(4, ennemi="L"); n.porte(4)
+    L.append(n.fini())
+
+    L.append(boss_yeti())
+    for i, lv in enumerate(L):
+        lv["fin"] = FIN_HIMALAYA[i + 1]
+        lv.setdefault("monde", 2)
+    return L
+
+
 # =====================================================================
 #  Vérification
 # =====================================================================
@@ -2069,7 +2354,10 @@ def appliquer(lv, morts):
 O2_CASES = 40   # cases qu'on peut nager sans respirer (le jeu en permet ~70 : bonne marge)
 
 
-def accessible(g, porte, liens=(), depart=None, eau=None, bulles=()):
+FROID_CASES = 70   # cases parcourues loin d'un brasero (le jeu en permet bien plus)
+
+
+def accessible(g, porte, liens=(), depart=None, eau=None, bulles=(), chaud=None):
     H, W = len(g), len(g[0])
     air_bulles = set(bulles)
 
@@ -2081,13 +2369,13 @@ def accessible(g, porte, liens=(), depart=None, eau=None, bulles=()):
             return False
         if y >= H:
             return True
-        return g[y][x] not in "#J<>()^vcgG=qn"  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
+        return g[y][x] not in "#J<>()^vcgG=qnziyV"  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
 
     def mortel(x, y):
         return 0 <= y < H and 0 <= x < W and g[y][x] in "^v"
 
     def porteur(x, y):
-        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG=qn"   # q (ressort fragile) compte comme un simple sol
+        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG=qnziyV"   # q (ressort fragile) compte comme un simple sol
 
     def debout(x, y):
         if 0 <= y < H and 0 <= x < W and g[y][x] == "|":
@@ -2112,7 +2400,7 @@ def accessible(g, porte, liens=(), depart=None, eau=None, bulles=()):
                 start = (x, y)
     if not start:
         return False, "pas de départ", set()
-    vus = {start: O2_CASES}
+    vus = {start: FROID_CASES if chaud is not None else O2_CASES}
     pile = [start]
     while pile:
         x, y = pile.pop()
@@ -2139,7 +2427,7 @@ def accessible(g, porte, liens=(), depart=None, eau=None, bulles=()):
                 c = chute(x + dx, y)
                 if c:
                     cibles.append(c)
-        ressort = y + 1 < H and g[y + 1][x] == "J"
+        ressort = y + 1 < H and g[y + 1][x] in "JV"
         haut = (6 if ressort else 2) if cibles_sauts else 0
         for apex in range(haut, 0, -1):
             if all(libre(x, y - r) for r in range(1, apex + 1)):
@@ -2182,7 +2470,11 @@ def accessible(g, porte, liens=(), depart=None, eau=None, bulles=()):
             if a_ == (x, y):
                 cibles.append(b_)
         for c in cibles:
-            if mouille(*c) and c not in air_bulles and c[1] > eau:
+            if chaud is not None:
+                no = FROID_CASES if c in chaud else o2 - max(1, abs(c[0] - x))
+                if no < 0:
+                    continue
+            elif mouille(*c) and c not in air_bulles and c[1] > eau:
                 no = (o2 if dans_eau and (x, y) not in air_bulles and y > eau else O2_CASES) - 1
                 if no < 0:
                     continue
@@ -2203,7 +2495,18 @@ def acces(lv, g, porte, liens, depart=None):
                 while yy >= 0 and g[yy][x] not in "#B":
                     bulles.append((x, yy))
                     yy -= 1
-    return accessible(g, porte, liens, depart, lv.get("eau"), bulles)
+    chaud = None
+    if lv.get("froid"):
+        chaud = set()
+        for y, row in enumerate(lv["map"]):
+            for x, c in enumerate(row):
+                if c == "f":
+                    chaud.update((x + dx, y + dy) for dx in range(-2, 3) for dy in range(-2, 3))
+        for y, row in enumerate(lv["map"]):
+            for x, c in enumerate(row):
+                if c == "P":
+                    chaud.add((x, y))
+    return accessible(g, porte, liens, depart, lv.get("eau"), bulles, chaud)
 
 
 def verifier(niveaux):
@@ -2394,8 +2697,33 @@ def main():
         adoucir(lv)
         drapeaux(lv)
         pieces(lv)
-    niveaux = inca + autres
-    niveaux[40:43] = mer
+    him = monde_himalaya()
+    for lv in him:
+        lv["act"] = 2
+        lv.setdefault("palette", "himalaya")
+        for tr in lv["triggers"]:
+            tr["act"] = [a for a in tr["act"] if a[0] != "say"]
+        lv["triggers"] = [tr for tr in lv["triggers"] if tr["act"]]
+        if lv["palette"] == "himalaya":
+            # dehors : pas de plafond, on voit le ciel
+            rows = [list(r) for r in lv["map"]]
+            for x in range(1, len(rows[0]) - 1):
+                if rows[1][x] == ".":
+                    rows[0][x] = "."
+            lv["map"] = ["".join(r) for r in rows]
+            lv.setdefault("decor", "himalaya")
+        adoucir(lv)
+        drapeaux(lv)
+        pieces(lv)
+    # Mondes 3 à 5 : les essais des abysses, puis les anciens niveaux restants (les plus difficiles)
+    # identifiants stables : la sauvegarde suit chaque niveau même s'il change de place
+    for i, lv in enumerate(inca): lv["id"] = f"inca-{i+1}"
+    for i, lv in enumerate(him): lv["id"] = f"him-{i+1}"
+    for i, lv in enumerate(mer): lv["id"] = f"mer-{i+1}"
+    for lv in autres: lv["id"] = f"old-{lv['orig']}"
+    ordre_v2 = [lv["id"] for lv in inca] + [lv["id"] for lv in autres]
+    ordre_v3 = [lv["id"] for lv in inca] + [lv["id"] for lv in autres[:20]] + [lv["id"] for lv in mer] + [lv["id"] for lv in autres[23:]]
+    niveaux = inca + him + mer + autres[-57:]
     assert len(niveaux) == 100, len(niveaux)
     err = verifier(niveaux)
     for lv in niveaux:
@@ -2404,12 +2732,15 @@ def main():
     with open(SORTIE, "w", encoding="utf-8") as f:
         f.write("/* Généré par outils/niveaux.py — ne pas modifier à la main. */\n")
         f.write("window.TEMPLE_ACTS = " + json.dumps(ACTES, ensure_ascii=False) + ";\n")
+        f.write("window.TEMPLE_ORDRE_V2 = " + json.dumps(ordre_v2) + ";\n")
+        f.write("window.TEMPLE_ORDRE_V3 = " + json.dumps(ordre_v3) + ";\n")
         f.write("window.TEMPLE_LEVELS = [\n")
         for lv in niveaux:
             f.write("  " + json.dumps(lv, ensure_ascii=False) + ",\n")
         f.write("];\n")
     tailles = [len(lv["map"][0]) for lv in niveaux]
     print(f"{len(niveaux)} niveaux écrits, largeur {min(tailles)}–{max(tailles)} cases, {err} erreur(s)")
+    print("Himalaya :", ", ".join(f"{i+1} {lv['name']} ({len(lv['map'][0])}×{len(lv['map'])})" for i, lv in enumerate(him)))
     print("Abysses :", ", ".join(f"{lv['name']} ({len(lv['map'][0])}×{len(lv['map'])})" for lv in mer))
     print("Monde inca :", ", ".join(f"{i+1} {lv['name']} ({len(lv['map'][0])}×{len(lv['map'])}, {len(lv.get('checkpoints', []))} drapeau(x))" for i, lv in enumerate(inca)))
     sys.exit(1 if err else 0)

@@ -1,6 +1,6 @@
 # Plan de cadrage : Max et l’Œil de Jade
 
-> Statut : **validé** le 8 novembre 2026 (312 oui, 7 non sur 319 idées). Étape 1 (carte des mondes) et étape 2 (monde inca complet, avec son boss) **développées** ; étape 3 (3 niveaux d'essai des abysses) **validée** : nage, réserve d'air et alternance surface / plongée conservées telles quelles pour tout le monde des abysses.
+> Statut : **validé** le 8 novembre 2026 (312 oui, 7 non sur 319 idées). Étape 1 (carte des mondes) et étape 2 (monde inca complet, avec son boss) **développées** ; étape 3 (3 niveaux d'essai des abysses) **validée** : nage, réserve d'air et alternance surface / plongée conservées telles quelles pour tout le monde des abysses. Étape 4 (monde de l'Himalaya, 20 niveaux + boss) **développée**.
 
 ## Décisions et ajustements issus de la validation
 

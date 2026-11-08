@@ -31,6 +31,8 @@
     engloutie:  { moss: "#2f8a7e", bg: "#05121a", bg2: "#0a1f2b", stone: "#2c5f6e", stoneTop: "#4e95a6", stoneDark: "#173a45", crack: "#a7a07a", crackDark: "#5f5b42", deco: "#2b7f95" },
     volcan:     { bg: "#140806", bg2: "#22100b", stone: "#4a2f2a", stoneTop: "#7a4a3a", stoneDark: "#2c1915", crack: "#c58a4a", crackDark: "#7a4e25", deco: "#5a1d10" },
     jardins:    { moss: "#5fae3e", bg: "#0e1a12", bg2: "#18291c", stone: "#6b6a4c", stoneTop: "#97956a", stoneDark: "#45442f", crack: "#c0a36a", crackDark: "#7a6540", deco: "#2c5a2c" },
+    himalaya:   { neige: true, bg: "#0e1a28", bg2: "#16283a", stone: "#566a7c", stoneTop: "#f4f8fc", stoneDark: "#35444f", crack: "#a8b8c4", crackDark: "#5f6f7a", deco: "#c0392b" },
+    glace:      { neige: true, bg: "#081622", bg2: "#0f2436", stone: "#4f7a96", stoneTop: "#e6f4ff", stoneDark: "#2a4a60", crack: "#9fc4dd", crackDark: "#4f7ea6", deco: "#9fe0ff" },
     abysses:    { moss: "#3fa88a", bg: "#04202e", bg2: "#08304a", stone: "#2f5866", stoneTop: "#c9b07a", stoneDark: "#1b3540", crack: "#b0a070", crackDark: "#6a5e3e", deco: "#1f6f8b" },
     tresor:     { bg: "#140f06", bg2: "#22190a", stone: "#7b6332", stoneTop: "#b8964a", stoneDark: "#4c3c1c", crack: "#e2c070", crackDark: "#8a6c2c", deco: "#e2a640" },
   };
@@ -285,15 +287,25 @@
     while (u < LEVELS.length - 1 && progress.best[u] != null) u++;
     progress.unlocked = aJoue ? u : 0;
     progress.finished = false;
-    progress.v = 2;
+    LEVELS.forEach((lv, i) => { if (lv.monde && !lv.orig) { delete progress.best[i]; delete progress.stats[i]; } });
+    progress.v = 4; progress.ids = LEVELS.map((lv) => lv.id);
     try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {}
   }
-  // v3 : les 3 premiers niveaux du monde 3 sont devenus les essais des abysses
-  if (progress.v === 2) {
-    LEVELS.forEach((lv, i) => { if (lv.monde === 3) { delete progress.best[i]; delete progress.stats[i]; if (progress.coinsPris) delete progress.coinsPris[i]; } });
-    progress.v = 3;
-    try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {}
-  }
+  // v4 et suite : chaque niveau a un identifiant ; si l'ordre change, la sauvegarde suit les niveaux
+  (function suivreLesNiveaux() {
+    const ids = LEVELS.map((lv) => lv.id);
+    const anciens = progress.ids || (progress.v === 3 ? window.TEMPLE_ORDRE_V3 : progress.v === 2 ? window.TEMPLE_ORDRE_V2 : null);
+    if (anciens && anciens.join() !== ids.join()) {
+      const ou = new Map(ids.map((id, i) => [id, i]));
+      const remap = (o) => { const n = {}; for (const k in o || {}) { const j = ou.get(anciens[k]); if (j != null) n[j] = o[k]; } return n; };
+      progress.best = remap(progress.best); progress.stats = remap(progress.stats); progress.coinsPris = remap(progress.coinsPris);
+      const avant = progress.unlocked;
+      let u = 0; while (u < LEVELS.length - 1 && progress.best[u] != null) u++;
+      progress.unlocked = avant > 0 ? u : 0;
+      progress.finished = false;
+    }
+    if (!anciens || anciens.join() !== ids.join() || progress.v !== 4) { progress.ids = ids; progress.v = 4; try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {} }
+  })();
   function saveProgress() { try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {} }
 
   /* ================= État ================= */
@@ -319,7 +331,7 @@
       player: null, door: null, shooters: [],
       enemies: [], pickups: [], arrows: [], dynamites: [], boulders: [], blocks: [], rival: null,
       particles: [], fired: new Set(), say: null, hint: null, shake: 0, t: 0, bCount: 0,
-      torches: [], stuck: [], sink: new Map(), bulles: [],
+      torches: [], stuck: [], sink: new Map(), bulles: [], braseros: [], boules: [], glaceFine: new Map(), gz: [],
     };
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
@@ -337,6 +349,13 @@
         else if (c === "r") { room.enemies.push({ kind: "r", x: x * T + 2, y: y * T + 8, w: 12, h: 8, vx: -0.5, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "l") { const dir = x + 1 < COLS && "#B".includes(tiles[y][x + 1]) ? -1 : 1; room.enemies.push({ kind: "l", nid: dir < 0 ? (x + 1) * T : x * T, dir, x: x * T, y: y * T + 5, w: 1, h: 7, vx: 0, vy: 0, out: 0, etat: "cache", k: 0, alive: true, t: 0 }); tiles[y][x] = "."; }
         else if (c === "u") { room.bulles.push({ x, y }); tiles[y][x] = "."; }
+        else if (c === "L") { room.enemies.push({ kind: "L", x: x * T + 1, y: y * T + 7, w: 14, h: 9, vx: -0.7, vy: 0, alive: true, t: Math.random() * 10, etat: "rode" }); tiles[y][x] = "."; }
+        else if (c === "A") { room.enemies.push({ kind: "A", x: x * T + 2, y: y * T + 4, hx: x * T + 2, hy: y * T + 4, w: 12, h: 8, vx: 0.6, vy: 0, alive: true, t: Math.random() * 10, etat: "plane" }); tiles[y][x] = "."; }
+        else if (c === "Y") { room.enemies.push({ kind: "Y", x: x * T + 1, y: y * T + 2, w: 14, h: 14, vx: 0, vy: 0, alive: true, t: (x * 29) % 120, face: -1 }); tiles[y][x] = "."; }
+        else if (c === "C") { room.enemies.push({ kind: "C", x: x * T + 1, y: y * T + 5, w: 14, h: 11, vx: -0.4, vy: 0, alive: true, t: Math.random() * 10, etat: "broute" }); tiles[y][x] = "."; }
+        else if (c === "S") { room.enemies.push({ kind: "S", x: x * T + 2, y: y * T + 2, w: 12, h: 14, vx: -0.35, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
+        else if (c === "f") { room.braseros.push({ x, y }); tiles[y][x] = "."; }
+        else if (c === "V") room.gz.push({ x, y, t: (x * 41) % 200, on: false });
         else if (c === "^" || c === "v") room.spikeAnim.set(x + "," + y, 1);
         else if (c === "<" || c === ">" || c === "(" || c === ")") {
           const left = c === "<" || c === "(";
@@ -379,11 +398,16 @@
     room.movers = (def.movers || []).map(([x, y, w, dx, dy, sp], i) => ({ x0: x * T, y0: y * T, x: x * T, y: y * T, w: w * T, h: 6, dx: dx * T, dy: dy * T, sp, t: i * 40, mx: 0, my: 0 }));
     // écraseurs : [x, ligne du haut, décalage] ; ils tombent de 3 cases puis remontent
     room.crushers = (def.crushers || []).map(([x, y, ph, drop]) => ({ x: x * T + 1, y0: y * T, y: y * T, w: T - 2, h: T, drop: (drop || 3) * T, t: ph || 0 }));
-    room.winds = (def.winds || []).map(([x0, x1, f]) => ({ x0: x0 * T, x1: (x1 + 1) * T, f }));
+    room.winds = (def.winds || []).map(([x0, x1, f, per]) => ({ x0: x0 * T, x1: (x1 + 1) * T, f, f0: f, per: per || 0 }));
     room.flood = null; room.timer = 0;
     // eau (monde des abysses) : tout ce qui est sous la ligne `eau` est sous l'eau ; Max y nage et doit respirer
     room.eau = def.eau != null ? def.eau * T : null;
     room.o2 = 1; room.o2Alerte = false;
+    // froid de l'Himalaya : une jauge qui se vide, on se réchauffe près des braseros
+    room.froid = def.froid ? 1 : null; room.froidAlerte = false;
+    room.ski = (def.ski || []).map(([a, b]) => ({ x0: a * T, x1: (b + 1) * T }));
+    room.geysers = room.gz;
+    room.blizzard = !!def.blizzard;
     for (const b of room.bulles) { let y = b.y; while (y > 0 && !"#BxJ<>()gG".includes(tiles[y - 1][b.x]) && (room.eau == null || (y - 1) * T >= room.eau - T)) y--; b.top = y; }
     // lianes qui se balancent : [x, y d'accroche, longueur en cases, amplitude (rad), décalage]
     room.vines = (def.vines || []).map(([x, y, len, amp, ph], i) => ({ ax: x * T + 8, ay: y * T, L: len * T, amp: amp || 0.8, w: (2 * Math.PI) / (110 + len * 9), ph: ph != null ? ph : i * 1.7, ang: 0, px: 0, py: 0 }));
@@ -395,6 +419,10 @@
     room.secretRooms = (def.secrets || []).map(([x, y, w, h]) => ({ x, y, w, h, seen: false, fade: 1 }));
     // boss : le Jaguar de pierre (on l'assomme trois fois, il s'endort)
     room.boss = null; room.rocks = []; room.bossSpikes = [];
+    if (def.boss === "yeti") {
+      room.boss = { kind: "yeti", x: (COLS - 8) * T, y: (ROWS - 1) * T - 44, w: 40, h: 44, face: -1, etat: "attend", k: 120, hits: 0, vx: 0, vy: 0, t: 0 };
+      room.glacons = (def.glacons || []).map(([x, y]) => ({ x: x * T, y: y * T, y0: y * T, w: 2 * T, h: 3 * T, etat: "pend", vy: 0 }));
+    }
     if (def.boss === "jaguar") room.boss = { x: (COLS - 10) * T, y: (ROWS - 1) * T - 41, w: 60, h: 41, face: -1, etat: "attend", k: 110, hits: 0, vx: 0, t: 0 };
     room.mirror = def.mirror ? { axis: def.mirror * T } : null;   // ligne de l'eau : le reflet est symétrique par rapport à elle
     // le professeur Archibald attend à la porte, puis file devant le joueur
@@ -408,7 +436,7 @@
     const at = (x, y) => (y < 0 || y >= rows || x < 0 || x >= cols ? "#" : t[y][x]);
     const stone = (c) => c === "#" || c === "<" || c === ">";
     const rnd = (x, y, k) => { let h = (x * 73856093) ^ (y * 19349663) ^ (k * 83492791) ^ (room.index * 2654435761); h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-    const pVine = { jungle: 0.24, cascades: 0.16, crypte: 0.05, mines: 0.04, sanctuaire: 0.08, abysses: 0.02 }[theme] || 0.1;
+    const pVine = { jungle: 0.24, cascades: 0.16, crypte: 0.05, mines: 0.04, sanctuaire: 0.08, abysses: 0.02, himalaya: 0, glace: 0 }[theme] ?? 0.1;
     const eauY = room.def.eau;
     let lastTorch = -99;
     for (let y = 1; y < rows - 1; y++) for (let x = 1; x < cols - 1; x++) {
@@ -434,13 +462,13 @@
         if (r < 0.04) out.push({ k: "bones", x, y, f: rnd(x, y, 10) < 0.5 ? 1 : -1 });
         else if (theme === "sanctuaire" && r < 0.12) out.push({ k: "crystal", x, y, ph: rnd(x, y, 11) * 6 });
         else if (theme === "mines" && r < 0.22) out.push({ k: "pebbles", x, y });
-        else if (theme !== "mines" && theme !== "crypte" && r < 0.42) out.push({ k: "tuft", x, y, s: rnd(x, y, 12) });
+        else if (theme !== "mines" && theme !== "crypte" && theme !== "himalaya" && theme !== "glace" && r < 0.42) out.push({ k: "tuft", x, y, s: rnd(x, y, 12) });
         else if (theme === "crypte" && r < 0.16) out.push({ k: "pebbles", x, y });
       }
       // torches fixées aux murs, une tous les 9 cases au plus
       const wallL = stone(lf) && stone(at(x - 1, y - 1)) && stone(at(x - 1, y + 1));
       const wallR = stone(rt) && stone(at(x + 1, y - 1)) && stone(at(x + 1, y + 1));
-      if ((wallL || wallR) && dn === "." && stone(at(x, y + 2)) && x - lastTorch > 8 && rnd(x, y, 13) < 0.55) {
+      if (theme !== "himalaya" && (wallL || wallR) && dn === "." && stone(at(x, y + 2)) && x - lastTorch > 8 && rnd(x, y, 13) < 0.55) {
         out.push({ k: "torch", x, y, side: wallL ? -1 : 1, ph: rnd(x, y, 14) * 6 });
         lastTorch = x;
       }
@@ -461,12 +489,12 @@
   }
   // g = sol glissant, G = grille (s'ouvre avec la bonne dalle), _ = dalle à pression (non solide)
   // q = ressort fragile (casse après un rebond), n = plateforme qui coule
-  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">" || c === "(" || c === ")" || c === "g" || c === "G" || c === "q" || c === "n";
+  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">" || c === "(" || c === ")" || c === "g" || c === "G" || c === "q" || c === "n" || c === "z" || c === "i" || c === "y" || c === "V";
   // planches qui clignotent : présentes ~1,6 s, absentes ~1 s, par groupes de deux décalés
   const BLINK = 160, BLINK_ON = 96;
   const blinkPhase = (x) => ((R ? R.t : 0) + (Math.floor(x / 2) % 2) * (BLINK / 2)) % BLINK;
   const blinkOn = (x) => blinkPhase(x) < BLINK_ON;
-  const looksStone = (c) => c === "#" || c === "x" || c === "F" || c === "<" || c === ">" || c === "(" || c === ")" || c === "g";
+  const looksStone = (c) => c === "#" || c === "x" || c === "F" || c === "z" || c === "<" || c === ">" || c === "(" || c === ")" || c === "g";
   function solidAt(px, py) { const tx = Math.floor(px / T), c = tileAt(tx, Math.floor(py / T)); return isSolid(c) || (c === "c" && blinkOn(tx)); }
   function rectHitsSolid(x, y, w, h) {
     const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.01) / T);
@@ -544,7 +572,12 @@
       case "set": setTiles(v[0], v[1], v[2], v[3], v[4], false); break;
       case "door": { const d = R.door; d.tx = v[0] * T + 2; d.ty = v[1] * T - 6; d.moving = true; sfx.flee(); break; }
       case "showdoor": { R.door.hidden = false; burst(R.door.x + 6, R.door.y + 10, C.door, 24, 2); sfx.door(); break; }
-      case "boulder": { const [x, y, dir, sp, casse] = v; const speed = sp * R.slow; R.boulders.push({ x: x * T, y: y * T, w: 28, h: 28, vx: dir * speed, vy: 0, dir, speed, rot: 0, casse: !!casse }); break; }
+      case "boulder": {
+        const [x, y, dir, sp, casse, neige] = v; const speed = sp * R.slow;
+        const t0 = neige ? 14 : 28;   // l'avalanche part petite et grossit en roulant
+        R.boulders.push({ x: x * T, y: y * T + (28 - t0), w: t0, h: t0, vx: dir * speed, vy: 0, dir, speed, rot: 0, casse: !!casse, neige: !!neige });
+        break;
+      }
       case "fall": {
         const [x, y, w, h, delay] = v;
         R.blocks.push({ x: x * T, y: y * T, w: w * T, h: h * T, vy: 0, delay, tiles: [x, y, w, h], falling: false });
@@ -601,12 +634,16 @@
     updateMovers();
     updateVines();
     if (R.bulles.length) updateBulles();
+    if (R.boules.length) updateBoules();
+    if (R.geysers.length) updateGeysers();
+    for (const w of R.winds) if (w.per) w.f = w.f0 * (Math.floor(R.t / w.per) % 2 ? -1 : 1);
+    if (R.blizzard || R.def.palette === "himalaya") neigeQuiTombe();
     updatePlayer();
     updateSink();
     updateFlames();
     updateBeams();
     updateSecrets();
-    if (R.boss) updateBoss();
+    if (R.boss) { if (R.boss.kind === "yeti") updateYeti(); else updateBoss(); }
     updateCrushers();
     updateFlood();
     updateTilesFx();
@@ -641,12 +678,15 @@
     // sol glissant : Max a du mal à accélérer et à freiner
     const under = p.grounded ? tileAt(Math.floor((p.x + p.w / 2) / T), Math.floor((p.y + p.h + 1) / T)) : "";
     const slip = under === "g";
+    const neigeProfonde = under === "z";
+    const enSki = R.ski.some((s) => p.x + p.w / 2 > s.x0 && p.x + p.w / 2 < s.x1);
     const inWater = R.flood && !R.flood.top && R.flood.kind === "eau" && p.y + p.h > R.flood.level;
-    const run = PHYS.run * (inWater ? 0.6 : 1);
-    p.vx += (dir * run - p.vx) * (slip ? 0.03 : PHYS.accel);
+    const run = PHYS.run * (inWater ? 0.6 : 1) * (neigeProfonde ? 0.55 : 1);
+    if (enSki) { p.vx += (2.7 - p.vx) * 0.08; p.face = 1; p.ski = true; }   // pente de ski : Max glisse tout seul
+    else { p.ski = false; p.vx += (dir * run - p.vx) * (slip ? 0.03 : PHYS.accel); }
     if (Math.abs(p.vx) < 0.05 && !slip) p.vx = 0;
     // vent : pousse Max sur le côté
-    for (const w of R.winds) if (p.x + p.w / 2 > w.x0 && p.x + p.w / 2 < w.x1) p.x += w.f;
+    for (const w of R.winds) if (p.x + p.w / 2 > w.x0 && p.x + p.w / 2 < w.x1 && !rectHitsSolid(p.x + w.f, p.y, p.w, p.h)) p.x += w.f;
 
     const nage = R.eau != null && p.y + p.h / 2 > R.eau;
     if (nage) { p.vine = null; p.climb = false; }
@@ -721,7 +761,7 @@
     p.swim = false;
     p.coyote = p.grounded ? PHYS.coyote : p.coyote - 1;
     if (pressed.jump) p.buffer = PHYS.buffer; else p.buffer--;
-    if (p.buffer > 0 && p.coyote > 0) { p.vy = PHYS.jump; p.buffer = 0; p.coyote = 0; sfx.jump(); }
+    if (p.buffer > 0 && p.coyote > 0) { p.vy = PHYS.jump * (neigeProfonde ? 0.82 : 1); p.buffer = 0; p.coyote = 0; sfx.jump(); }
     if (!input.jump && p.vy < PHYS.jumpCut && !p.spring) p.vy = PHYS.jumpCut;
     if (p.vy >= 0) p.spring = false;
     p.vy = Math.min(p.vy + PHYS.gravity * (inWater ? 0.55 : 1), inWater ? 2.2 : PHYS.maxFall);
@@ -752,6 +792,15 @@
         }
       }
       for (const fx of [fx0, fx1]) if (tileAt(fx, fy) === "n" && !R.sink.has(fx + "," + fy)) R.sink.set(fx + "," + fy, 0);
+      // planches du pont de corde : elles lâchent peu après le passage de Max
+      for (const fx of [fx0, fx1]) if (tileAt(fx, fy) === "y" && !R.shakeTiles.has(fx + "," + fy)) R.shakeTiles.set(fx + "," + fy, 26);
+      // glace fine : elle craque si Max reste immobile dessus
+      for (const fx of new Set([fx0, fx1])) if (tileAt(fx, fy) === "i") {
+        const k = fx + "," + fy, v = (R.glaceFine.get(k) || 0) + (Math.abs(p.vx) < 0.4 ? 1.6 : 0.2);
+        R.glaceFine.set(k, v);
+        if (v > 50 && v - 1.6 <= 50) sfx.crumble();
+        if (v > 100) { R.glaceFine.delete(k); dropTile(fx, fy); sfx.crumble(); R.shake = Math.max(R.shake, 3); if (!progress.glaceVue) { progress.glaceVue = true; saveProgress(); R.hint = { text: "La glace a cédé : ne reste jamais immobile sur un lac gelé !", t: 0, dur: 200 }; } }
+      }
     }
 
     // coup de massue : assomme ce qui se trouve juste devant
@@ -762,7 +811,7 @@
         const hit = { x: p.face > 0 ? p.x + p.w - 2 : p.x - 14, y: p.y - 2, w: 16, h: 17 };
         for (const e of R.enemies) if (e.alive && !e.stun && overlap(hit, e)) stunEnemy(e, p.face);
         for (const a of R.arrows) if (!a.poison && !a.dead && overlap(hit, a)) breakArrow(a);
-        if (R.boss && overlap(hit, gemRect(R.boss))) bossTouche();
+        if (R.boss && R.boss.kind !== "yeti" && overlap(hit, gemRect(R.boss))) bossTouche();
       }
     }
     if (pressed.tnt) {
@@ -828,6 +877,16 @@
     finPlayer(p);
   }
 
+  function sentirLeFroid(p) {
+    if (R.froid == null || game.mode !== "play") return;
+    const chaud = R.braseros.some((b) => Math.abs(b.x * T + 8 - (p.x + p.w / 2)) < 36 && Math.abs(b.y * T + 8 - (p.y + p.h / 2)) < 40);
+    if (chaud) R.froid = Math.min(1, R.froid + 0.02);
+    else R.froid -= 1 / (24 * 60) / (1 + 0.25 * R.assist);
+    if (R.froid < 0.3 && !R.froidAlerte) { R.froidAlerte = true; R.hint = { text: "Max grelotte ! Vite, un brasero pour se réchauffer", t: 0, dur: 200 }; }
+    if (R.froid > 0.6) R.froidAlerte = false;
+    if (R.froid <= 0) { R.froid = 0; kill("Max est gelé comme un glaçon !", "flood"); }
+  }
+
   function respirer(p) {
     if (R.eau == null || game.mode !== "play") return;
     const sousLeau = p.y + 3 > R.eau;
@@ -842,6 +901,8 @@
 
   function finPlayer(p) {
     respirer(p);
+    sentirLeFroid(p);
+    for (const gz of R.geysers) if (gz.on && p.alive && p.x + p.w > gz.x * T + 1 && p.x < gz.x * T + 15 && p.y + p.h > (gz.y - 6) * T && p.y + p.h <= gz.y * T + 2) { p.vy = Math.min(p.vy, -7.4); p.spring = true; p.grounded = false; }
     const d = R.door;
     if (d && !d.moving && !d.hidden && overlap(p, { x: d.x + 3, y: d.y + 4, w: d.w - 6, h: d.h - 4 })) {
       game.mode = "win"; game.winT = 0; sfx.door();
@@ -854,6 +915,119 @@
       const ok = tileAt(fx, fy) === "#" && tileAt(fx - 1, fy) === "#" && tileAt(fx + 1, fy) === "#" &&
         ![-1, 0, 1].some((d) => "^v".includes(tileAt(fx + d, my))) && !R.crushers.some((c) => Math.abs(c.x - fx * T) < 32);
       if (ok) p.safe = { x: fx * T + 3, y: p.y };
+    }
+  }
+
+  /* ---------- Le Yéti grognon ---------- */
+  function updateYeti() {
+    const b = R.boss, p = R.player;
+    b.t++;
+    const sol = (ROWS - 1) * T - b.h;
+    const dx = p.x + p.w / 2 - (b.x + b.w / 2);
+    switch (b.etat) {
+      case "attend": if (--b.k <= 0) b.etat = "marche"; break;
+      case "marche":
+        b.face = dx < 0 ? -1 : 1;
+        b.x += b.face * (0.75 + b.hits * 0.15) * R.slow;
+        if (rectHitsSolid(b.x, b.y, b.w, b.h - 2)) b.x -= b.face * (0.75 + b.hits * 0.15) * R.slow;
+        if (Math.abs(dx) < 54 && p.alive) { b.etat = "prepare"; b.k = Math.round(42 * (1 + 0.2 * R.assist)); sfx.god(); }
+        else if (Math.abs(dx) > 140 && b.t % 140 === 0) {
+          const tt = Math.max(40, Math.min(80, Math.abs(dx) / 2));
+          R.boules.push({ x: b.x + b.w / 2, y: b.y + 6, vx: dx / tt, vy: -(0.5 * 0.18 * tt), r: 6 }); sfx.swing();
+        }
+        break;
+      case "prepare": if (--b.k <= 0) { b.etat = "saute"; b.vy = -4.6; } break;
+      case "saute":
+        b.vy += PHYS.gravity; b.y += b.vy;
+        if (b.y >= sol) {
+          b.y = sol; b.vy = 0; b.etat = "frappe"; b.k = 70; R.shake = 12; sfx.boom();
+          burst(b.x + b.w / 2, b.y + b.h, "#f4f8fc", 24, 2.6);
+          // onde de choc : Max doit être en l'air
+          if (p.alive && p.grounded && Math.abs(dx) < 70 && !(p.invuln > 0)) kill("L'onde de choc du yéti ! Il fallait sauter.");
+          // les petites stalactites tombent un peu partout
+          for (let i = 0; i < 3 + b.hits; i++) R.rocks.push({ x: (2 + Math.random() * (COLS - 4)) * T, y: T * 2, w: 8, h: 10, vy: 0, warn: 40 + i * 15, glace: true });
+          // et la grosse stalactite juste au-dessus du yéti se décroche
+          for (const gl of R.glacons) if (gl.etat === "pend" && Math.abs(gl.x + gl.w / 2 - (b.x + b.w / 2)) < 30) { gl.etat = "tombe"; sfx.crumble(); }
+        }
+        break;
+      case "frappe": if (--b.k <= 0) b.etat = "marche"; break;
+      case "sonne": if (--b.k <= 0) { b.etat = "marche"; } break;
+      case "dort":
+        if (b.k > 0 && --b.k === 0) doAction(["showdoor"]);
+        if (R.t % 50 === 0) R.particles.push({ zzz: true, x: b.x + b.w / 2, y: b.y - 2, vx: 0.2, vy: -0.4, s: 6, life: 70, color: C.text, g: 0 });
+        break;
+    }
+    // grosses stalactites
+    for (const gl of R.glacons) {
+      gl.proche = gl.etat === "pend" && Math.abs(gl.x + gl.w / 2 - (b.x + b.w / 2)) < 30 && b.etat !== "dort";
+      if (gl.etat !== "tombe") continue;
+      gl.vy = Math.min(gl.vy + 0.45, 9); gl.y += gl.vy;
+      if (b.etat !== "dort" && overlap(gl, { x: b.x + 4, y: b.y, w: b.w - 8, h: b.h })) {
+        gl.etat = "cassee"; burst(gl.x + gl.w / 2, b.y, "#cfeaff", 30, 3); R.shake = 10; sfx.bonk();
+        b.hits++;
+        if (b.hits >= 3) { b.etat = "dort"; b.k = 60; R.rocks = []; R.boules = []; R.hint = { text: "Le Yéti grognon s'endort en ronflant… La porte s'ouvre !", t: 0, dur: 240 }; }
+        else { b.etat = "sonne"; b.k = 150; R.hint = { text: b.hits === 1 ? "En plein sur la tête ! Encore deux stalactites." : "Plus qu'une ! Il est de plus en plus grognon…", t: 0, dur: 180 }; }
+      } else if (gl.y > (ROWS - 1) * T - gl.h) { gl.etat = "cassee"; burst(gl.x + gl.w / 2, (ROWS - 1) * T, "#cfeaff", 20, 2); }
+      if (p.alive && gl.etat === "tombe" && overlap(p, gl)) return kill("Une énorme stalactite !");
+    }
+    // petites stalactites et boules de neige
+    for (const r of R.rocks) {
+      if (r.warn > 0) { r.warn--; continue; }
+      r.vy = Math.min(r.vy + PHYS.gravity, 7); r.y += r.vy;
+      if (rectHitsSolid(r.x, r.y, r.w, r.h)) { r.done = true; burst(r.x + 4, r.y + 8, "#cfeaff", 8, 1.4); sfx.crumble(); }
+    }
+    R.rocks = R.rocks.filter((r) => !r.done && r.y < H + 20);
+    if (!p.alive || game.mode !== "play") return;
+    for (const r of R.rocks) if (r.warn <= 0 && overlap(p, r)) return kill("Un glaçon sur la tête. Ouille.");
+    const vif = b.etat === "marche" || b.etat === "prepare" || b.etat === "saute";
+    if (vif && overlap(p, { x: b.x + 6, y: b.y + 6, w: b.w - 12, h: b.h - 6 })) return kill("Le yéti t'a écrasé comme une boule de neige !");
+  }
+  function drawYeti() {
+    const b = R.boss;
+    for (const gl of R.glacons) {
+      if (gl.etat === "cassee") continue;
+      const sh = gl.proche ? Math.sin(R.t) * 1.2 : 0, x = gl.x + sh, y = gl.y;
+      // repère au sol sous chaque grosse stalactite
+      if (gl.etat === "pend") {
+        ctx.fillStyle = `rgba(160,220,255,${0.25 + 0.2 * Math.sin(R.t / 10)})`; ctx.fillRect(gl.x + 4, (ROWS - 1) * T - 2, gl.w - 8, 2);
+        ctx.fillStyle = "rgba(160,220,255,0.6)"; const ay = y + gl.h + 8 + Math.sin(R.t / 8) * 3;
+        ctx.beginPath(); ctx.moveTo(gl.x + gl.w / 2 - 4, ay); ctx.lineTo(gl.x + gl.w / 2 + 4, ay); ctx.lineTo(gl.x + gl.w / 2, ay + 5); ctx.fill();
+      }
+      ctx.fillStyle = gl.proche ? "#ffffff" : "#bfe4ff";
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + gl.w, y); ctx.lineTo(x + gl.w / 2, y + gl.h); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "rgba(90,150,200,0.5)"; ctx.beginPath(); ctx.moveTo(x + gl.w / 2, y); ctx.lineTo(x + gl.w, y); ctx.lineTo(x + gl.w / 2, y + gl.h); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.fillRect(x + 6, y + 2, 2, 12);
+    }
+    for (const r of R.rocks) {
+      if (r.warn > 0) { ctx.fillStyle = `rgba(0,0,0,${0.2 + 0.2 * Math.sin(R.t / 3)})`; ctx.beginPath(); ctx.ellipse(r.x + 4, (ROWS - 1) * T - 1, 6, 2, 0, 0, Math.PI * 2); ctx.fill(); continue; }
+      ctx.fillStyle = "#cfeaff"; ctx.beginPath(); ctx.moveTo(r.x, r.y); ctx.lineTo(r.x + 8, r.y); ctx.lineTo(r.x + 4, r.y + 10); ctx.closePath(); ctx.fill();
+    }
+    const x = Math.round(b.x), y = Math.round(b.y), f = b.face, pr = b.etat === "prepare" || b.etat === "saute";
+    const dors = b.etat === "dort", sonne = b.etat === "sonne", ph = b.etat === "marche" ? Math.sin(b.t * 0.15) : 0;
+    const sq = dors ? 10 : 0;
+    ctx.fillStyle = "#e8eef4";
+    ctx.fillRect(x + 4, y + 10 + sq, 32, 26 - sq);                                // corps
+    ctx.fillRect(x + 8 + ph * 2, y + 34, 9, 10); ctx.fillRect(x + 23 - ph * 2, y + 34, 9, 10);   // jambes
+    ctx.fillRect(x + 8, y + sq, 24, 14);                                          // tête
+    ctx.fillStyle = "#cfdbe6"; for (let i = 0; i < 6; i++) ctx.fillRect(x + 6 + i * 5, y + 12 + sq + (i % 2) * 3, 2, 4);
+    // bras : levés quand il va frapper
+    ctx.fillStyle = "#e8eef4";
+    if (pr) { ctx.fillRect(x - 2, y - 8, 8, 20); ctx.fillRect(x + 34, y - 8, 8, 20); }
+    else if (!dors) { ctx.fillRect(x - 2, y + 12 + ph * 2, 8, 18); ctx.fillRect(x + 34, y + 12 - ph * 2, 8, 18); }
+    // visage
+    ctx.fillStyle = "#9fc4dd"; ctx.fillRect(x + 12, y + 3 + sq, 16, 10);
+    if (dors) { ctx.fillStyle = "#2a3a4a"; ctx.fillRect(x + 14, y + 7 + sq, 4, 1); ctx.fillRect(x + 22, y + 7 + sq, 4, 1); }
+    else {
+      ctx.fillStyle = pr ? "#ff3a2a" : "#2a3a4a"; ctx.fillRect(x + (f > 0 ? 17 : 14), y + 6, 3, 3); ctx.fillRect(x + (f > 0 ? 24 : 21), y + 6, 3, 3);
+      ctx.fillStyle = "#2a3a4a"; ctx.fillRect(x + 14, y + 4, 5, 1); ctx.fillRect(x + 21, y + 4, 5, 1);   // sourcils grognons
+      ctx.fillStyle = "#fff"; ctx.fillRect(x + 16, y + 11, 2, 2); ctx.fillRect(x + 22, y + 11, 2, 2);  // crocs
+    }
+    if (sonne) drawStars(x + b.w / 2, y - 4, b.k);
+    if (b.etat === "prepare" && Math.floor(b.k / 5) % 2) { ctx.fillStyle = C.danger; ctx.fillRect(x + b.w / 2 - 1, y - 18, 3, 7); ctx.fillRect(x + b.w / 2 - 1, y - 9, 3, 2); }
+    for (let i = 0; i < 3; i++) {
+      const cx = b.x + b.w / 2 - 12 + i * 12, cy = b.y - 22 + (dors ? sq : 0);
+      ctx.fillStyle = i < 3 - b.hits ? "#bfe4ff" : "rgba(191,228,255,0.2)";
+      ctx.beginPath(); ctx.moveTo(cx - 3, cy - 3); ctx.lineTo(cx + 3, cy - 3); ctx.lineTo(cx, cy + 5); ctx.closePath(); ctx.fill();
     }
   }
 
@@ -957,6 +1131,13 @@
     return true;
   }
 
+  function neigeQuiTombe() {
+    const n = R.blizzard ? 3 : 1;
+    if (R.t % (R.blizzard ? 1 : 3) !== 0) return;
+    const vent = R.winds.length ? R.winds[0].f * 3 : 0;
+    for (let i = 0; i < n; i++) R.particles.push({ x: cam.x + Math.random() * (view.w + 80) - 40, y: cam.y - 4, vx: (R.blizzard ? -2.2 : -0.3) + vent + Math.random() * 0.4, vy: 0.6 + Math.random() * 0.6, s: 1.5 + Math.random() * 1.5, life: 260, color: "rgba(255,255,255,0.85)", g: 0, flocon: true });
+  }
+
   function updateBulles() {
     for (const b of R.bulles) if (R.t % 5 === 0) R.particles.push({ x: b.x * T + 4 + Math.random() * 8, y: (b.y + 1) * T - 2, vx: (Math.random() - 0.5) * 0.3, vy: -1.4 - Math.random() * 0.8, s: 2 + Math.random() * 2, life: Math.max(10, (b.y + 1 - b.top) * T / 1.8), color: "rgba(210,245,255,0.75)", g: 0, bulle: true });
   }
@@ -1034,7 +1215,7 @@
     p.onMover = null;
     if (p.vy < 0) return;
     const bs = R.boss;
-    if (bs && (bs.etat === "sonne" || bs.etat === "dort" || bs.etat === "reveil") && p.x + p.w > bs.x + 4 && p.x < bs.x + bs.w - 4 && prevBottom <= bs.y + 3 && p.y + p.h >= bs.y - 0.5) {
+    if (bs && bs.kind !== "yeti" && (bs.etat === "sonne" || bs.etat === "dort" || bs.etat === "reveil") && p.x + p.w > bs.x + 4 && p.x < bs.x + bs.w - 4 && prevBottom <= bs.y + 3 && p.y + p.h >= bs.y - 0.5) {
       // sur le dos du jaguar sonné : un saut sur la tête compte comme un coup
       if (bossTouche()) { p.vy = -4.8; p.spring = false; return; }
       p.y = bs.y - p.h; p.vy = 0; p.grounded = true; return;
@@ -1108,14 +1289,18 @@
       if (!e.alive) continue;
       e.t += 0.1;
       if (!reveil) continue;
+      if (e.stun > 0 && e.kind === "A") { e.stun--; e.y = Math.min(e.y + 1, e.hy + 60); continue; }
       if (e.stun > 0 && (e.kind === "e" || e.kind === "l")) { e.stun--; if (e.kind === "l") { e.out = Math.max(0, e.out - 0.05); placeAnguille(e); } continue; }
       if (e.stun > 0) {
         e.stun--;
         if (e.kind !== "b") { e.vx = 0; e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall); moveBody(e); if (e.y > H + 20) e.alive = false; }
-        if (e.stun === 0) { e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : e.kind === "k" ? -0.8 : e.kind === "r" ? -0.5 : 0.7); if (e.kind === "j") { e.etat = "repos"; e.k = 40; e.vx = 0; } }
+        if (e.stun === 0) { e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : e.kind === "k" ? -0.8 : e.kind === "r" ? -0.5 : e.kind === "L" ? -0.7 : e.kind === "C" ? -0.4 : e.kind === "S" ? -0.35 : 0.7); if (e.kind === "L" || e.kind === "C") e.etat = "rode"; if (e.kind === "j") { e.etat = "repos"; e.k = 40; e.vx = 0; } }
         continue;
       }
       if (e.kind === "e") { updateMeduse(e); continue; }
+      if (e.kind === "A") { updateAigle(e); continue; }
+      if (e.kind === "Y") { updateYetiPetit(e); continue; }
+      if (e.kind === "L" || e.kind === "C") updateChasseur(e);
       if (e.kind === "l") { updateAnguille(e); continue; }
       if (e.kind === "k" && updateSinge(e)) continue;
       if (e.kind === "j") { updateJaguar(e); continue; }
@@ -1168,6 +1353,67 @@
     for (const s of R.stuck) s.life--;
     R.stuck = R.stuck.filter((s) => s.life > 0);
     R.arrows = R.arrows.filter((a) => !a.dead);
+  }
+
+  // Loup (chasse quand il voit Max) et chèvre (fonce tête baissée) : ils accélèrent vers Max
+  function updateChasseur(e) {
+    const p = R.player, dx = p.x - e.x, vu = p.alive && Math.abs(dx) < (e.kind === "L" ? 110 : 90) && Math.abs(p.y + p.h - (e.y + e.h)) < 18;
+    if (e.kind === "L") {
+      if (vu) { if (e.etat !== "chasse") { e.etat = "chasse"; sfx.god(); } e.vx = Math.sign(dx || 1) * 2.0 * R.slow; }
+      else if (e.etat === "chasse") { e.etat = "rode"; e.vx = Math.sign(e.vx || -1) * 0.7; }
+    } else {
+      if (e.etat === "broute" && vu) { e.etat = "prepare"; e.k = 30; e.vx = 0; e.dirCharge = Math.sign(dx || 1); }
+      else if (e.etat === "prepare") { e.vx = 0; if (--e.k <= 0) { e.etat = "charge"; sfx.flee(); } }
+      else if (e.etat === "charge") { e.vx = e.dirCharge * 2.6 * R.slow; if (R.t % 4 === 0) R.particles.push({ x: e.x + 7, y: e.y + 10, vx: -e.dirCharge, vy: -0.4, s: 2, life: 14, color: "#f4f8fc", g: 0.05 }); }
+    }
+  }
+  // Aigle : plane en hauteur ; quand Max saute près de lui, il pique droit sur lui
+  function updateAigle(e) {
+    const p = R.player;
+    e.t++;
+    if (e.etat === "plane") {
+      e.x += e.vx; if (Math.abs(e.x - e.hx) > 50 || rectHitsSolid(e.x, e.y, e.w, e.h)) e.vx = -e.vx;
+      e.y = e.hy + Math.sin(e.t * 0.05) * 4;
+      if (p.alive && !p.grounded && !p.swim && Math.abs(p.x - e.x) < 90 && p.y > e.y) { e.etat = "pique"; e.k = 0; const d = Math.hypot(p.x - e.x, p.y - e.y) || 1; e.dx = ((p.x - e.x) / d) * 3.2 * R.slow; e.dy = ((p.y - e.y) / d) * 3.2 * R.slow; sfx.flee(); }
+    } else if (e.etat === "pique") {
+      e.x += e.dx; e.y += e.dy;
+      if (++e.k > 50 || rectHitsSolid(e.x, e.y, e.w, e.h)) e.etat = "remonte";
+    } else {
+      const d = Math.hypot(e.hx - e.x, e.hy - e.y);
+      if (d < 2) { e.etat = "plane"; e.x = e.hx; e.y = e.hy; }
+      else { e.x += ((e.hx - e.x) / d) * 1.4; e.y += ((e.hy - e.y) / d) * 1.4; }
+    }
+  }
+  // Petit yéti : lance des boules de neige en cloche vers Max
+  function updateYetiPetit(e) {
+    const p = R.player;
+    e.c = (e.c || 0) + 1; e.face = p.x < e.x ? -1 : 1;
+    e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall); e.vx = 0; moveBody(e);
+    const per = Math.round(150 * (1 + 0.25 * R.assist));
+    e.lance = (e.c + Math.round(e.t * 10)) % per > per - 24;
+    if ((e.c + Math.round(e.t * 10)) % per === 0 && p.alive && Math.abs(p.x - e.x) < 220 && Math.abs(p.y - e.y) < 90) {
+      const dx = p.x + 5 - (e.x + 7), tt = Math.max(30, Math.min(70, Math.abs(dx) / 2.2));
+      R.boules.push({ x: e.x + 7, y: e.y + 2, vx: dx / tt, vy: -(0.5 * 0.18 * tt) + (p.y - e.y) / tt, r: 3.5 });
+      sfx.swing();
+    }
+  }
+  function updateBoules() {
+    const p = R.player;
+    for (const b of R.boules) {
+      b.vy += 0.18; b.x += b.vx; b.y += b.vy;
+      if (isSolid(tileAt(Math.floor(b.x / T), Math.floor(b.y / T))) || b.y > H + 20) { b.done = true; burst(b.x, b.y, "#f4f8fc", 6, 1); }
+      else if (p.alive && game.mode === "play" && Math.hypot(p.x + 5 - b.x, p.y + 8 - b.y) < 8) { b.done = true; burst(b.x, b.y, "#f4f8fc", 10, 1.4); kill("Une boule de neige en pleine figure !"); }
+    }
+    R.boules = R.boules.filter((b) => !b.done);
+  }
+  function updateGeysers() {
+    for (const gz of R.geysers) {
+      gz.t += R.slow;
+      const ph = (gz.t + 1000) % 200;
+      gz.warn = ph >= 110 && ph < 140;
+      gz.on = ph >= 140 && ph < 185 && R.t > 60;
+      if ((gz.on || (gz.warn && R.t % 3 === 0)) && R.t % 2 === 0) R.particles.push({ x: gz.x * T + 4 + Math.random() * 8, y: gz.y * T, vx: (Math.random() - 0.5) * 0.6, vy: gz.on ? -3 - Math.random() * 2 : -0.8, s: 3 + Math.random() * 3, life: gz.on ? 30 : 16, color: "rgba(235,245,255,0.75)", g: 0.02 });
+    }
   }
 
   // Méduse : monte et descend doucement ; de temps en temps elle se charge et lance une décharge
@@ -1249,6 +1495,8 @@
 
   // Assommé : l'ennemi ne bouge plus et devient inoffensif pendant ~4 secondes
   function stunEnemy(e, dir) {
+    if (e.kind === "S") { burst(e.x + 6, e.y + 6, "#f4f8fc", 16, 1.6); }
+    if (e.kind === "A") { e.stun = 200; e.etat = "remonte"; sfx.bonk(); burst(e.x + 6, e.y + 4, C.gold, 6, 1); return; }
     if (e.kind === "e" || e.kind === "l") { e.stun = 220; sfx.bonk(); burst(e.x + 5, e.y + 4, C.gold, 6, 1); if (e.kind === "l") e.etat = "rentre"; return; }
     if (e.kind === "k" && e.butin) {
       // le singe lâche les pièces volées
@@ -1333,6 +1581,10 @@
           for (let i = 0; i < 6; i++) R.particles.push({ x: fx * T + 8, y: ty * T + 8, vx: b.dir * Math.random() * 3, vy: -Math.random() * 3, s: 3 + Math.random() * 3, life: 50, color: P.crack, g: 0.2 });
         }
       }
+      if (b.neige && b.w < 40 && b.grounded && R.t % 4 === 0) {
+        // la boule de neige grossit (elle reste posée au sol)
+        const k = 1; if (!rectHitsSolid(b.x - (b.dir < 0 ? k : 0), b.y - k, b.w + k, b.h + k)) { b.y -= k; b.w += k; b.h += k; if (b.dir < 0) b.x -= k; }
+      }
       const hit = moveBody(b);
       if (hit.hitX) b.dir = -b.dir;
       b.rot += (b.dir * b.speed) / 14;
@@ -1401,7 +1653,7 @@
     for (const e of R.enemies) {
       if (!e.alive || e.stun) continue;
       if (!overlap(p, { x: e.x + 1, y: e.y + 1, w: e.w - 2, h: e.h - 1 })) continue;
-      if (p.vy > 0.5 && p.y + p.h - e.y < 10) { stunEnemy(e, 0); p.vy = -4.6; p.spring = false; continue; }
+      if (p.vy > 0.5 && p.y + p.h - e.y < 10) { stunEnemy(e, 0); p.vy = e.kind === "C" ? -7.2 : -4.6; p.spring = e.kind === "C"; continue; }
       if (e.kind === "k") { if (e.etat !== "fuite" && !(p.invuln > 0)) volParSinge(e); continue; }
       if (e.kind === "l" && e.out < 0.25) continue;
       return kill(e.kind === "j" ? "Croqué par un bébé jaguar. Il est mignon, pourtant." : null);
@@ -1420,9 +1672,9 @@
     }
     R.arrows = R.arrows.filter((a) => !a.dead);
     for (const b of R.boulders) {
-      const cx = b.x + 14, cy = b.y + 14;
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
       const nx = Math.max(p.x, Math.min(cx, p.x + p.w)), ny = Math.max(p.y, Math.min(cy, p.y + p.h));
-      if (Math.hypot(nx - cx, ny - cy) < 13) return kill();
+      if (Math.hypot(nx - cx, ny - cy) < b.w / 2 - 1) return kill(b.neige ? "Emporté par l'avalanche !" : null);
     }
     for (const k of R.blocks) if (k.falling && overlap(p, k)) return kill();
     for (const c of R.crushers) if (c.y > c.y0 + 3 && overlap(p, { x: c.x + 1, y: c.y, w: c.w - 2, h: c.h })) return kill();
@@ -1816,6 +2068,7 @@
     drawDecor();
     drawDoor();
     for (const c of R.cps) drawCheckpoint(c);
+    if (R.def.traces) { ctx.fillStyle = "rgba(90,110,130,0.55)"; for (const [x, y] of R.def.traces) if (inView(x, y)) { const px = x * T, py = (y + 1) * T - 1; ctx.fillRect(px + 3, py, 2, 1); ctx.fillRect(px + 6, py - 1, 2, 1); ctx.fillRect(px + 10, py, 2, 1); ctx.fillRect(px + 13, py - 1, 2, 1); } }
     for (const it of R.pickups) if (!it.taken) drawPickup(it);
     for (const e of R.enemies) if (e.alive) drawEnemy(e);
     for (const k2 of R.blocks) drawBlock(k2);
@@ -1827,13 +2080,16 @@
     drawCrushers();
     drawStuck();
     drawTorches();
+    drawBraseros();
+    for (const b of R.boules) { ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#c8d6e2"; ctx.fillRect(b.x, b.y, 2, 2); }
     drawFlames();
     drawVines();
     if (R.mirror) drawMirror();
     drawPlayer();
+    if (R.player && R.player.ski && R.player.alive) { const p = R.player; ctx.fillStyle = "#c0392b"; ctx.fillRect(p.x - 4, p.y + p.h, 18, 2); ctx.fillRect(p.x + 13, p.y + p.h - 2, 2, 2); }
     drawBeams();
     drawSecrets();
-    if (R.boss) drawBoss();
+    if (R.boss) { if (R.boss.kind === "yeti") drawYeti(); else drawBoss(); }
     drawWinds();
     if (R.eau != null) drawEau();
     drawFlood();
@@ -1842,8 +2098,10 @@
     drawTorchLight();
     ctx.setTransform(k, 0, 0, k, 0, 0);
     if (R.dark) drawDarkness(k); else drawVignette();
+    if (R.blizzard) drawBlizzard(k);
     drawHud();
     drawOxygene();
+    drawFroid();
     drawSpeech();
     if (game.invert > 0) drawInvert();
     drawTimerHud();
@@ -1853,6 +2111,29 @@
 
   function drawBackground() {
     const decor = R.def.decor || R.def.palette || (ACTS[R.def.act] || {}).palette;
+    if (decor === "himalaya") {
+      const ciel = ctx.createLinearGradient(0, cam.y, 0, cam.y + view.h);
+      ciel.addColorStop(0, R.blizzard ? "#8a9aaa" : "#3d6c9c"); ciel.addColorStop(1, R.blizzard ? "#d0d8e0" : "#c8e0f2");
+      ctx.fillStyle = ciel; ctx.fillRect(cam.x - 10, cam.y - 10, view.w + 20, view.h + 20);
+      // montagnes lointaines (parallaxe)
+      for (const [k, col, hh, pas] of [[0.15, "rgba(150,175,200,0.55)", 0.55, 140], [0.35, "rgba(110,135,160,0.6)", 0.4, 90]]) {
+        const ox = cam.x * (1 - k), base = cam.y + view.h;
+        ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(cam.x - 10, base);
+        for (let i = Math.floor((cam.x - ox) / pas) - 1; i <= Math.ceil((cam.x + view.w - ox) / pas) + 1; i++) {
+          const x = ox + i * pas, pic = base - view.h * hh * (0.6 + 0.4 * Math.abs(Math.sin(i * 1.7)));
+          ctx.lineTo(x, base - view.h * hh * 0.35); ctx.lineTo(x + pas / 2, pic); ctx.lineTo(x + pas, base - view.h * hh * 0.35);
+        }
+        ctx.lineTo(cam.x + view.w + 10, base); ctx.closePath(); ctx.fill();
+        if (k === 0.15) { ctx.fillStyle = "rgba(255,255,255,0.65)"; for (let i = Math.floor((cam.x - ox) / pas) - 1; i <= Math.ceil((cam.x + view.w - ox) / pas) + 1; i++) { const x = ox + i * pas + pas / 2, pic = base - view.h * hh * (0.6 + 0.4 * Math.abs(Math.sin(i * 1.7))); ctx.beginPath(); ctx.moveTo(x, pic); ctx.lineTo(x - 12, pic + 14); ctx.lineTo(x + 12, pic + 14); ctx.fill(); } }
+      }
+      return;
+    }
+    if (decor === "glace") {
+      ctx.fillStyle = "#0f2a40"; ctx.fillRect(cam.x - 10, cam.y - 10, view.w + 20, view.h + 20);
+      ctx.fillStyle = "rgba(160,220,255,0.10)";
+      for (let i = Math.floor(cam.x / 40) - 1; i <= Math.ceil((cam.x + view.w) / 40) + 1; i++) { const x = i * 40 + cam.x * 0.3; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + 18, 0); ctx.lineTo(x + 9, 30 + (i * 37 % 40)); ctx.fill(); }
+      return;
+    }
     if (decor === "abysses") {
       const e = R.eau != null ? R.eau : 0;
       const ciel = ctx.createLinearGradient(0, 0, 0, e);
@@ -2169,7 +2450,12 @@
     const h = hash(x, y);
     if (h % 7 === 0) { ctx.fillStyle = P.stoneTop; ctx.globalAlpha = 0.35; ctx.fillRect(px + 2, py + 2, 5, 1); ctx.globalAlpha = 1; }
     const up = tileAt(x, y - 1), dn = tileAt(x, y + 1);
-    if (!looksStone(up) && up !== "B") {
+    if (!looksStone(up) && up !== "B" && P.neige) {
+      // couche de neige sur le dessus, avec de petits paquets qui débordent
+      ctx.fillStyle = P.stoneTop; ctx.fillRect(px, py - 1, T, 4);
+      ctx.fillRect(px + (h % 7), py + 3, 4, 1 + (h % 2)); ctx.fillRect(px + 9 + (h % 4), py + 3, 3, 2);
+      ctx.fillStyle = "rgba(160,200,230,0.6)"; ctx.fillRect(px, py + 3, T, 1);
+    } else if (!looksStone(up) && up !== "B") {
       ctx.fillStyle = P.stoneTop; ctx.fillRect(px, py, T, 2);
       if (P.moss && h % 3 !== 0) {
         // mousse qui déborde sur la face
@@ -2230,6 +2516,18 @@
         ctx.moveTo(px + 3, py + 1); ctx.lineTo(px + 8, py + 7); ctx.lineTo(px + 5, py + 11); ctx.lineTo(px + 9, py + 15);
         ctx.moveTo(px + 8, py + 7); ctx.lineTo(px + 14, py + 5);
         ctx.stroke();
+      } else if ((c === "^" || c === "v") && P.neige) {
+        // pics de glace
+        const a = R.spikeAnim.get(x + "," + y) ?? 1, hgt = 11 * a;
+        ctx.fillStyle = "#cfeaff";
+        ctx.beginPath();
+        for (let i = 0; i < 3; i++) {
+          const bx = px + 1 + i * 5;
+          if (c === "^") { ctx.moveTo(bx, py + T); ctx.lineTo(bx + 2.5, py + T - hgt); ctx.lineTo(bx + 5, py + T); }
+          else { ctx.moveTo(bx, py); ctx.lineTo(bx + 2.5, py + hgt + (i === 1 ? 2 : 0)); ctx.lineTo(bx + 5, py); }
+        }
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(px + 3, c === "^" ? py + T - hgt + 3 : py + 1, 1, 4);
       } else if ((c === "^" || c === "v") && R.eau != null && y * T >= R.eau) {
         // corail urticant (les pics des abysses)
         const sw = Math.sin(R.t / 20 + x) * 1, up = c === "^";
@@ -2273,6 +2571,34 @@
         ctx.strokeStyle = C.gold; ctx.lineWidth = 0.8; ctx.setLineDash([2, 2]);
         ctx.strokeRect(px + 1, py + 1, T - 2, T - 2);
         ctx.setLineDash([]); ctx.globalAlpha = 1;
+      } else if (c === "z") {
+        // neige profonde : un épais matelas de neige
+        drawStone(px, py, x, y);
+        if (!isSolid(tileAt(x, y - 1))) { ctx.fillStyle = "#f4f8fc"; ctx.fillRect(px, py - 4, T, 8); ctx.fillStyle = "#dfe9f2"; ctx.fillRect(px + (x % 3) * 4, py - 5, 6, 2); ctx.fillStyle = "rgba(160,200,230,0.7)"; ctx.fillRect(px, py + 4, T, 1); }
+      } else if (c === "i") {
+        // glace fine d'un lac gelé : elle se fissure si Max reste dessus
+        const v = R.glaceFine.get(x + "," + y) || 0;
+        ctx.fillStyle = "rgba(170,220,250,0.78)"; ctx.fillRect(px, py, T, 5);
+        ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.fillRect(px + (x * 5) % 9, py + 1, 5, 1);
+        if (v > 30) { ctx.strokeStyle = "rgba(30,60,90,0.9)"; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(px + 3, py); ctx.lineTo(px + 7, py + 3); ctx.lineTo(px + 12, py + 1); if (v > 65) { ctx.moveTo(px + 7, py + 3); ctx.lineTo(px + 6, py + 5); ctx.moveTo(px + 1, py + 4); ctx.lineTo(px + 15, py + 2); } ctx.stroke(); }
+      } else if (c === "y") {
+        // planche de pont de corde
+        ctx.strokeStyle = "#8a6a3a"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, py - 6); ctx.lineTo(px + T, py - 6); ctx.stroke();
+        ctx.fillStyle = "#9a7444"; ctx.fillRect(px + 1, py, T - 2, 4);
+        ctx.fillStyle = "#c79a5e"; ctx.fillRect(px + 1, py, T - 2, 1);
+        ctx.fillStyle = "#6e5030"; ctx.fillRect(px + 1, py - 6, 1, 6); ctx.fillRect(px + T - 2, py - 6, 1, 6);
+      } else if (c === "V") {
+        // bouche de geyser : une source chaude dans la roche
+        drawStone(px, py, x, y);
+        const gz = R.geysers.find((q) => q.x === x && q.y === y);
+        ctx.fillStyle = "#3a2a1a"; ctx.fillRect(px + 4, py, 8, 3);
+        ctx.fillStyle = gz && gz.warn ? (Math.floor(R.t / 4) % 2 ? "#ffd34a" : "#ff8a3a") : "#6e8a9a"; ctx.fillRect(px + 5, py + 1, 6, 1);
+        if (gz && gz.on) { const gr = ctx.createLinearGradient(0, py, 0, py - 6 * T); gr.addColorStop(0, "rgba(240,250,255,0.75)"); gr.addColorStop(1, "rgba(240,250,255,0)"); ctx.fillStyle = gr; ctx.fillRect(px + 2, py - 6 * T, 12, 6 * T); }
+      } else if (c === "g" && P.neige) {
+        // glace vive
+        ctx.fillStyle = "#9fd0ee"; ctx.fillRect(px, py, T, T);
+        ctx.fillStyle = "#d8f0ff"; ctx.fillRect(px, py, T, 3); ctx.fillRect(px + (x * 7) % 10, py + 5, 4, 1);
+        ctx.fillStyle = "rgba(60,110,150,0.4)"; ctx.fillRect(px, py + T - 3, T, 3);
       } else if (c === "n") {
         // plateforme de bois qui flotte (et coule)
         const s = R.sink.get(x + "," + y) || 0, wob = s ? Math.sin(R.t / 3) * 0.8 : 0;
@@ -2379,6 +2705,24 @@
     for (let x = x0; x <= x1; x += 4) { const y = y0 + vague(x); if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
     ctx.stroke();
   }
+  // jauge de froid (Himalaya) : en haut à gauche, sous le bandeau
+  function drawFroid() {
+    if (R.froid == null) return;
+    const w = 70, x = 8, y = 19, bas = R.froid < 0.3;
+    ctx.fillStyle = "rgba(6,10,8,0.72)"; ctx.fillRect(x - 2, y - 2, w + 34, 11);
+    ctx.font = `7px ${FONT_PIX}`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillStyle = bas && Math.floor(R.t / 8) % 2 ? C.danger : "#ffb347"; ctx.fillText("CHAUD", x, y + 3.5);
+    ctx.fillStyle = "rgba(160,200,230,0.35)"; ctx.fillRect(x + 30, y, w, 6);
+    ctx.fillStyle = bas ? "#7fb8e6" : "#ffb347"; ctx.fillRect(x + 30, y, w * R.froid, 6);
+  }
+  function drawBlizzard(k) {
+    // tempête : on n'y voit pas loin
+    const p = R.player; if (!p) return;
+    const cx = p.x + p.w / 2 - cam.x, cy = p.y + p.h / 2 - cam.y;
+    const g = ctx.createRadialGradient(cx, cy, 50, cx, cy, 150);
+    g.addColorStop(0, "rgba(235,242,250,0)"); g.addColorStop(1, "rgba(235,242,250,0.88)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, view.w, view.h);
+  }
   // jauge d'air au-dessus de la tête de Max quand il est sous l'eau
   function drawOxygene() {
     if (R.eau == null || !R.player || !R.player.alive) return;
@@ -2472,6 +2816,18 @@
       } else { ctx.fillStyle = "rgba(255,211,74,0.35)"; ctx.fillRect(px + 7, py, 2, 2); }
     }
   }
+  function drawBraseros() {
+    for (const b of R.braseros) {
+      const px = b.x * T, py = b.y * T;
+      ctx.fillStyle = "#4a3a2a"; ctx.fillRect(px + 3, py + 9, 10, 4); ctx.fillRect(px + 5, py + 13, 2, 3); ctx.fillRect(px + 9, py + 13, 2, 3);
+      const fl = Math.sin(R.t / 3 + b.x) * 1.5;
+      ctx.fillStyle = "#e8621f"; ctx.beginPath(); ctx.ellipse(px + 8, py + 6, 4, 6 + fl, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#ffd34a"; ctx.beginPath(); ctx.ellipse(px + 8, py + 7, 2, 3.5 + fl / 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      const gr = ctx.createRadialGradient(px + 8, py + 6, 2, px + 8, py + 6, 36); gr.addColorStop(0, "rgba(255,150,60,0.30)"); gr.addColorStop(1, "rgba(255,120,40,0)");
+      ctx.fillStyle = gr; ctx.fillRect(px - 30, py - 30, 76, 76); ctx.restore();
+    }
+  }
   function drawStuck() {
     for (const s of R.stuck) {
       ctx.globalAlpha = s.life < 60 && Math.floor(s.life / 5) % 2 ? 0.4 : 1;
@@ -2552,6 +2908,11 @@
     else if (e.kind === "k") drawSinge(e);
     else if (e.kind === "e") { ctx.restore(); drawMeduse(e); if (e.stun) drawStars(e.x + 5, e.y - 3, e.stun); return; }
     else if (e.kind === "r") drawCrabe(e);
+    else if (e.kind === "L") drawLoup(e);
+    else if (e.kind === "C") drawChevre(e);
+    else if (e.kind === "S") drawBonhomme(e);
+    else if (e.kind === "Y") { ctx.restore(); drawYetiPetit(e); if (e.stun) drawStars(e.x + 7, e.y - 3, e.stun); return; }
+    else if (e.kind === "A") { ctx.restore(); drawAigle(e); if (e.stun) drawStars(e.x + 6, e.y - 3, e.stun); return; }
     else if (e.kind === "l") { ctx.restore(); drawAnguille(e); if (e.stun) drawStars(e.nid + e.dir * 10, e.y - 3, e.stun); return; }
     else if (e.kind === "j") drawJaguar(e);
     else drawBat(e);
@@ -2660,6 +3021,72 @@
     if (e.butin) { ctx.fillStyle = "#c9a24a"; ctx.beginPath(); ctx.arc(x + 4, y + 4, 3, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#fff3c4"; ctx.fillRect(x + 3, y + 3, 1, 1); }
   }
 
+  function drawLoup(e) {
+    const x = e.x, y = Math.round(e.y), ch = e.etat === "chasse", ph = Math.sin(e.t * (ch ? 8 : 4));
+    ctx.fillStyle = "#8a96a2"; ctx.fillRect(x + 1, y + 2, 10, 4);
+    ctx.fillStyle = "#b8c4ce"; ctx.fillRect(x + 2, y + 5, 8, 1);
+    ctx.fillStyle = "#6e7a86"; ctx.fillRect(x + 1 + (ph > 0 ? 1 : 0), y + 6, 2, 3); ctx.fillRect(x + 8 - (ph > 0 ? 1 : 0), y + 6, 2, 3);
+    ctx.fillStyle = "#8a96a2"; ctx.fillRect(x + 10, y, 4, 4); ctx.fillRect(x + 10, y - 2, 1, 2); ctx.fillRect(x + 12, y - 2, 1, 2); ctx.fillRect(x + 13, y + 2, 2, 2);
+    ctx.fillStyle = ch ? "#ffd34a" : C.void; ctx.fillRect(x + 12, y + 1, 1, 1);
+    ctx.strokeStyle = "#8a96a2"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x + 1, y + 3); ctx.lineTo(x - 3, y + (ch ? 1 : 5)); ctx.stroke();
+    if (ch) { ctx.fillStyle = "#fff"; ctx.fillRect(x + 13, y + 3, 1, 1); }
+  }
+  function drawChevre(e) {
+    const x = e.x, y = Math.round(e.y), ch = e.etat === "charge", pr = e.etat === "prepare", ph = Math.sin(e.t * (ch ? 8 : 3));
+    ctx.fillStyle = "#e8e0d0"; ctx.fillRect(x + 1, y + 2, 10, 5);
+    ctx.fillStyle = "#c8bca8"; ctx.fillRect(x + 1, y + 6, 10, 1);
+    ctx.fillStyle = "#5a4a3a"; ctx.fillRect(x + 2 + (ph > 0 ? 1 : 0), y + 7, 2, 4); ctx.fillRect(x + 8 - (ph > 0 ? 1 : 0), y + 7, 2, 4);
+    const hy = y + (ch || pr ? 3 : 0);
+    ctx.fillStyle = "#e8e0d0"; ctx.fillRect(x + 10, hy, 4, 4);
+    ctx.fillStyle = "#7a6a5a"; ctx.fillRect(x + 10, hy - 2, 2, 2); ctx.fillRect(x + 9, hy - 3, 2, 1);   // cornes
+    ctx.fillStyle = C.void; ctx.fillRect(x + 12, hy + 1, 1, 1);
+    ctx.fillStyle = "#c8bca8"; ctx.fillRect(x + 12, hy + 4, 1, 2);                                      // barbiche
+    if (pr && Math.floor(e.k / 4) % 2) { ctx.fillStyle = C.danger; ctx.fillRect(x + 6, y - 6, 2, 4); ctx.fillRect(x + 6, y - 1, 2, 1); }
+  }
+  function drawBonhomme(e) {
+    const x = e.x, y = Math.round(e.y);
+    if (e.stun > 0) {
+      // en morceaux… il se reconstruit petit à petit
+      const k = 1 - e.stun / 260;
+      ctx.fillStyle = "#f4f8fc"; ctx.beginPath(); ctx.arc(x + 6, y + 11, 4, 0, Math.PI * 2); ctx.fill();
+      if (k > 0.4) { ctx.beginPath(); ctx.arc(x + 6, y + 6 + (1 - k) * 6, 3, 0, Math.PI * 2); ctx.fill(); }
+      if (k > 0.8) { ctx.fillStyle = "#e8622a"; ctx.fillRect(x + 7, y + 4, 3, 1); }
+      return;
+    }
+    const w = Math.sin(e.t * 3) * 0.5;
+    ctx.fillStyle = "#f4f8fc"; ctx.beginPath(); ctx.arc(x + 6, y + 10, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 6 + w, y + 3, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#dfe9f2"; ctx.fillRect(x + 2, y + 12, 8, 2);
+    ctx.fillStyle = C.void; ctx.fillRect(x + 7 + w, y + 2, 1, 1); ctx.fillRect(x + 6, y + 8, 1, 1); ctx.fillRect(x + 6, y + 11, 1, 1);
+    ctx.fillStyle = "#e8622a"; ctx.fillRect(x + 8 + w, y + 3, 3, 1);
+    ctx.fillStyle = "#c0392b"; ctx.fillRect(x + 3, y + 6, 7, 1);
+    ctx.strokeStyle = "#6e5030"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 10, y + 8); ctx.lineTo(x + 13, y + 5 + w); ctx.stroke();
+  }
+  function drawYetiPetit(e) {
+    const x = e.x, y = Math.round(e.y), f = e.face, l = e.lance;
+    ctx.fillStyle = "#e8eef4"; ctx.fillRect(x + 2, y + 3, 10, 9);
+    ctx.fillRect(x + 3, y, 8, 4);
+    ctx.fillStyle = "#9fc4dd"; ctx.fillRect(x + 4, y + 2, 6, 4);
+    ctx.fillStyle = C.void; ctx.fillRect(x + (f > 0 ? 7 : 5), y + 3, 1, 1); ctx.fillRect(x + (f > 0 ? 9 : 4), y + 3, 1, 1);
+    ctx.fillStyle = "#c8d6e2"; ctx.fillRect(x + 3, y + 12, 3, 2); ctx.fillRect(x + 8, y + 12, 3, 2);
+    // bras levé avec une boule de neige quand il va lancer
+    ctx.fillStyle = "#e8eef4";
+    if (l) { ctx.fillRect(x + (f > 0 ? 11 : 0), y - 3, 3, 6); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x + (f > 0 ? 13 : 1), y - 4, 3, 0, Math.PI * 2); ctx.fill(); }
+    else { ctx.fillRect(x, y + 5, 2, 5); ctx.fillRect(x + 12, y + 5, 2, 5); }
+  }
+  function drawAigle(e) {
+    const x = e.x, y = Math.round(e.y), pq = e.etat === "pique", flap = Math.sin(e.t * (pq ? 0 : 0.25)) > 0;
+    ctx.fillStyle = "#5a3a1a";
+    ctx.beginPath();
+    if (pq) { ctx.moveTo(x + 6, y); ctx.lineTo(x - 1, y - 6); ctx.lineTo(x + 4, y + 3); ctx.moveTo(x + 6, y); ctx.lineTo(x + 13, y - 6); ctx.lineTo(x + 8, y + 3); }
+    else if (flap) { ctx.moveTo(x + 4, y + 2); ctx.lineTo(x - 6, y - 4); ctx.lineTo(x + 3, y + 5); ctx.moveTo(x + 8, y + 2); ctx.lineTo(x + 18, y - 4); ctx.lineTo(x + 9, y + 5); }
+    else { ctx.moveTo(x + 4, y + 2); ctx.lineTo(x - 6, y + 6); ctx.lineTo(x + 3, y + 5); ctx.moveTo(x + 8, y + 2); ctx.lineTo(x + 18, y + 6); ctx.lineTo(x + 9, y + 5); }
+    ctx.fill();
+    ctx.fillStyle = "#7a5228"; ctx.fillRect(x + 3, y + 1, 6, 5);
+    ctx.fillStyle = "#f4f8fc"; ctx.fillRect(x + 7, y - 1, 4, 3);
+    ctx.fillStyle = "#ffd34a"; ctx.fillRect(x + 10, y, 2, 2);
+    ctx.fillStyle = C.void; ctx.fillRect(x + 8, y, 1, 1);
+  }
   function drawMeduse(e) {
     const x = e.x, y = Math.round(e.y), pul = Math.sin(e.t * 0.12);
     if (e.zap && !e.stun) {
@@ -2779,6 +3206,15 @@
   }
 
   function drawBoulder(b) {
+    if (b.neige) {
+      const r = b.w / 2, cx = b.x + r, cy = b.y + r;
+      ctx.fillStyle = "#f4f8fc"; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#c8d6e2"; ctx.beginPath(); ctx.arc(cx + r * 0.25, cy + r * 0.25, r * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#f4f8fc"; ctx.beginPath(); ctx.arc(cx - r * 0.1, cy - r * 0.1, r * 0.72, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#9fb4c6";
+      for (let i = 0; i < 4; i++) { const a = b.rot + i * 1.6; ctx.fillRect(cx + Math.cos(a) * r * 0.6 - 1, cy + Math.sin(a) * r * 0.6 - 1, 3, 2); }
+      return;
+    }
     const cx = b.x + 14, cy = b.y + 14;
     ctx.fillStyle = P.stoneTop;
     ctx.beginPath(); ctx.arc(cx, cy, 14, 0, Math.PI * 2); ctx.fill();
@@ -2860,6 +3296,7 @@
         continue;
       }
       ctx.globalAlpha = Math.min(1, q.life / 20);
+      if (q.flocon) { ctx.fillStyle = q.color; ctx.fillRect(q.x, q.y, q.s, q.s); continue; }
       if (q.bulle) { ctx.strokeStyle = q.color; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(q.x, q.y, q.s / 2 + 0.5, 0, Math.PI * 2); ctx.stroke(); continue; }
       if (q.zzz) { ctx.fillStyle = q.color; ctx.font = `8px ${FONT_PIX}`; ctx.textAlign = "center"; ctx.fillText("z", q.x, q.y); continue; }
       ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s);
@@ -3501,7 +3938,7 @@
       for (const it of R.pickups) drawPickup(it);
       for (const e of R.enemies) drawEnemy(e);
       drawMovers(); drawCrushers(); drawTorches(); drawFlames(); drawVines(); drawPlayer(); drawTiles(true);
-      if (R.boss) drawBoss();
+      if (R.boss) { if (R.boss.kind === "yeti") drawYeti(); else drawBoss(); }
       // marquer les pièges déclenchés (zones) pour la relecture
       ctx.strokeStyle = "rgba(255,80,120,0.7)"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
       for (const tr of R.def.triggers) for (const a of tr.act) if (["collapse", "spikes", "fall", "dropspike", "appear", "boulder", "door"].includes(a[0])) ctx.strokeRect(a[1] * T, a[2] * T, (a[3] && a[0] !== "boulder" && a[0] !== "door" ? a[3] : 1) * T, (a[4] && ["collapse", "spikes", "fall", "appear"].includes(a[0]) ? Math.min(a[4], 3) : 1) * T);

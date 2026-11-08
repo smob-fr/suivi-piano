@@ -17,7 +17,7 @@ qui est déjà ouvert. Chaque monde finit par un boss qu'on **assomme** (jamais 
 | Monde | État | Contenu |
 |---|---|---|
 | 1. L'Empire inca | **terminé** | 19 niveaux rallongés (2 à 3 parties, drapeaux) + le boss, le Jaguar de pierre |
-| 2. Les neiges de l'Himalaya | provisoire | anciens niveaux du temple, en attendant les vrais |
+| 2. Les neiges de l'Himalaya | **terminé** | 19 niveaux + le boss, le Yéti grognon |
 | 3. Les abysses | **essai** | niveaux 1 à 3 : nage, oxygène, bulles, méduses, crabes, anguilles (toujours ouverts pour tester) ; la suite = anciens niveaux |
 | 4. Le royaume des nuages | provisoire | idem |
 | 5. La cité d'or | provisoire | idem |
@@ -27,7 +27,9 @@ assomme pour les récupérer), bébés jaguars qui bondissent, têtes de jaguar 
 rayon du dieu Soleil (on se cache derrière les piliers), salles secrètes cachées (faux mur, mur
 fissuré, corde dans le plafond, sol qui cède), ressorts fragiles, radeaux qui coulent, sabliers qui
 redonnent du temps, torches à allumer dans le noir, rocher qui casse les murs fissurés, flèches
-qui se plantent dans le mur et servent de marche. L'histoire est racontée **en fin de niveau**
+qui se plantent dans le mur et servent de marche. Nouveautés de l'Himalaya : neige profonde qui ralentit, glace vive, ponts de corde dont les planches lâchent, avalanche (boule de neige qui grossit), crevasses cachées (suivre les traces des chèvres), lac gelé qui craque si on reste immobile, geysers, jauge de froid et braseros, pente de ski, blizzard, vent qui change de sens ; loups, aigles qui piquent pendant les sauts, petits yétis lanceurs de boules de neige, chèvres sur lesquelles on rebondit, bonshommes de neige. Boss : le Yéti grognon, à attirer sous les grosses stalactites.
+
+L'histoire est racontée **en fin de niveau**
 (Archibald ne parle presque plus pendant le jeu).
 
 **Pour rester accrocheur** (objectif : 3 ou 4 essais par niveau, 6 ou 7 pour les plus durs) :
