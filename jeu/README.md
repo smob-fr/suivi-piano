@@ -18,7 +18,7 @@ qui est déjà ouvert. Chaque monde finit par un boss qu'on **assomme** (jamais 
 |---|---|---|
 | 1. L'Empire inca | **terminé** | 19 niveaux rallongés (2 à 3 parties, drapeaux) + le boss, le Jaguar de pierre |
 | 2. Les neiges de l'Himalaya | provisoire | anciens niveaux du temple, en attendant les vrais |
-| 3. Les abysses | provisoire | idem |
+| 3. Les abysses | **essai** | niveaux 1 à 3 : nage, oxygène, bulles, méduses, crabes, anguilles (toujours ouverts pour tester) ; la suite = anciens niveaux |
 | 4. Le royaume des nuages | provisoire | idem |
 | 5. La cité d'or | provisoire | idem |
 

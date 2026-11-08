@@ -17,7 +17,8 @@
   const $ = (id) => document.getElementById(id);
 
   /* ---------- état du joueur ---------- */
-  const ouvert = (i) => api.progress.tester || i <= api.progress.unlocked;
+  // les niveaux « essai » (prototypes à tester) sont toujours ouverts
+  const ouvert = (i) => api.progress.tester || i <= api.progress.unlocked || !!(api.LEVELS[i] && api.LEVELS[i].essai);
   const fini = (i) => api.progress.best[i] != null || !!(api.progress.stats[i] && api.progress.stats[i].fini);
   const mondeOuvert = (k) => ouvert(MONDES[k].debut);
   const finis = (k) => { let n = 0; for (let i = 0; i < NIV; i++) if (fini(MONDES[k].debut + i)) n++; return n; };

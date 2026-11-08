@@ -1,6 +1,6 @@
 # Plan de cadrage : Max et l’Œil de Jade
 
-> Statut : **validé** le 8 novembre 2026 (312 oui, 7 non sur 319 idées). Étape 1 (carte des mondes) et étape 2 (monde inca complet, avec son boss) **développées**.
+> Statut : **validé** le 8 novembre 2026 (312 oui, 7 non sur 319 idées). Étape 1 (carte des mondes) et étape 2 (monde inca complet, avec son boss) **développées** ; étape 3 (3 niveaux d'essai des abysses) **à tester**.
 
 ## Décisions et ajustements issus de la validation
 

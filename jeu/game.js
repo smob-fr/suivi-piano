@@ -31,6 +31,7 @@
     engloutie:  { moss: "#2f8a7e", bg: "#05121a", bg2: "#0a1f2b", stone: "#2c5f6e", stoneTop: "#4e95a6", stoneDark: "#173a45", crack: "#a7a07a", crackDark: "#5f5b42", deco: "#2b7f95" },
     volcan:     { bg: "#140806", bg2: "#22100b", stone: "#4a2f2a", stoneTop: "#7a4a3a", stoneDark: "#2c1915", crack: "#c58a4a", crackDark: "#7a4e25", deco: "#5a1d10" },
     jardins:    { moss: "#5fae3e", bg: "#0e1a12", bg2: "#18291c", stone: "#6b6a4c", stoneTop: "#97956a", stoneDark: "#45442f", crack: "#c0a36a", crackDark: "#7a6540", deco: "#2c5a2c" },
+    abysses:    { moss: "#3fa88a", bg: "#04202e", bg2: "#08304a", stone: "#2f5866", stoneTop: "#c9b07a", stoneDark: "#1b3540", crack: "#b0a070", crackDark: "#6a5e3e", deco: "#1f6f8b" },
     tresor:     { bg: "#140f06", bg2: "#22190a", stone: "#7b6332", stoneTop: "#b8964a", stoneDark: "#4c3c1c", crack: "#e2c070", crackDark: "#8a6c2c", deco: "#e2a640" },
   };
 
@@ -269,7 +270,7 @@
   } catch (_) {}
   // Sauvegardes d'avant les mondes : les niveaux ont changé d'ordre (monde inca en tête).
   // On retrouve chaque niveau par son numéro d'origine ; on reprend au premier niveau pas encore fini.
-  if (progress.v !== 2) {
+  if (!progress.v || progress.v < 2) {
     const vieux = { best: progress.best || {}, stats: progress.stats || {}, coins: progress.coinsPris || {} };
     const aJoue = progress.unlocked > 0 || Object.keys(vieux.best).length > 0;
     progress.best = {}; progress.stats = {}; progress.coinsPris = {};
@@ -285,6 +286,12 @@
     progress.unlocked = aJoue ? u : 0;
     progress.finished = false;
     progress.v = 2;
+    try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {}
+  }
+  // v3 : les 3 premiers niveaux du monde 3 sont devenus les essais des abysses
+  if (progress.v === 2) {
+    LEVELS.forEach((lv, i) => { if (lv.monde === 3) { delete progress.best[i]; delete progress.stats[i]; if (progress.coinsPris) delete progress.coinsPris[i]; } });
+    progress.v = 3;
     try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {}
   }
   function saveProgress() { try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {} }
@@ -312,7 +319,7 @@
       player: null, door: null, shooters: [],
       enemies: [], pickups: [], arrows: [], dynamites: [], boulders: [], blocks: [], rival: null,
       particles: [], fired: new Set(), say: null, hint: null, shake: 0, t: 0, bCount: 0,
-      torches: [], stuck: [], sink: new Map(),
+      torches: [], stuck: [], sink: new Map(), bulles: [],
     };
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
@@ -326,6 +333,10 @@
         else if (c === "k") { room.enemies.push({ kind: "k", x: x * T + 3, y: y * T + 4, w: 10, h: 12, vx: -0.8, vy: 0, alive: true, t: Math.random() * 10, etat: "rode", butin: 0 }); tiles[y][x] = "."; }
         else if (c === "j") { room.enemies.push({ kind: "j", x: x * T + 1, y: y * T + 6, w: 14, h: 10, vx: 0, vy: 0, alive: true, t: Math.random() * 10, etat: "guette", k: 0, face: -1 }); tiles[y][x] = "."; }
         else if (c === "T") { room.torches.push({ x, y, lit: false }); tiles[y][x] = "."; }
+        else if (c === "e") { room.enemies.push({ kind: "e", x: x * T + 3, y: y * T + 3, y0: y * T + 3, w: 10, h: 10, vx: 0, vy: 0, alive: true, t: (x * 13) % 60 }); tiles[y][x] = "."; }
+        else if (c === "r") { room.enemies.push({ kind: "r", x: x * T + 2, y: y * T + 8, w: 12, h: 8, vx: -0.5, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
+        else if (c === "l") { const dir = x + 1 < COLS && "#B".includes(tiles[y][x + 1]) ? -1 : 1; room.enemies.push({ kind: "l", nid: dir < 0 ? (x + 1) * T : x * T, dir, x: x * T, y: y * T + 5, w: 1, h: 7, vx: 0, vy: 0, out: 0, etat: "cache", k: 0, alive: true, t: 0 }); tiles[y][x] = "."; }
+        else if (c === "u") { room.bulles.push({ x, y }); tiles[y][x] = "."; }
         else if (c === "^" || c === "v") room.spikeAnim.set(x + "," + y, 1);
         else if (c === "<" || c === ">" || c === "(" || c === ")") {
           const left = c === "<" || c === "(";
@@ -370,6 +381,10 @@
     room.crushers = (def.crushers || []).map(([x, y, ph, drop]) => ({ x: x * T + 1, y0: y * T, y: y * T, w: T - 2, h: T, drop: (drop || 3) * T, t: ph || 0 }));
     room.winds = (def.winds || []).map(([x0, x1, f]) => ({ x0: x0 * T, x1: (x1 + 1) * T, f }));
     room.flood = null; room.timer = 0;
+    // eau (monde des abysses) : tout ce qui est sous la ligne `eau` est sous l'eau ; Max y nage et doit respirer
+    room.eau = def.eau != null ? def.eau * T : null;
+    room.o2 = 1; room.o2Alerte = false;
+    for (const b of room.bulles) { let y = b.y; while (y > 0 && !"#BxJ<>()gG".includes(tiles[y - 1][b.x]) && (room.eau == null || (y - 1) * T >= room.eau - T)) y--; b.top = y; }
     // lianes qui se balancent : [x, y d'accroche, longueur en cases, amplitude (rad), décalage]
     room.vines = (def.vines || []).map(([x, y, len, amp, ph], i) => ({ ax: x * T + 8, ay: y * T, L: len * T, amp: amp || 0.8, w: (2 * Math.PI) / (110 + len * 9), ph: ph != null ? ph : i * 1.7, ang: 0, px: 0, py: 0 }));
     // têtes de jaguar qui crachent du feu : [x, y, sens, longueur, décalage]
@@ -393,7 +408,8 @@
     const at = (x, y) => (y < 0 || y >= rows || x < 0 || x >= cols ? "#" : t[y][x]);
     const stone = (c) => c === "#" || c === "<" || c === ">";
     const rnd = (x, y, k) => { let h = (x * 73856093) ^ (y * 19349663) ^ (k * 83492791) ^ (room.index * 2654435761); h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-    const pVine = { jungle: 0.24, cascades: 0.16, crypte: 0.05, mines: 0.04, sanctuaire: 0.08 }[theme] || 0.1;
+    const pVine = { jungle: 0.24, cascades: 0.16, crypte: 0.05, mines: 0.04, sanctuaire: 0.08, abysses: 0.02 }[theme] || 0.1;
+    const eauY = room.def.eau;
     let lastTorch = -99;
     for (let y = 1; y < rows - 1; y++) for (let x = 1; x < cols - 1; x++) {
       if (at(x, y) !== ".") continue;
@@ -409,6 +425,10 @@
       // gouttes d'eau dans les cascades
       if (theme === "cascades" && stone(up) && rnd(x, y, 7) < 0.08) out.push({ k: "drip", x, y, ph: rnd(x, y, 8) * 200 });
       // au sol : herbes, os, cailloux, cristaux
+      if (stone(dn) && eauY != null && y >= eauY) {
+        if (rnd(x, y, 15) < 0.35) out.push({ k: "algue", x, y, h: 8 + rnd(x, y, 16) * 14, ph: rnd(x, y, 17) * 6 });
+        continue;
+      }
       if (stone(dn)) {
         const r = rnd(x, y, 9);
         if (r < 0.04) out.push({ k: "bones", x, y, f: rnd(x, y, 10) < 0.5 ? 1 : -1 });
@@ -580,6 +600,7 @@
 
     updateMovers();
     updateVines();
+    if (R.bulles.length) updateBulles();
     updatePlayer();
     updateSink();
     updateFlames();
@@ -627,6 +648,8 @@
     // vent : pousse Max sur le côté
     for (const w of R.winds) if (p.x + p.w / 2 > w.x0 && p.x + p.w / 2 < w.x1) p.x += w.f;
 
+    const nage = R.eau != null && p.y + p.h / 2 > R.eau;
+    if (nage) { p.vine = null; p.climb = false; }
     // liane qui se balance : Max s'y accroche en la touchant, SAUT pour lâcher au bon moment
     if (p.vine) {
       const v = p.vine, d = p.vineD;
@@ -677,7 +700,25 @@
       moveBody(p);
       if (p.grounded && !input.jump) p.climb = false;
       p.anim += 0.12;
+    } else if (nage) {
+      // sous l'eau : on flotte, SAUT = une brasse ; près de la surface, SAUT fait sortir de l'eau
+      p.swim = true;
+      p.vx += (dir * 1.45 - p.vx) * 0.12;
+      if (p.stroke > 0) p.stroke--;
+      if (pressed.jump) {
+        if (p.y < R.eau + 3 && !rectHitsSolid(p.x, p.y - 8, p.w, 8)) { p.vy = PHYS.jump * 0.95; sfx.jump(); }
+        else if (!(p.stroke > 0)) { p.vy = Math.min(p.vy, -2.5); p.stroke = 10; sfx.swing(); for (let i = 0; i < 3; i++) R.particles.push({ x: p.x + 5, y: p.y + 2, vx: (Math.random() - 0.5) * 0.6, vy: -0.5 - Math.random() * 0.5, s: 2, life: 40, color: "rgba(200,240,255,0.8)", g: -0.01 }); }
+      }
+      if (input.jump && p.vy > -1.2) p.vy -= 0.1;   // SAUT maintenu : on remonte doucement vers la surface
+      p.vy = Math.min(p.vy * 0.985 + 0.07, 1.1);
+      for (const b of R.bulles) if (p.x + p.w > b.x * T + 2 && p.x < b.x * T + 14 && p.y + p.h > b.top * T && p.y < (b.y + 1) * T) { p.vy = Math.max(p.vy - 0.35, -2.6); p.dansBulles = true; }
+      p.coyote = 0;
+      const prevBottom = p.y + p.h;
+      moveBody(p);
+      landOnMovers(p, prevBottom);
+      p.anim += 0.06 + Math.abs(p.vx) * 0.12;
     } else {
+    p.swim = false;
     p.coyote = p.grounded ? PHYS.coyote : p.coyote - 1;
     if (pressed.jump) p.buffer = PHYS.buffer; else p.buffer--;
     if (p.buffer > 0 && p.coyote > 0) { p.vy = PHYS.jump; p.buffer = 0; p.coyote = 0; sfx.jump(); }
@@ -787,7 +828,20 @@
     finPlayer(p);
   }
 
+  function respirer(p) {
+    if (R.eau == null || game.mode !== "play") return;
+    const sousLeau = p.y + 3 > R.eau;
+    if (p.dansBulles) { R.o2 = Math.min(1, R.o2 + 0.012); p.dansBulles = false; }
+    else if (sousLeau) R.o2 -= 1 / (13 * 60) / (1 + 0.25 * R.assist);
+    else R.o2 = Math.min(1, R.o2 + 0.04);
+    if (sousLeau && R.t % 50 === 0) R.particles.push({ x: p.x + (p.face > 0 ? 8 : 2), y: p.y + 3, vx: 0, vy: -0.6, s: 2, life: 50, color: "rgba(200,240,255,0.7)", g: -0.005 });
+    if (R.o2 < 0.3 && !R.o2Alerte) { R.o2Alerte = true; R.hint = { text: "Plus beaucoup d'air : remonte respirer ou trouve des bulles !", t: 0, dur: 200 }; }
+    if (R.o2 > 0.6) R.o2Alerte = false;
+    if (R.o2 <= 0) { R.o2 = 0; kill("Plus d'air ! Il fallait remonter respirer.", "flood"); }
+  }
+
   function finPlayer(p) {
+    respirer(p);
     const d = R.door;
     if (d && !d.moving && !d.hidden && overlap(p, { x: d.x + 3, y: d.y + 4, w: d.w - 6, h: d.h - 4 })) {
       game.mode = "win"; game.winT = 0; sfx.door();
@@ -901,6 +955,10 @@
       R.hint = { text: b.hits === 1 ? "Touché ! Encore deux fois." : "Touché ! Une dernière fois… attention, il s'énerve !", t: 0, dur: 160 };
     }
     return true;
+  }
+
+  function updateBulles() {
+    for (const b of R.bulles) if (R.t % 5 === 0) R.particles.push({ x: b.x * T + 4 + Math.random() * 8, y: (b.y + 1) * T - 2, vx: (Math.random() - 0.5) * 0.3, vy: -1.4 - Math.random() * 0.8, s: 2 + Math.random() * 2, life: Math.max(10, (b.y + 1 - b.top) * T / 1.8), color: "rgba(210,245,255,0.75)", g: 0, bulle: true });
   }
 
   function updateVines() {
@@ -1050,12 +1108,15 @@
       if (!e.alive) continue;
       e.t += 0.1;
       if (!reveil) continue;
+      if (e.stun > 0 && (e.kind === "e" || e.kind === "l")) { e.stun--; if (e.kind === "l") { e.out = Math.max(0, e.out - 0.05); placeAnguille(e); } continue; }
       if (e.stun > 0) {
         e.stun--;
         if (e.kind !== "b") { e.vx = 0; e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall); moveBody(e); if (e.y > H + 20) e.alive = false; }
-        if (e.stun === 0) { e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : e.kind === "k" ? -0.8 : 0.7); if (e.kind === "j") { e.etat = "repos"; e.k = 40; e.vx = 0; } }
+        if (e.stun === 0) { e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : e.kind === "k" ? -0.8 : e.kind === "r" ? -0.5 : 0.7); if (e.kind === "j") { e.etat = "repos"; e.k = 40; e.vx = 0; } }
         continue;
       }
+      if (e.kind === "e") { updateMeduse(e); continue; }
+      if (e.kind === "l") { updateAnguille(e); continue; }
       if (e.kind === "k" && updateSinge(e)) continue;
       if (e.kind === "j") { updateJaguar(e); continue; }
       if (e.kind === "b") {
@@ -1107,6 +1168,33 @@
     for (const s of R.stuck) s.life--;
     R.stuck = R.stuck.filter((s) => s.life > 0);
     R.arrows = R.arrows.filter((a) => !a.dead);
+  }
+
+  // Méduse : monte et descend doucement ; de temps en temps elle se charge et lance une décharge
+  function updateMeduse(e) {
+    e.t++;
+    const ny = e.y0 + Math.sin(e.t * 0.025) * 22;
+    if (!rectHitsSolid(e.x, ny, e.w, e.h)) e.y = ny;
+    const ph = (e.t + 1000) % 220;
+    e.charge = ph >= 150 && ph < 180;
+    e.zap = ph >= 180 && ph < 210;
+  }
+  // Anguille : cachée dans un trou du rocher, elle jaillit quand Max passe devant
+  function placeAnguille(e) {
+    const len = 6 + e.out * 38;
+    e.w = len; e.x = e.dir < 0 ? e.nid - len : e.nid;
+  }
+  function updateAnguille(e) {
+    const p = R.player;
+    e.t++;
+    const devant = e.dir < 0 ? e.nid - p.x : p.x - e.nid;
+    if (e.etat === "cache") {
+      e.out = Math.max(0, e.out - 0.08);
+      if (p.alive && devant > -8 && devant < 64 && Math.abs(p.y + 8 - (e.y + 3)) < 20) { e.etat = "guette"; e.k = Math.round(22 / R.slow); }
+    } else if (e.etat === "guette") { if (--e.k <= 0) { e.etat = "sort"; e.k = 70; sfx.flee(); } }
+    else if (e.etat === "sort") { e.out = Math.min(1, e.out + 0.12); if (--e.k <= 0) { e.etat = "rentre"; e.k = 60; } }
+    else if (e.etat === "rentre") { e.out = Math.max(0, e.out - 0.06); if (--e.k <= 0) e.etat = "cache"; }
+    placeAnguille(e);
   }
 
   // Singe voleur : rôde, fonce sur Max, lui chipe 3 pièces et s'enfuit. Assommé, il les lâche.
@@ -1161,6 +1249,7 @@
 
   // Assommé : l'ennemi ne bouge plus et devient inoffensif pendant ~4 secondes
   function stunEnemy(e, dir) {
+    if (e.kind === "e" || e.kind === "l") { e.stun = 220; sfx.bonk(); burst(e.x + 5, e.y + 4, C.gold, 6, 1); if (e.kind === "l") e.etat = "rentre"; return; }
     if (e.kind === "k" && e.butin) {
       // le singe lâche les pièces volées
       for (let i = 0; i < e.butin; i++) R.pickups.push({ kind: "coin2", x: e.x + i * 6 - 4, y: e.y - 4, w: 8, h: 10, taken: false, id: -1 });
@@ -1314,8 +1403,10 @@
       if (!overlap(p, { x: e.x + 1, y: e.y + 1, w: e.w - 2, h: e.h - 1 })) continue;
       if (p.vy > 0.5 && p.y + p.h - e.y < 10) { stunEnemy(e, 0); p.vy = -4.6; p.spring = false; continue; }
       if (e.kind === "k") { if (e.etat !== "fuite" && !(p.invuln > 0)) volParSinge(e); continue; }
+      if (e.kind === "l" && e.out < 0.25) continue;
       return kill(e.kind === "j" ? "Croqué par un bébé jaguar. Il est mignon, pourtant." : null);
     }
+    for (const e of R.enemies) if (e.kind === "e" && e.alive && !e.stun && e.zap && Math.hypot(p.x + 5 - (e.x + 5), p.y + 8 - (e.y + 5)) < 26) return kill("Bzzz ! La méduse t'a électrocuté.");
     for (const f of R.flames) {
       if (!f.on) continue;
       const fr = flameRect(f);
@@ -1744,6 +1835,7 @@
     drawSecrets();
     if (R.boss) drawBoss();
     drawWinds();
+    if (R.eau != null) drawEau();
     drawFlood();
     drawTiles(true); // faux murs par-dessus le joueur
     drawParticles();
@@ -1751,6 +1843,7 @@
     ctx.setTransform(k, 0, 0, k, 0, 0);
     if (R.dark) drawDarkness(k); else drawVignette();
     drawHud();
+    drawOxygene();
     drawSpeech();
     if (game.invert > 0) drawInvert();
     drawTimerHud();
@@ -1760,6 +1853,28 @@
 
   function drawBackground() {
     const decor = R.def.decor || R.def.palette || (ACTS[R.def.act] || {}).palette;
+    if (decor === "abysses") {
+      const e = R.eau != null ? R.eau : 0;
+      const ciel = ctx.createLinearGradient(0, 0, 0, e);
+      ciel.addColorStop(0, "#6fb4d8"); ciel.addColorStop(1, "#cdeef5");
+      ctx.fillStyle = ciel; ctx.fillRect(cam.x - 10, -40, view.w + 20, e + 40);
+      const mer = ctx.createLinearGradient(0, e, 0, H);
+      mer.addColorStop(0, "#1a6f90"); mer.addColorStop(1, "#04182a");
+      ctx.fillStyle = mer; ctx.fillRect(cam.x - 10, e, view.w + 20, H - e + 60);
+      // nuages lointains et silhouettes de poissons
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      for (let i = Math.floor(cam.x / 120) - 1; i <= Math.ceil((cam.x + view.w) / 120) + 1; i++) {
+        const cx = i * 120 + cam.x * 0.5 + 30, cy = 20 + (i * 37 % 3) * 8;
+        if (cy + 10 < e) { ctx.beginPath(); ctx.ellipse(cx, cy, 18, 5, 0, 0, Math.PI * 2); ctx.ellipse(cx + 10, cy - 3, 10, 5, 0, 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.fillStyle = "rgba(4,24,42,0.35)";
+      for (let i = 0; i < 6; i++) {
+        const fx = ((R.t * (0.3 + i * 0.07) + i * 211) % (W + 200)) - 100, fy = e + 40 + ((i * 53) % Math.max(20, H - e - 60));
+        ctx.beginPath(); ctx.ellipse(fx, fy, 6, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(fx - 6, fy); ctx.lineTo(fx - 10, fy - 3); ctx.lineTo(fx - 10, fy + 3); ctx.fill();
+      }
+      return;
+    }
     // mur du fond : grandes briques sombres, légèrement décalées par la parallaxe
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
@@ -1902,6 +2017,13 @@
       if (!inView(d.x, d.y)) continue;
       const px = d.x * T, py = d.y * T;
       switch (d.k) {
+        case "algue": {
+          ctx.strokeStyle = (d.x % 3) ? "#3fa88a" : "#2f8a6e"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(px + 8, py + T);
+          for (let k = 2; k <= d.h; k += 2) ctx.lineTo(px + 8 + Math.sin(R.t / 25 + d.ph + k / 5) * (k / 6), py + T - k);
+          ctx.stroke();
+          break;
+        }
         case "web": {
           const s = 12 * d.s, ox = d.side < 0 ? px : px + T, dir = -d.side;
           ctx.strokeStyle = "rgba(225,225,215,0.38)"; ctx.lineWidth = 0.6;
@@ -2108,6 +2230,16 @@
         ctx.moveTo(px + 3, py + 1); ctx.lineTo(px + 8, py + 7); ctx.lineTo(px + 5, py + 11); ctx.lineTo(px + 9, py + 15);
         ctx.moveTo(px + 8, py + 7); ctx.lineTo(px + 14, py + 5);
         ctx.stroke();
+      } else if ((c === "^" || c === "v") && R.eau != null && y * T >= R.eau) {
+        // corail urticant (les pics des abysses)
+        const sw = Math.sin(R.t / 20 + x) * 1, up = c === "^";
+        const base = up ? py + T : py, dirY = up ? -1 : 1;
+        ctx.strokeStyle = (x + y) % 2 ? "#f28c6b" : "#e8624a"; ctx.lineWidth = 2; ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(px + 4, base); ctx.lineTo(px + 4 + sw, base + dirY * 10); ctx.moveTo(px + 4 + sw * 0.5, base + dirY * 5); ctx.lineTo(px + 1 + sw, base + dirY * 8);
+        ctx.moveTo(px + 11, base); ctx.lineTo(px + 11 + sw, base + dirY * 12); ctx.moveTo(px + 11 + sw * 0.5, base + dirY * 6); ctx.lineTo(px + 14 + sw, base + dirY * 9);
+        ctx.stroke(); ctx.lineCap = "butt";
+        ctx.fillStyle = "#ffd0c0"; ctx.fillRect(px + 3 + sw, base + dirY * 10 - 1, 2, 2); ctx.fillRect(px + 10 + sw, base + dirY * 12 - 1, 2, 2);
       } else if (c === "^" || c === "v") {
         const a = R.spikeAnim.get(x + "," + y) ?? 1, hgt = 10 * a;
         ctx.fillStyle = C.danger;
@@ -2224,6 +2356,39 @@
       ctx.fillStyle = i < 3 - b.hits ? C.jade : "rgba(63,208,138,0.2)";
       ctx.beginPath(); ctx.moveTo(cx, cy - 4); ctx.lineTo(cx + 3, cy); ctx.lineTo(cx, cy + 4); ctx.lineTo(cx - 3, cy); ctx.closePath(); ctx.fill();
     }
+  }
+  function drawEau() {
+    const y0 = R.eau, x0 = cam.x - 10, x1 = cam.x + view.w + 10;
+    const vague = (x) => Math.sin(x / 11 + R.t / 14) * 1.6 + Math.sin(x / 5 - R.t / 9) * 0.6;
+    const g = ctx.createLinearGradient(0, y0, 0, H);
+    g.addColorStop(0, "rgba(40,150,190,0.30)"); g.addColorStop(1, "rgba(4,30,60,0.55)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(x0, H + 40);
+    for (let x = x0; x <= x1; x += 4) ctx.lineTo(x, y0 + vague(x));
+    ctx.lineTo(x1, H + 40); ctx.closePath(); ctx.fill();
+    // rayons de lumière qui traversent la surface
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    for (let i = Math.floor(x0 / 70); i <= Math.ceil(x1 / 70); i++) {
+      const bx = i * 70 + Math.sin(R.t / 90 + i) * 12, a = 0.05 + 0.03 * Math.sin(R.t / 40 + i * 2);
+      ctx.fillStyle = `rgba(180,235,255,${a})`;
+      ctx.beginPath(); ctx.moveTo(bx, y0); ctx.lineTo(bx + 14, y0); ctx.lineTo(bx + 54, Math.min(H, y0 + 160)); ctx.lineTo(bx + 30, Math.min(H, y0 + 160)); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    // la surface
+    ctx.strokeStyle = "rgba(210,245,255,0.85)"; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let x = x0; x <= x1; x += 4) { const y = y0 + vague(x); if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  // jauge d'air au-dessus de la tête de Max quand il est sous l'eau
+  function drawOxygene() {
+    if (R.eau == null || !R.player || !R.player.alive) return;
+    const p = R.player, sous = p.y + 3 > R.eau;
+    if (!sous && R.o2 >= 0.999) return;
+    const bas = R.o2 < 0.3, w = 22, x = Math.round(p.x + p.w / 2 - w / 2 - cam.x), y = Math.round(p.y - 12 - cam.y);
+    ctx.fillStyle = "rgba(6,10,8,0.75)"; ctx.fillRect(x - 1, y - 1, w + 2, 5);
+    ctx.fillStyle = bas && Math.floor(R.t / 6) % 2 ? C.danger : bas ? "#ff9a7a" : "#7fd7e6";
+    ctx.fillRect(x, y, w * R.o2, 3);
+    if (bas && Math.floor(R.t / 10) % 2) { ctx.font = `7px ${FONT_PIX}`; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillStyle = C.danger; ctx.fillText("AIR !", x + w / 2, y - 2); }
   }
   function drawVines() {
     for (const v of R.vines) {
@@ -2385,6 +2550,9 @@
     if (e.kind === "m") drawMummy(e);
     else if (e.kind === "s") drawSnake(e);
     else if (e.kind === "k") drawSinge(e);
+    else if (e.kind === "e") { ctx.restore(); drawMeduse(e); if (e.stun) drawStars(e.x + 5, e.y - 3, e.stun); return; }
+    else if (e.kind === "r") drawCrabe(e);
+    else if (e.kind === "l") { ctx.restore(); drawAnguille(e); if (e.stun) drawStars(e.nid + e.dir * 10, e.y - 3, e.stun); return; }
     else if (e.kind === "j") drawJaguar(e);
     else drawBat(e);
     ctx.restore();
@@ -2490,6 +2658,46 @@
     ctx.fillStyle = "#e0b98a"; ctx.fillRect(x + 6, y + 2, 5, 4); ctx.fillRect(x + 3, y + 1, 2, 2);
     ctx.fillStyle = C.void; ctx.fillRect(x + 8, y + 2, 1, 1); ctx.fillRect(x + 10, y + 2, 1, 1); ctx.fillRect(x + 8, y + 4, 3, 1);
     if (e.butin) { ctx.fillStyle = "#c9a24a"; ctx.beginPath(); ctx.arc(x + 4, y + 4, 3, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#fff3c4"; ctx.fillRect(x + 3, y + 3, 1, 1); }
+  }
+
+  function drawMeduse(e) {
+    const x = e.x, y = Math.round(e.y), pul = Math.sin(e.t * 0.12);
+    if (e.zap && !e.stun) {
+      ctx.strokeStyle = "rgba(190,240,255,0.85)"; ctx.lineWidth = 1;
+      for (let i = 0; i < 6; i++) { const a = i * 1.05 + e.t * 0.3; ctx.beginPath(); ctx.moveTo(x + 5, y + 5); ctx.lineTo(x + 5 + Math.cos(a) * 12, y + 5 + Math.sin(a) * 12); ctx.lineTo(x + 5 + Math.cos(a + 0.4) * 22, y + 5 + Math.sin(a + 0.4) * 22); ctx.stroke(); }
+      ctx.fillStyle = "rgba(160,230,255,0.15)"; ctx.beginPath(); ctx.arc(x + 5, y + 5, 26, 0, Math.PI * 2); ctx.fill();
+    }
+    const glow = e.charge && Math.floor(e.t / 3) % 2;
+    ctx.fillStyle = e.stun ? "rgba(200,170,220,0.6)" : glow ? "rgba(220,250,255,0.95)" : "rgba(242,140,200,0.8)";
+    ctx.beginPath(); ctx.ellipse(x + 5, y + 4, 6 + pul * 0.6, 4.5 - pul * 0.5, 0, Math.PI, 0); ctx.fill();
+    ctx.fillRect(x - 1, y + 4, 12, 2);
+    ctx.strokeStyle = "rgba(242,160,210,0.7)"; ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) { const tx = x + 1 + i * 3; ctx.beginPath(); ctx.moveTo(tx, y + 6); ctx.quadraticCurveTo(tx + Math.sin(e.t * 0.1 + i) * 2, y + 10, tx + Math.sin(e.t * 0.1 + i + 1) * 2, y + 14); ctx.stroke(); }
+    ctx.fillStyle = "#fff"; ctx.fillRect(x + 3, y + 1, 2, 1);
+  }
+  function drawCrabe(e) {
+    const x = e.x, y = Math.round(e.y), leg = Math.sin(e.t * 5) > 0 ? 1 : 0;
+    ctx.fillStyle = "#c4473a"; ctx.fillRect(x + 2, y + 2, 9, 4);
+    ctx.fillStyle = "#e8624a"; ctx.fillRect(x + 3, y + 1, 7, 2);
+    ctx.fillStyle = "#8c2a1a"; for (let i = 0; i < 3; i++) { ctx.fillRect(x + 2 + i * 3, y + 6, 1, 2 - leg * (i % 2)); ctx.fillRect(x + 3 + i * 3, y + 6, 1, 1 + leg * (i % 2)); }
+    ctx.fillStyle = "#e8624a"; ctx.fillRect(x + 10, y, 3, 3); ctx.fillRect(x - 1, y, 3, 3);   // pinces
+    ctx.fillStyle = "#fff"; ctx.fillRect(x + 5, y - 1, 1, 2); ctx.fillRect(x + 8, y - 1, 1, 2);
+    ctx.fillStyle = C.void; ctx.fillRect(x + 5, y - 1, 1, 1); ctx.fillRect(x + 8, y - 1, 1, 1);
+  }
+  function drawAnguille(e) {
+    // le trou dans la roche
+    const nx = e.nid, y = e.y;
+    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.beginPath(); ctx.ellipse(nx, y + 3, 3, 5, 0, 0, Math.PI * 2); ctx.fill();
+    if (e.out < 0.05) { if (e.etat === "guette" && Math.floor(R.t / 4) % 2) { ctx.fillStyle = "#fff36b"; ctx.fillRect(nx + e.dir * 2 - 1, y + 1, 2, 2); } return; }
+    const len = e.w;
+    ctx.strokeStyle = "#5a7a3a"; ctx.lineWidth = 5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(nx, y + 3);
+    for (let i = 1; i <= 8; i++) { const k = i / 8; ctx.lineTo(nx + e.dir * len * k, y + 3 + Math.sin(R.t * 0.3 + k * 6) * 2 * k); }
+    ctx.stroke(); ctx.lineCap = "butt";
+    const hx = nx + e.dir * len, hy = y + 3 + Math.sin(R.t * 0.3 + 6) * 2;
+    ctx.fillStyle = "#7a9a4a"; ctx.beginPath(); ctx.ellipse(hx, hy, 5, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff36b"; ctx.fillRect(hx + e.dir * 1, hy - 2, 2, 2);
+    ctx.fillStyle = "#f2e0c0"; ctx.fillRect(hx + e.dir * 3, hy + 1, 2, 1);
   }
 
   // Jeune jaguar : tacheté, se ramasse avant de bondir (yeux qui brillent)
@@ -2652,6 +2860,7 @@
         continue;
       }
       ctx.globalAlpha = Math.min(1, q.life / 20);
+      if (q.bulle) { ctx.strokeStyle = q.color; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(q.x, q.y, q.s / 2 + 0.5, 0, Math.PI * 2); ctx.stroke(); continue; }
       if (q.zzz) { ctx.fillStyle = q.color; ctx.font = `8px ${FONT_PIX}`; ctx.textAlign = "center"; ctx.fillText("z", q.x, q.y); continue; }
       ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s);
     }

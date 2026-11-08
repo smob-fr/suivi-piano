@@ -1855,6 +1855,140 @@ def boss_jaguar():
     return lv
 
 
+
+
+# =====================================================================
+#  MONDE 3 — LES ABYSSES : 3 niveaux d'essai (nage, oxygène, bulles)
+# =====================================================================
+class Mer:
+    """Niveau dessiné sur une grille : on pose le sol, des rochers, des grottes, puis les objets.
+    Tout ce qui est sous la ligne `eau` est sous l'eau."""
+    def __init__(self, nom, type_, largeur, h=22, eau=8):
+        self.nom, self.type, self.W, self.h, self.eau = nom, type_, largeur, h, eau
+        self.g = [["." for _ in range(largeur)] for _ in range(h)]
+        for x in range(largeur):
+            self.g[0][x] = "#"; self.g[h - 1][x] = "#"
+        for y in range(h):
+            self.g[y][0] = "#"; self.g[y][largeur - 1] = "#"
+        self.trig, self.secrets, self.winds = [], [], []
+        self.tnt = 0
+
+    def sol(self, x0, x1, haut, ch="#"):
+        """Sol plein de la colonne x0 à x1 (exclu), à partir de la ligne `haut`."""
+        for x in range(x0, x1):
+            for y in range(haut, self.h):
+                self.g[y][x] = ch
+
+    def bloc(self, x0, y0, w, h, ch="#"):
+        for y in range(y0, y0 + h):
+            for x in range(x0, x0 + w):
+                self.g[y][x] = ch
+
+    def vide(self, x0, y0, w, h):
+        self.bloc(x0, y0, w, h, ".")
+
+    def put(self, x, y, ch):
+        self.g[y][x] = ch
+
+    def astuce(self, texte, x, **kw):
+        self.trig.append(dict({"zone": [x, 1, 1, self.h - 2], "act": [["hint", texte]]}, **kw))
+
+    def fini(self, **opts):
+        d = {"name": self.nom, "type": self.type, "ammo": opts.pop("ammo", [6, 0]), "map": ["".join(r) for r in self.g],
+             "triggers": self.trig, "eau": self.eau, "palette": "abysses", "monde": 3, "essai": True, "_tnt": self.tnt}
+        if self.secrets:
+            d["secrets"] = self.secrets
+        if self.winds:
+            d["winds"] = self.winds
+        d.update(opts)
+        return d
+
+
+FIN_ABYSSES = {
+    1: "Archibald, en maillot rayé : « L'eau est bonne, hein ? J'ai oublié de te dire qu'il faut respirer. »",
+    2: "Archibald essore sa moustache : « Les anguilles, ce n'est pas moi. Les courants non plus. Enfin, presque. »",
+    3: "Histoire. Dans la cabine du capitaine, Max trouve le journal de bord : « Le grand-père d'Archibald cherchait déjà l'Œil de Jade. Il a coulé avec. » Archibald, tout bas : « …Ne le dis à personne. »",
+}
+
+
+def abysses_essai():
+    L = []
+    # 1 — La plongée : apprendre à nager, respirer, sortir de l'eau ; grotte avec une poche d'air
+    m = Mer("La plongée", "exploration", 96)
+    m.sol(1, 11, 7); m.put(3, 6, "P")
+    m.astuce("Saute dans l'eau ! SAUT = une brasse. Surveille ta réserve d'AIR", 8, max=0)
+    m.sol(11, 31, 18); m.put(16, 17, "^"); m.put(17, 17, "^"); m.put(22, 17, "r")
+    m.sol(24, 27, 15); m.put(25, 14, "a"); m.put(13, 14, "a"); m.put(20, 12, "a")
+    m.sol(31, 38, 7); m.astuce("Près de la surface, SAUT te fait sortir de l'eau", 30, max=0)
+    m.sol(38, 59, 18); m.bloc(40, 1, 19, 10)          # toit de la grotte, sous l'eau
+    m.vide(47, 5, 4, 6)                                  # poche d'air dans le plafond
+    m.put(48, 6, "a"); m.put(49, 6, "a")
+    m.astuce("Une grotte ! Remonte respirer dans la poche d'air au plafond", 39, max=0)
+    m.put(44, 17, "^"); m.put(52, 17, "^"); m.put(53, 17, "^")
+    m.put(56, 17, "u"); m.astuce("Les colonnes de bulles redonnent de l'air et font monter", 54, max=0)
+    m.sol(59, 73, 18); m.put(63, 12, "e"); m.put(68, 10, "e"); m.put(70, 17, "u")
+    m.astuce("Méduse : passe quand elle n'est pas chargée (ou assomme-la)", 58, max=0)
+    m.put(61, 17, "^"); m.put(65, 17, "r")
+    m.sol(73, 79, 13); m.sol(79, 95, 7); m.put(92, 6, "D")
+    L.append(m.fini())
+
+    # 2 — Le récif : îles et plongées en alternance, anguilles, courant, mur fissuré, grotte secrète
+    m = Mer("Le récif", "exploration", 112)
+    m.sol(1, 9, 7); m.put(3, 6, "P")
+    m.sol(9, 25, 16); m.sol(14, 17, 11); m.put(14, 10, "^"); m.put(15, 10, "^"); m.put(13, 13, "l")
+    m.put(20, 15, "r"); m.put(11, 15, "a"); m.put(22, 12, "a")
+    m.astuce("Attention aux trous dans le rocher : il y a des anguilles", 10, max=0)
+    m.sol(25, 31, 7); m.put(28, 6, "t"); m.put(27, 6, "a")
+    m.sol(31, 51, 19); m.winds.append([31, 50, -0.35]); m.put(40, 18, "u"); m.put(36, 13, "e"); m.put(45, 11, "e")
+    m.put(34, 18, "^"); m.put(46, 18, "^"); m.put(47, 18, "^")
+    m.astuce("Un courant te pousse en arrière : nage fort !", 30, max=0)
+    m.sol(51, 57, 7); m.put(54, 6, "r")
+    m.sol(57, 85, 18); m.bloc(60, 8, 2, 7); m.put(62, 12, "l"); m.bloc(68, 12, 3, 6); m.put(67, 15, "l")
+    m.put(64, 17, "^"); m.put(65, 17, "^"); m.put(74, 17, "r"); m.put(72, 10, "e"); m.put(80, 17, "u")
+    m.bloc(78, 8, 1, 10, "B"); m.tnt += 1
+    m.astuce("Un mur fissuré sous l'eau : pose la dynamite et recule !", 74, max=0)
+    m.sol(85, 91, 20); m.put(87, 19, "u")
+    m.sol(91, 111, 7); m.put(106, 6, "D")
+    # grotte secrète sous la plage, derrière un faux mur
+    m.bloc(91, 11, 4, 2, "F"); m.vide(95, 10, 5, 4)
+    m.put(95, 13, "$"); m.put(96, 13, "a"); m.put(97, 13, "a"); m.put(98, 13, "a")
+    m.secrets.append([95, 10, 5, 4])
+    L.append(m.fini(ammo=[6, 1]))
+
+    # 3 — L'épave : le bateau englouti, la cabine pleine d'air, la cale, le trésor du capitaine
+    m = Mer("L'épave", "histoire", 100, h=24, eau=6)
+    m.sol(1, 9, 5); m.put(3, 4, "P")
+    m.sol(9, 100, 22)
+    # coque : fond, murs, pont avec écoutilles
+    m.bloc(20, 18, 61, 4); m.bloc(20, 9, 1, 10); m.bloc(80, 9, 1, 10)
+    m.bloc(20, 9, 61, 1)
+    for hx in (30, 31, 52, 53, 70, 71):
+        m.put(hx, 9, ".")
+    # cloisons de la cale
+    m.bloc(40, 10, 1, 5); m.bloc(60, 10, 1, 8, "B"); m.tnt += 1; m.put(56, 17, "t")
+    # cabine sur le pont (une poche d'air)
+    m.bloc(44, 2, 13, 1); m.bloc(44, 2, 1, 5); m.bloc(56, 2, 1, 7)
+    m.put(50, 4, "a"); m.put(52, 4, "a")
+    # cabine du capitaine (secrète) derrière un faux mur
+    m.bloc(75, 10, 1, 3, "F"); m.vide(76, 10, 4, 3); m.put(78, 12, "$"); m.put(77, 12, "a"); m.put(76, 12, "a")
+    m.secrets.append([76, 10, 4, 3])
+    # habitants
+    m.put(26, 17, "r"); m.put(48, 17, "r"); m.put(41, 12, "l")
+    m.put(14, 12, "e"); m.put(86, 12, "e"); m.put(65, 13, "e")
+    m.put(35, 17, "u"); m.put(66, 17, "u"); m.put(12, 21, "u")
+    m.put(24, 17, "^"); m.put(46, 17, "^"); m.put(73, 17, "^")
+    m.put(33, 15, "a"); m.put(63, 11, "a"); m.put(68, 16, "a")
+    m.astuce("Entre dans l'épave par l'écoutille du pont", 12, max=0)
+    m.astuce("La cabine sur le pont est pleine d'air !", 42, max=0)
+    # sortie
+    m.sol(88, 99, 5); m.put(96, 4, "D")
+    L.append(m.fini(ammo=[6, 1], decor="abysses"))
+
+    for i, lv in enumerate(L):
+        lv["fin"] = FIN_ABYSSES[i + 1]
+    return L
+
+
 # =====================================================================
 #  Vérification
 # =====================================================================
@@ -1932,8 +2066,15 @@ def appliquer(lv, morts):
     return g, porte, liens
 
 
-def accessible(g, porte, liens=(), depart=None):
+O2_CASES = 40   # cases qu'on peut nager sans respirer (le jeu en permet ~70 : bonne marge)
+
+
+def accessible(g, porte, liens=(), depart=None, eau=None, bulles=()):
     H, W = len(g), len(g[0])
+    air_bulles = set(bulles)
+
+    def mouille(x, y):
+        return eau is not None and y >= eau and 0 <= x < W and 0 <= y < H and libre(x, y)
 
     def libre(x, y):
         if x < 0 or x >= W or y < 0:
@@ -1951,6 +2092,8 @@ def accessible(g, porte, liens=(), depart=None):
     def debout(x, y):
         if 0 <= y < H and 0 <= x < W and g[y][x] == "|":
             return True
+        if mouille(x, y) and not mortel(x, y):
+            return True   # sous l'eau, on peut se tenir n'importe où
         return y < H - 0 and libre(x, y) and y + 1 < H and porteur(x, y + 1) and not mortel(x, y)
 
     def chute(x, y):
@@ -1969,19 +2112,35 @@ def accessible(g, porte, liens=(), depart=None):
                 start = (x, y)
     if not start:
         return False, "pas de départ", set()
-    vus, pile = {start}, [start]
+    vus = {start: O2_CASES}
+    pile = [start]
     while pile:
         x, y = pile.pop()
+        o2 = vus[(x, y)]
         if (x, y) == porte:
-            return True, "", vus
+            return True, "", set(vus)
         cibles = []
+        dans_eau = mouille(x, y)
+        if dans_eau:
+            for ddx in (-1, 0, 1):
+                for ddy in (-1, 0, 1):
+                    if (ddx or ddy) and mouille(x + ddx, y + ddy) and not mortel(x + ddx, y + ddy):
+                        if ddx and ddy and not (libre(x + ddx, y) and libre(x, y + ddy)):
+                            continue
+                        cibles.append((x + ddx, y + ddy))
+            if y != eau:   # sous la surface : pas de saut, on nage
+                cibles_sauts = False
+            else:
+                cibles_sauts = True
+        else:
+            cibles_sauts = True
         for dx in (-1, 1):
             if libre(x + dx, y) and not mortel(x + dx, y):
                 c = chute(x + dx, y)
                 if c:
                     cibles.append(c)
         ressort = y + 1 < H and g[y + 1][x] == "J"
-        haut = 6 if ressort else 2
+        haut = (6 if ressort else 2) if cibles_sauts else 0
         for apex in range(haut, 0, -1):
             if all(libre(x, y - r) for r in range(1, apex + 1)):
                 break
@@ -2023,10 +2182,28 @@ def accessible(g, porte, liens=(), depart=None):
             if a_ == (x, y):
                 cibles.append(b_)
         for c in cibles:
-            if c not in vus:
-                vus.add(c)
+            if mouille(*c) and c not in air_bulles and c[1] > eau:
+                no = (o2 if dans_eau and (x, y) not in air_bulles and y > eau else O2_CASES) - 1
+                if no < 0:
+                    continue
+            else:
+                no = O2_CASES
+            if vus.get(c, -1) < no:
+                vus[c] = no
                 pile.append(c)
-    return False, "porte inaccessible", vus
+    return False, "porte inaccessible", set(vus)
+
+
+def acces(lv, g, porte, liens, depart=None):
+    bulles = []
+    for y, row in enumerate(lv["map"]):
+        for x, c in enumerate(row):
+            if c == "u":
+                yy = y
+                while yy >= 0 and g[yy][x] not in "#B":
+                    bulles.append((x, yy))
+                    yy -= 1
+    return accessible(g, porte, liens, depart, lv.get("eau"), bulles)
 
 
 def verifier(niveaux):
@@ -2043,7 +2220,7 @@ def verifier(niveaux):
             print(f"✗ {i+1:2d} {lv['name']}: dynamite {tnt_dispo} < {lv['_tnt']} nécessaires"); erreurs += 1
         for morts in range(4):
             g, porte, liens = appliquer(lv, morts)
-            ok, pourquoi, _ = accessible(g, porte, liens)
+            ok, pourquoi, _ = acces(lv, g, porte, liens)
             if not ok:
                 print(f"✗ {i+1:2d} {lv['name']} (morts={morts}): {pourquoi}")
                 erreurs += 1
@@ -2097,7 +2274,7 @@ def pieces(lv):
     """Sème des pièces d'or sur des cases sûres et accessibles (elles servent à gagner des amulettes)."""
     W = len(lv["map"][0])
     g, porte, liens = appliquer(lv, 0)
-    ok, _, vus = accessible(g, porte, liens)
+    ok, _, vus = acces(lv, g, porte, liens)
     if not ok:
         return
     rows = lv["map"]
@@ -2124,7 +2301,7 @@ def point_de_sauvegarde(lv, plage=(0.35, 0.7), deja=()):
     if W < 40 or lv.get("mirror") or lv.get("boss"):
         return
     g, porte, liens = appliquer(lv, 0)
-    ok, _, vus = accessible(g, porte, liens)
+    ok, _, vus = acces(lv, g, porte, liens)
     if not ok:
         return
     interdit = set()
@@ -2152,7 +2329,7 @@ def point_de_sauvegarde(lv, plage=(0.35, 0.7), deja=()):
             continue
         if any(abs(c[0] - d[0]) < 10 for d in deja):
             continue
-        if accessible(g, porte, liens, depart=c)[0]:
+        if acces(lv, g, porte, liens, depart=c)[0]:
             lv["checkpoint"] = list(c)
             return
 
@@ -2210,7 +2387,15 @@ def main():
         adoucir(lv)
         drapeaux(lv)
         pieces(lv)
+    # Monde 3 : les 3 premiers niveaux sont les essais des abysses (ils remplacent 3 anciens niveaux)
+    mer = abysses_essai()
+    for lv in mer:
+        lv["act"] = 3
+        adoucir(lv)
+        drapeaux(lv)
+        pieces(lv)
     niveaux = inca + autres
+    niveaux[40:43] = mer
     assert len(niveaux) == 100, len(niveaux)
     err = verifier(niveaux)
     for lv in niveaux:
@@ -2225,6 +2410,7 @@ def main():
         f.write("];\n")
     tailles = [len(lv["map"][0]) for lv in niveaux]
     print(f"{len(niveaux)} niveaux écrits, largeur {min(tailles)}–{max(tailles)} cases, {err} erreur(s)")
+    print("Abysses :", ", ".join(f"{lv['name']} ({len(lv['map'][0])}×{len(lv['map'])})" for lv in mer))
     print("Monde inca :", ", ".join(f"{i+1} {lv['name']} ({len(lv['map'][0])}×{len(lv['map'])}, {len(lv.get('checkpoints', []))} drapeau(x))" for i, lv in enumerate(inca)))
     sys.exit(1 if err else 0)
 
