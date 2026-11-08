@@ -59,6 +59,8 @@ class Niveau:
         self.opts = opts
         self.tnt_besoin = 0
         self.movers, self.crushers, self.winds = [], [], []
+        self.vines, self.flames, self.beams, self.secrets, self.liens = [], [], [], [], []
+        self.monde = opts.pop("monde", None)
         self._mur()
 
     # ---------- colonnes ----------
@@ -121,7 +123,7 @@ class Niveau:
 
     def depart(self, n=4):
         # un niveau sur trois cache un trésor derrière le mur de gauche (faux mur)
-        if self.num % 3 == 1 and len(self.cols) == 1 and self.y >= 4:
+        if self.num % 3 == 1 and len(self.cols) == 1 and self.y >= 4 and not self.monde:
             self.cachette()
         x0 = self.plat(n)
         self.put(x0 + 1, self.y, "P")
@@ -167,7 +169,7 @@ class Niveau:
             self._defi_fait = True
             self.passage_defi()
         # un niveau sur quatre a une corde vers une plateforme secrète juste avant la porte
-        if self.num % 4 == 2 and not getattr(self, "_corde_faite", False) and self.y >= 8:
+        if self.num % 4 == 2 and not getattr(self, "_corde_faite", False) and self.y >= 8 and not self.monde:
             self._corde_faite = True
             self.corde_secrete()
         x0 = self.plat(n)
@@ -477,6 +479,146 @@ class Niveau:
         self.plat(2)
         self.astuce("Défi : dernier passage avant la porte !", self.x - 1, max=0)
 
+    # ---------- monde inca : nouvelles mécaniques ----------
+    def liane(self, ecart=8, longueur=5, amp=0.8, fond="vide", ph=None):
+        """Liane qui se balance au-dessus du vide : on s'y accroche en sautant, SAUT pour lâcher."""
+        x0 = self.x
+        for _ in range(ecart):
+            self.colonne(fond=fond)
+        ax = x0 + ecart // 2
+        self.vines.append([ax, self.y - longueur, longueur, amp] + ([ph] if ph is not None else []))
+        a, b = (x0 - 1, self.y), (x0 + ecart, self.y)
+        self.liens += [[a, b], [b, a]]
+        return x0
+
+    def tete_feu(self, n=7, monte=2, longueur=None):
+        """Couloir qui finit sur une marche ; une tête de jaguar sculptée dans la marche crache du feu."""
+        x0 = self.plat(n, plafond=self.y - 5)
+        c = self.colonne(sol=self.y - monte, plafond=self.y - 5)
+        self.flames.append([c, self.y, -1, longueur or n - 1, (c * 37) % 200])
+        self.y -= monte
+        self.plat(2, plafond=self.y - 4)
+        self.astuce("Attends que la tête de jaguar ait fini de cracher", x0, max=0)
+        return x0
+
+    def tete_feu_plafond(self, n=8):
+        """Deux têtes de jaguar se font face au ras du sol : il faut passer entre les deux jets."""
+        x0 = self.plat(1)
+        g = self.colonne(sol=self.y - 2)
+        self.flames.append([g, self.y, 1, 3, 0])
+        self.plat(n)
+        d = self.colonne(sol=self.y - 2)
+        self.flames.append([d, self.y, -1, 3, 100])
+        self.plat(2)
+        self.astuce("Saute par-dessus les flammes, ou passe entre deux jets", x0, max=0)
+        return x0
+
+    def soleil(self, n=20, piliers=(5, 10, 15), haut=2, periode=360):
+        """Salle du dieu Soleil : un miroir au plafond balaie la salle d'un rayon brûlant ;
+        on se cache dans l'ombre des piliers."""
+        x0 = self.x
+        for i in range(n):
+            c = self.colonne()
+            if i in piliers:
+                for r in range(self.y - haut + 1, self.y + 1):
+                    self.put(c, r, "#")
+        self.beams.append([x0 + 1, 1, 0.2, 1.1, periode])
+        self.astuce("Le rayon du Soleil brûle : cache-toi derrière les piliers !", x0 - 1, max=0)
+        return x0
+
+    def salle_secrete(self, genre="bloc_faux", larg=6):
+        """Salle secrète cachée (pièces + trésor). Genres : bloc_faux (faux mur au dos d'un bloc),
+        bloc_fissure (mur fissuré au dos d'un bloc), plafond (corde vers une salle au-dessus),
+        sol (une dalle cède sur une salle en dessous, une corde pour remonter)."""
+        y = self.y
+        if genre.startswith("bloc"):
+            self.colonne(sol=y - 1)
+            cols = [self.colonne(sol=y - 3) for _ in range(larg)]
+            for c in cols[1:-1]:
+                for r in (y - 1, y):
+                    self.put(c, r, ".")
+            for r in (y - 1, y):
+                self.put(cols[-1], r, "F" if genre == "bloc_faux" else "B")
+            self.put(cols[1], y, "$")
+            for c in cols[2:-1]:
+                self.put(c, y, "a")
+            if genre == "bloc_fissure":
+                self.put(cols[2], y - 3, "t")
+            self.secrets.append([cols[1], y - 1, larg - 2, 2])
+            return cols[0]
+        if genre == "plafond" and y >= 9:
+            x0 = self.x
+            for _ in range(7):
+                self.colonne(plafond=y - 4)
+            c = x0 + 3
+            for xx in range(c - 2, c + 3):
+                for r in range(y - 7, y - 4):
+                    self.put(xx, r, ".")
+            for r in range(y - 6, y + 1):
+                self.put(c, r, "|")
+            self.put(c - 2, y - 5, "$"); self.put(c - 1, y - 5, "a"); self.put(c + 1, y - 5, "a"); self.put(c + 2, y - 5, "a")
+            self.secrets.append([c - 2, y - 7, 5, 3])
+            return x0
+        if genre == "sol" and y + 5 < self.h:
+            x0 = self.plat(7)
+            c = x0 + 2
+            for xx in range(c - 1, c + 4):
+                for r in (y + 2, y + 3):
+                    self.put(xx, r, ".")
+            self.put(c, y + 1, "x")
+            for r in (y + 2, y + 3):
+                self.put(c, r, "|")
+            self.put(c + 3, y + 3, "$"); self.put(c + 1, y + 3, "a"); self.put(c + 2, y + 3, "a"); self.put(c - 1, y + 3, "a")
+            self.t([["set", c, y + 1, 1, 1, "|"]], [c - 1, y + 2, 5, 2])
+            self.secrets.append([c - 1, y + 2, 5, 2])
+            return x0
+        return self.salle_secrete("bloc_faux", larg)
+
+    def ressort_fragile(self, monte=4):
+        """Ressort qui casse après un rebond ; une corde à côté permet toujours de monter."""
+        bas = self.y
+        x0 = self.colonne()
+        self.put(x0, bas, "q")
+        c = self.colonne()
+        for r in range(bas - monte + 1, bas + 1):
+            self.put(c, r, "|")
+        self.y -= monte
+        return x0
+
+    def coule(self, liste=((2, 2), (2, 2), (2, 2)), fond="vide"):
+        """Radeaux de bois qui s'enfoncent quand on reste dessus."""
+        x0 = self.x
+        for ecart, larg in liste:
+            for _ in range(ecart):
+                self.colonne(fond=fond)
+            for _ in range(larg):
+                c = self.colonne(fond=fond)
+                self.put(c, self.y + 1, "n")
+        self.astuce("Les radeaux coulent : ne t'attarde pas !", x0 - 1, max=0)
+        return x0
+
+    def fleche_marche(self, monte=3, n=6):
+        """Mur trop haut pour sauter. Un lance-flèches, de l'autre côté du couloir, tire dessus :
+        la flèche en bois reste plantée dans la pierre et sert de marche."""
+        bloc = self.colonne(sol=self.y - 2)
+        self.put(bloc, self.y - 1, ">")
+        x0 = self.plat(n)
+        mur = self.colonne(sol=self.y - monte)
+        self.opts["planter"] = True
+        self.liens += [[(x0 + n - 2, self.y), (mur, self.y - monte)]]
+        self.y -= monte
+        self.plat(3)
+        self.astuce("Trop haut ? Attends qu'une flèche se plante dans le mur…", x0 + 1, max=1)
+        return x0
+
+    def fuite_effondrement(self, n=18):
+        """Le sol s'effondre derrière Max à mesure qu'il court."""
+        x0 = self.plat(n)
+        for i in range(0, n - 3, 3):
+            self.t([["collapse", x0 + i, self.y + 1, 3, self.h - self.y - 1, 6]], self.Z(x0 + i + 4))
+        self.astuce("Tout s'effondre : ne t'arrête pas !", x0, max=0)
+        return x0
+
     # ---------- pièges ----------
     def effondrement(self, n=2, avance=2, delai=0, **kw):
         """Sol plat ; en arrivant, les n cases devant s'effondrent (fosse mortelle)."""
@@ -522,9 +664,13 @@ class Niveau:
         d.update(self.opts)
         if self.defi:
             d["defi"] = True
-        for k in ("movers", "crushers", "winds"):
+        for k in ("movers", "crushers", "winds", "vines", "flames", "beams", "secrets"):
             if getattr(self, k):
                 d[k] = getattr(self, k)
+        if self.liens:
+            d["_liens"] = self.liens
+        if self.monde:
+            d["monde"] = self.monde
         d["_tnt"] = self.tnt_besoin
         return d
 
@@ -1399,6 +1545,316 @@ def acte10():
     return L
 
 
+
+# =====================================================================
+#  MONDE 1 — L'EMPIRE INCA (20 niveaux, validés dans l'Atlas)
+# =====================================================================
+DEFIS_MONDE = {3, 6, 9, 12, 18}
+FIN_INCA = {
+    1: "Archibald, essoufflé : « Pas mal, pour un débutant. Mais l'Œil de Jade m'attend au bout de ce temple ! »",
+    2: "Archibald referme une porte derrière lui. « Une porte qui fuit, c'est pratique. Je l'ai dressée moi-même. »",
+    3: "Archibald compte ses momies : « Une, deux… Hé ! Qui a assommé Ramsès ? »",
+    4: "Archibald caresse son rocher : « Gérard, tu as été parfait. Max a juste été… plus rapide. »",
+    5: "Histoire. Archibald déplie une vieille carte : « L'Œil de Jade est caché tout au fond du temple, derrière le Jaguar de pierre. Il ne se réveille que pour les intrus. Donc pour toi. »",
+    6: "Archibald, vexé : « Mes fausses dalles étaient parfaites ! Tu as dû tricher. »",
+    7: "Archibald retire une flèche de son chapeau. « Mes archers sont un peu maladroits, aujourd'hui. »",
+    8: "Archibald, de loin : « Gérard a cassé un mur ? Il faudra que je le dédommage. »",
+    9: "Archibald soupire : « Trois murs, un seul faux. Tu as choisi le bon. Évidemment. »",
+    10: "Histoire. Au fond du puits, une fresque montre un jaguar géant qui garde une pierre verte. Archibald l'a déjà photographiée. « Le Jaguar de pierre ne dort que d'un œil, Max. Et cet œil, c'est le mien. »",
+    11: "Archibald époussette sa veste. « Ce temple tombe en ruine. Ce n'est pas moi, je le jure. Enfin, pas tout. »",
+    12: "Archibald, suspendu à une liane : « Toi aussi, tu aimes te balancer ? On a au moins ça en commun. »",
+    13: "Archibald se cogne au plafond. « Aïe. Bon, d'accord, ce piège-là était bête. »",
+    14: "Archibald essore son pantalon. « Mes radeaux coulent. J'aurais dû lire la notice. »",
+    15: "Histoire. Archibald regarde son reflet : « Tu sais, Max, avant, on était collègues. Puis j'ai eu une idée géniale : tricher. » Il repart en courant.",
+    16: "Archibald tient la porte à bout de bras. « Bon. Elle reste là. Promis. Peut-être. »",
+    17: "Archibald s'éloigne en sifflotant. « Les momies te passent le bonjour. Les écraseurs aussi. »",
+    18: "Archibald regarde sa montre. « Encore à l'heure ? Tu commences à m'agacer. »",
+    19: "Archibald, couvert de sable : « La salle du Jaguar est juste derrière. S'il te plaît, ne le réveille pas trop fort. »",
+    20: "Le Jaguar de pierre ronfle comme un volcan. Archibald, caché derrière un pilier, applaudit à moitié. « Bravo… Mais l'Œil n'est pas ici ! Le Jaguar gardait seulement un morceau de carte. Rendez-vous dans les neiges de l'Himalaya ! »",
+}
+
+
+def I(nom, type_, **kw):
+    n = Niveau(nom, type_, monde=1, **kw)
+    n.defi = n.num in DEFIS_MONDE
+    return n
+
+
+def trois_murs(n):
+    """Fin de niveau : trois couloirs superposés finissent sur un mur ; un seul est faux et mène à la porte."""
+    y = n.y
+    x0 = n.x
+    for i in range(8):
+        c = n.colonne()
+        for r in range(1, n.h):
+            n.put(c, r, "#")
+        for base in (y, y - 4, y - 8):
+            for r in (base - 2, base - 1, base):
+                n.put(c, r, ".")
+    for r in range(y - 9, y + 1):
+        n.put(x0 + 1, r, "|")
+    mur = n.colonne()
+    for r in range(1, y + 1):
+        n.put(mur, r, "#")
+    for r in (y - 10, y - 9, y - 8):
+        n.put(mur, r, "F")
+    for _ in range(5):
+        n.colonne()
+    n.put(n.x - 2, y, "D")
+    n.porte_x = n.x - 2
+    n.astuce("Un seul de ces murs est faux…", x0 + 2, min=1)
+    n.astuce("Grimpe à la corde pour essayer les autres étages", x0 + 2, max=0)
+
+
+def monde_inca():
+    NUMERO[0] = 0
+    L = []
+
+    # 1 — Le seuil : les bases, puis les lianes et une première salle secrète
+    n = I("Le seuil", "exploration", ammo=(6, 0))
+    n.depart(4); n.plat(4); n.astuce("Saute par-dessus les pics", n.x - 3)
+    n.pics(2); n.plat(5, objet="t"); n.astuce("Ramasse la dynamite", n.x - 4)
+    n.plat(7, ennemi="s"); n.astuce("Saute sur le serpent, ou assomme-le avec ta massue", n.x - 8)
+    n.plat(2); n.mur_fissure(3); n.astuce("Pose la dynamite contre le mur fissuré, puis recule", n.x - 4)
+    n.plat(5); n.liane(7, 5); n.astuce("Saute sur la liane, puis appuie sur SAUT pour lâcher", n.x - 9)
+    n.plat(5); n.salle_secrete("plafond"); n.astuce("Une corde monte dans le plafond…", n.x - 6, max=0)
+    n.plat(4, ennemi="s"); n.pics(1); n.plat(4)
+    n.liane(9, 5); n.plat(3); n.pics(2); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 2 — Le couloir honnête : le sol cède, la porte s'enfuit deux fois (la seconde vers le haut)
+    n = I("Le couloir honnête", "trahison")
+    n.depart(4); n.plat(6); e1 = n.x; n.plat(8)
+    n.t([["collapse", e1 + 2, n.y + 1, 3, n.h - n.y - 1, 0]], n.Z(e1), max=0, lethal=True)
+    n.t([["collapse", e1 + 5, n.y + 1, 2, n.h - n.y - 1, 0]], n.Z(e1 + 3), min=1)
+    y0 = n.y; n.plat(4); d1 = n.x - 2; n.plat(3)
+    n.plat(4); n.pics_surprise(2, 2); n.plat(5); n.pics(2); n.plat(4)
+    n.effondrement(2, 3, 10); n.plat(4); d2 = n.x + 1; n.plat(6)
+    n.salle_secrete("bloc_faux")
+    n.plat(3); n.corde(6); n.plat(5, ennemi="s"); n.porte(4)
+    fx, fy = n.porte_x, n.y
+    n.put(fx, fy, "."); n.put(d1, y0, "D")
+    n.t([["door", d2, y0], ["hint", "La porte s'enfuit !"]], n.Z(d1 - 5))
+    n.t([["door", fx, fy], ["hint", "Elle grimpe, maintenant ?!"]], n.Z(d2 - 5))
+    L.append(n.fini())
+
+    # 3 — La salle des gardes (Défi) : momies, singe voleur, bloc qui fait une marche, porte sous un sol fissuré
+    n = I("La salle des gardes", "exploration", sol=11, ammo=(6, 1))
+    n.depart(3); n.plat(6, ennemi="m"); n.astuce("Les momies : saute-leur dessus ou assomme-les", n.x - 7)
+    n.stalactite_marche(); n.plat(6, ennemi="k")
+    n.plat(3); n.fosse(2); n.plat(5, ennemi="m")
+    n.salle_secrete("bloc_fissure")
+    n.plat(4); n.pics(2); n.plat(5, ennemi="m"); n.plat(3, objet="t")
+    n.sol_fissure(3, 3); n.plat(5, ennemi="s"); n.porte(4)
+    L.append(n.fini())
+
+    # 4 — La course : deux poursuites du rocher, séparées par un drapeau
+    n = I("La course", "action", h=22, sol=5)
+    n.depart(4); n.plat(6); n.rocher(1, n.y - 3, 1, 1.4, zone=n.Z(6))
+    n.descend(2); n.plat(6); n.pics(2); n.plat(4)
+    n.descend(2); n.plat(5); n.pics_surprise(2, 2, variante="devant"); n.plat(3)
+    n.descend(2); n.effondrement(2, 3, 14); n.plat(5)
+    n.fosse(2, "vide"); n.astuce("Le rocher tombe dans le trou : ouf !", n.x - 6, max=0)
+    x = n.x; n.plat(14)
+    n.rocher(x + 1, n.y - 3, 1, 1.5, zone=n.Z(x + 9))
+    n.descend(2); n.plat(5); n.fosse(1, "vide"); n.plat(5, ennemi="s")
+    n.descend(2); n.pics(1); n.plat(6); n.descend(2); n.plat(4); n.pics(2); n.plat(5)
+    n.fosse(2, "vide"); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 5 — Les ressorts (Histoire) : ressorts, ressort piège, ressort fragile, liane, salle sous le sol
+    n = I("Les ressorts", "histoire", h=22)
+    n.depart(4); n.plat(3); n.astuce("Monte sur le ressort", n.x - 2)
+    n.ressort(4); n.plat(5, ennemi="s")
+    n.ressort_pique(); n.plat(3); n.fosse(2); n.plat(4)
+    n.ressort_fragile(4); n.astuce("Si le ressort casse, prends la corde", n.x - 3, min=1)
+    n.plat(4); n.descend(4); n.plat(3); n.liane(8, 5); n.plat(4)
+    n.salle_secrete("sol"); n.plat(3); n.pics(2); n.plat(3); n.corde(5); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    # 6 — Le pont (Défi) : fausses dalles qui changent de place, second pont au-dessus d'un serpent
+    n = I("Le pont", "trahison", sol=11)
+    n.depart(4)
+    x0 = n.pont("####xx####x####")
+    n.t([["set", x0 + 4, n.y + 1, 2, 1, "#"], ["set", x0 + 7, n.y + 1, 2, 1, "x"]], min=1)
+    n.astuce("Une dalle qui tremble va tomber : ne t'arrête pas dessus", x0 + 1, min=2)
+    n.plat(5, ennemi="j"); n.astuce("Un bébé jaguar ! Il bondit quand tu passes devant lui", n.x - 8, max=0)
+    y = n.y
+    for i, ch in enumerate("##x###xx##x##"):
+        c = n.colonne(sol=y + 3)
+        n.put(c, y + 1, "#" if ch == "#" else "x")
+        if i == 6:
+            n.put(c, y + 3, "s")
+    c = n.colonne(sol=y + 3); n.put(c, y + 3, "J")
+    n.astuce("Tombé en dessous ? Le ressort te remonte", c - 4, min=1)
+    n.plat(4); n.salle_secrete("bloc_faux"); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 7 — Les flèches : casser, rebondir, et se servir d'une flèche plantée comme marche
+    n = I("Les flèches", "exploration", ammo=(6, 0), arrowRate=100)
+    n.depart(3); n.plat(4, objet="t"); n.plat(6, ennemi="m")
+    n.fleches(7, 1); n.astuce("Flèche en bois : casse-la d'un coup de massue, ou rebondis dessus !", n.x - 6)
+    n.plat(3); n.mur_fissure(); n.plat(4)
+    n.fleche_marche(3); n.plat(3); n.tete_feu(7)
+    n.plat(4, ennemi="k"); n.fleches(5, 1); n.plat(3); n.salle_secrete("bloc_fissure"); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 8 — Le toboggan : longue descente, le rocher casse un mur fissuré, plateformes qui apparaissent
+    n = I("Le toboggan", "action", h=22, sol=4)
+    n.depart(4); n.plat(8)
+    n.t([["boulder", 1, n.y - 3, 1, 1.35, 1], ["shake", 6]], n.Z(7))
+    n.descend(2); n.plat(6); n.pics(2); n.plat(5)
+    abri = n.colonne(sol=n.y + 1)
+    n.astuce("Un mur ! Cache-toi dans le trou et laisse passer le rocher…", abri - 2)
+    n.plat(4)
+    m = n.colonne()
+    for r in range(1, n.y + 1):
+        n.put(m, r, "#")
+    for r in (n.y - 1, n.y):
+        n.put(m, r, "B")
+    n.plat(4); n.fosse(2, "vide"); n.plat(4)
+    n.fantome(5); n.plat(5, ennemi="k")
+    n.descend(2); n.plat(4); n.pics(2); n.plat(3); n.salle_secrete("sol")
+    n.descend(2); n.effondrement(2, 3, 14); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 9 — Le faux mur (Défi) : dalles et grille, salle du Soleil, trois murs dont un seul est faux
+    n = I("Le faux mur", "trahison")
+    n.depart(4); n.plat(4); n.leviers(); n.plat(3)
+    n.soleil(20, piliers=(5, 11, 16)); n.plat(3, ennemi="s"); n.salle_secrete("bloc_faux"); n.plat(3)
+    n.passage_defi(); n._defi_fait = True
+    trois_murs(n)
+    L.append(n.fini())
+
+    # 10 — Le puits (Histoire) : dans le noir, on allume les torches en descendant
+    n = I("Le puits", "histoire", h=30, sol=5, ammo=(6, 1), dark=True)
+    n.depart(3); n.plat(2, objet="T"); n.astuce("Touche les torches pour les allumer", 3)
+    n.plateformes([(2, 3, 2), (2, 3, 2), (1, 3, 2), (2, 4, 2)])
+    n.plat(3, objet="T"); n.plateformes([(2, 3, 2), (2, 3, 2)])
+    n.plat(4, ennemi="s"); n.plat(2, objet="T"); n.sol_fissure(3, 3); n.plat(3, objet="T")
+    n.salle_secrete("sol"); n.plateformes([(2, 3, 2), (2, 3, 1)])
+    n.plat(5, ennemi="s"); n.plat(2, objet="T"); n.porte(4)
+    L.append(n.fini())
+
+    # 11 — L'éboulement : plafond qui tombe en rythme, jaguar, stalactites, puis tout s'effondre
+    n = I("L'éboulement", "action")
+    n.depart(3); n.plafond_bas(26, chutes=[(4, 22), (8, 18), (12, 16), (15, 14), (19, 12), (22, 10)])
+    n.plat(3); n.plat(5, ennemi="j"); n.stalactites(10, 3); n.plat(4)
+    n.salle_secrete("plafond"); n.plat(3)
+    x = n.fuite_effondrement(21)
+    for tr in n.trig:
+        if tr.get("zone") and tr["act"][0][0] == "collapse" and tr["act"][0][1] >= x:
+            tr["lethal"] = True
+    n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 12 — Le puits de mine (Défi) : chauves-souris, murs fissurés, lianes au-dessus du vide
+    n = I("Le puits de mine", "exploration", ammo=(5, 0))
+    n.depart(4); n.plat(8, ennemi="b"); n.monte(2); n.plat(6, ennemi="b"); n.fosse(2, "vide")
+    n.plat(5, objet="t"); n.mur_fissure(); n.plat(6, ennemi="m")
+    n.plat(2); n.liane(8, 5); n.plat(2); n.liane(8, 5, ph=1.6); n.plat(4, ennemi="b")
+    n.ressort(4); n.plat(4); n.salle_secrete("bloc_faux"); n.plat(3, ennemi="b")
+    n.stalactite_marche(); n.plat(2); n.porte(4)
+    L.append(n.fini())
+
+    # 13 — Le plafond bas : couloirs bas et salles hautes, pics du plafond au saut, tête de jaguar
+    n = I("Le plafond bas", "trahison")
+    n.depart(3); x = n.plafond_bas(6, hauteur=4); n.pics(1)
+    n.t([["spikes", x + 7, n.y - 3, 4, 1, "v"]], [x + 4, 1, 3, n.h - 2], air=True)
+    n.plat(6); n.plafond_bas(6, hauteur=4); n.pics(2)
+    n.tete_feu(7); n.plat(6, ennemi="k")
+    n.plafond_bas(8, hauteur=4, pics_plafond=(2, 3, 6)); n.pics_surprise(1, 2)
+    n.plat(5); n.stalactites(10, 3); n.plat(3); n.salle_secrete("plafond"); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 14 — Le gué : plateformes fantômes, radeaux qui coulent, singe, liane
+    n = I("Le gué", "exploration", ammo=(6, 0))
+    n.depart(4); n.plateformes([(2, 3, 0), (3, 3, 0), (2, 2, -1), (3, 4, 1)], fond="vide")
+    n.plat(6, ennemi="s"); n.fantome(5); n.plat(3)
+    n.coule(((2, 2), (2, 2), (3, 2), (2, 2))); n.plat(5, ennemi="k"); n.liane(8, 5); n.plat(3)
+    n.coule(((2, 1), (2, 1), (2, 1), (2, 2))); n.plat(3); n.salle_secrete("bloc_faux")
+    n.plat(4, ennemi="s"); n.plat(2); n.corde(5); n.porte(4)
+    L.append(n.fini())
+
+    # 15 — Le miroir (Histoire) : les commandes s'inversent ; une fois sur deux, un pictogramme prévient
+    n = I("Le miroir", "histoire", decor="pillars")
+    n.depart(4); n.plat(4); x = n.x; n.plat(3); n.pics(2)
+    n.t([["invert", 200], ["hint", "⇄ Commandes inversées !"]], n.Z(x))
+    n.plat(5); x = n.x; n.plat(2); n.pics(2); n.plat(3)
+    n.t([["invert", 150]], n.Z(x), max=0)
+    n.t([["invert", 150], ["hint", "⇄ Encore inversé !"]], n.Z(x), min=1)
+    n.plat(4, ennemi="j"); x = n.x; n.plat(3); n.fosse(2, "vide"); n.plat(3)
+    n.t([["invert", 180], ["hint", "⇄ Inversé !"]], n.Z(x))
+    n.plat(4); x = n.x; n.plat(2); n.liane(7, 5); n.plat(3)
+    n.t([["invert", 220]], n.Z(x), max=0)
+    n.t([["invert", 220], ["hint", "⇄ Inversé, même sur la liane !"]], n.Z(x), min=1)
+    n.plat(3); n.salle_secrete("bloc_fissure"); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 16 — Archibald s'amuse : la porte change quatre fois de place, il faut la suivre
+    n = I("Archibald s'amuse", "trahison")
+    n.depart(4); n.plat(6); x1 = n.x; n.plat(4); n.pics(2); n.plat(6, ennemi="j"); x2 = n.x
+    n.plat(5); n.fosse(2, "vide"); n.plat(4); x3 = n.x; n.plat(5)
+    y0 = n.y
+    n.plat(3); n.ressort(4); n.plat(6); x4 = n.x; y4 = n.y; n.plat(4); n.pics_surprise(2, 2); n.plat(4)
+    n.descend(4); n.plat(5, ennemi="s"); n.salle_secrete("bloc_faux"); n.plat(3); n.porte(4)
+    fx, fy = n.porte_x, n.y
+    n.put(fx, fy, "."); n.put(x3 + 2, y0, "D")
+    t1 = len(n.trig); n.t([["door", 3, y0], ["hint", "La porte est retournée au départ !"]], n.Z(x3 - 2))
+    t2 = len(n.trig); n.t([["door", x2 + 1, y0]], n.Z(5), after=t1)
+    t3 = len(n.trig); n.t([["door", x4 + 2, y4]], n.Z(x2 - 1), after=t2)
+    n.t([["door", fx, fy], ["hint", "Elle file tout au bout…"]], n.Z(x4 - 1), after=t3)
+    n.t([["spikes", x1 + 1, y0, 1, 1]], n.Z(x1 - 1), max=0)
+    L.append(n.fini())
+
+    # 17 — Les ossements : écraseurs, momies, têtes de jaguar face à face
+    n = I("Les ossements", "action", ammo=(6, 1))
+    n.depart(4); n.plat(6, ennemi="m"); n.pics_surprise(2, 2); n.plat(3); n.ecraseurs(10, 2); n.plat(5, ennemi="m")
+    n.tete_feu_plafond(8); n.plat(3); n.ressort(4); n.plat(4, ennemi="m")
+    n.ecraseurs(12, 3); n.plat(3); n.salle_secrete("bloc_fissure"); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 18 — La mèche (Défi) : compte à rebours, sabliers qui redonnent du temps, salle du Soleil
+    n = I("La mèche", "action")
+    n.depart(3); n.minuterie(1.6)
+    n.plat(3); n.sprint(); n.plat(3, objet="w"); n.astuce("Sablier : +10 secondes !", n.x - 4, max=0)
+    n.clignote(6); n.plat(3); n.pics(2); n.plat(3, objet="w")
+    n.soleil(16, piliers=(4, 9, 13)); n.plat(3); n.fosse(3, "vide"); n.plat(3, objet="w")
+    n.corde(5); n.plat(3); n.pics(1); n.plat(4); n.porte(4)
+    L.append(n.fini())
+
+    # 19 — Le sablier (grande épreuve) : le sable monte, on grimpe par ressorts, cordes et liane
+    n = I("Le sablier", "action", h=34, sol=32)
+    n.depart(4); n.crue("sable", 0.2)
+    grimpe(n, 3, ressorts=(1,), ennemis=(0,)); n.plat(2, ennemi="j"); n.corde(5); n.plat(3, ennemi="b")
+    n.liane(7, 4); n.plat(3); grimpe(n, 2, ressorts=(0,)); n.salle_secrete("bloc_faux")
+    n.plat(2); n.ressort_fragile(4); n.plat(3, ennemi="b"); n.corde(5); n.plat(3); n.porte(4)
+    L.append(n.fini())
+
+    # 20 — Le Jaguar de pierre : le boss (on l'assomme, on ne le tue pas)
+    L.append(boss_jaguar())
+
+    for i, lv in enumerate(L):
+        lv["fin"] = FIN_INCA[i + 1]
+    return L
+
+
+def boss_jaguar():
+    NUMERO[0] += 1
+    W, h, y = 44, 17, 15
+    rows = [["#"] * W for _ in range(h)]
+    for r in range(1, y + 1):
+        for x in range(1, W - 1):
+            rows[r][x] = "."
+    rows[y][3] = "P"
+    rows[y][W - 4] = "D"
+    lv = {"name": "Le Jaguar de pierre", "type": "histoire", "ammo": [6, 0], "map": ["".join(r) for r in rows],
+          "triggers": [{"zone": [6, 1, 1, h - 2], "max": 0, "act": [["hint", "Accroche-toi à une liane quand il charge. Sonné contre le mur, saute-lui sur la tête !"]]}],
+          "vines": [[4, 8, 5, 0.45, 0], [22, 8, 5, 0.45, 2.1], [39, 8, 5, 0.45, 4.2]],
+          "boss": "jaguar", "doorHidden": True, "decor": "pillars", "monde": 1, "_tnt": 0}
+    return lv
+
+
 # =====================================================================
 #  Vérification
 # =====================================================================
@@ -1425,6 +1881,9 @@ def appliquer(lv, morts):
             for xx in range(mx, mx + mw):
                 liens.append(((xx, my - 1), (xx, my + dy - 1)))
                 liens.append(((xx, my + dy - 1), (xx, my - 1)))
+    # lianes qui se balancent, flèches plantées… : passages décrits par le générateur
+    for a_, b_ in lv.get("_liens", []):
+        liens.append((tuple(a_), tuple(b_)))
     for tr in lv["triggers"]:
         if tr.get("lethal"):
             continue
@@ -1481,13 +1940,13 @@ def accessible(g, porte, liens=(), depart=None):
             return False
         if y >= H:
             return True
-        return g[y][x] not in "#J<>()^vcgG="  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
+        return g[y][x] not in "#J<>()^vcgG=qn"  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
 
     def mortel(x, y):
         return 0 <= y < H and 0 <= x < W and g[y][x] in "^v"
 
     def porteur(x, y):
-        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG="
+        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG=qn"   # q (ressort fragile) compte comme un simple sol
 
     def debout(x, y):
         if 0 <= y < H and 0 <= x < W and g[y][x] == "|":
@@ -1658,11 +2117,11 @@ def pieces(lv):
     lv["coins"] = [list(c) for c in cands[pas // 2::pas][:voulu]]
 
 
-def point_de_sauvegarde(lv):
+def point_de_sauvegarde(lv, plage=(0.35, 0.7), deja=()):
     """Place un drapeau au milieu des niveaux longs, sur une case sûre, accessible,
     d'où la porte reste atteignable, loin des pièges et des zones de déclenchement."""
     W = len(lv["map"][0])
-    if W < 40 or lv.get("mirror"):
+    if W < 40 or lv.get("mirror") or lv.get("boss"):
         return
     g, porte, liens = appliquer(lv, 0)
     ok, _, vus = accessible(g, porte, liens)
@@ -1687,31 +2146,76 @@ def point_de_sauvegarde(lv):
             if rows[y][x + dx] in "^vxcoJ<>" or rows[y + 1][x + dx] not in "#":
                 return False
         return rows[y - 1][x] == "." and rows[y][x] == "."
-    cands = sorted((c for c in vus if sur(*c)), key=lambda c: abs(c[0] - W / 2))
+    cands = sorted((c for c in vus if sur(*c)), key=lambda c: abs(c[0] - W * (plage[0] + plage[1]) / 2))
     for c in cands:
-        if not (0.35 * W <= c[0] <= 0.7 * W):
+        if not (plage[0] * W <= c[0] <= plage[1] * W):
+            continue
+        if any(abs(c[0] - d[0]) < 10 for d in deja):
             continue
         if accessible(g, porte, liens, depart=c)[0]:
             lv["checkpoint"] = list(c)
             return
 
 
+def drapeaux(lv):
+    """Niveaux des mondes : un drapeau au milieu, deux dans les niveaux longs (vers 1/3 et 2/3)."""
+    W = len(lv["map"][0])
+    lv.pop("checkpoint", None)
+    if W < 40:
+        return
+    zones = [(0.25, 0.42), (0.58, 0.76)] if W >= 95 else [(0.38, 0.66)]
+    pris = []
+    for a, b in zones:
+        lv["checkpoint"] = None
+        point_de_sauvegarde(lv, (a, b), pris)
+        c = lv.pop("checkpoint", None)
+        if c:
+            pris.append(c)
+    if pris:
+        lv["checkpoints"] = pris
+
+
+INCA_ORIG = [1, 2, 3, 4, 6, 7, 8, 9, 12, 16, 19, 21, 27, 31, 32, 42, 51, 74, 94, None]
+
+
 def main():
-    niveaux = []
+    anciens = []
     for a, fn in enumerate([acte1, acte2, acte3, acte4, acte5, acte6, acte7, acte8, acte9, acte10]):
         for lv in fn():
             lv["act"] = a
-            niveaux.append(lv)
-    assert len(niveaux) == 100, len(niveaux)
+            anciens.append(lv)
+    assert len(anciens) == 100, len(anciens)
     deja = [False]
-    for lv in niveaux:
+    for i, lv in enumerate(anciens):
+        lv["orig"] = i + 1
         adoucir(lv)
         fleches_poison(lv, deja)
         point_de_sauvegarde(lv)
         pieces(lv)
+    # Monde 1 : les 20 niveaux incas. Mondes 2 à 5 (provisoires) : les 80 autres anciens niveaux.
+    retires = set(x for x in INCA_ORIG if x) | {10}
+    autres = [lv for lv in anciens if lv["orig"] not in retires]
+    inca = monde_inca()
+    PALETTE_INCA = ["jungle", "jungle", "crypte", "jungle", "jungle", "jungle", "crypte", "jungle", "sanctuaire", "crypte",
+                    "mines", "mines", "mines", "cascades", "sanctuaire", "jungle", "crypte", "jungle", "jungle", "sanctuaire"]
+    for i, lv in enumerate(inca):
+        lv["act"] = min(4, i // 4)
+        lv["palette"] = PALETTE_INCA[i]
+        if INCA_ORIG[i]:
+            lv["orig"] = INCA_ORIG[i]
+        # moins de bulles d'Archibald pendant le jeu : l'histoire est racontée en fin de niveau
+        for tr in lv["triggers"]:
+            tr["act"] = [a for a in tr["act"] if a[0] != "say"]
+        lv["triggers"] = [tr for tr in lv["triggers"] if tr["act"]]
+        adoucir(lv)
+        drapeaux(lv)
+        pieces(lv)
+    niveaux = inca + autres
+    assert len(niveaux) == 100, len(niveaux)
     err = verifier(niveaux)
     for lv in niveaux:
         lv.pop("_tnt", None)
+        lv.pop("_liens", None)
     with open(SORTIE, "w", encoding="utf-8") as f:
         f.write("/* Généré par outils/niveaux.py — ne pas modifier à la main. */\n")
         f.write("window.TEMPLE_ACTS = " + json.dumps(ACTES, ensure_ascii=False) + ";\n")
@@ -1721,6 +2225,7 @@ def main():
         f.write("];\n")
     tailles = [len(lv["map"][0]) for lv in niveaux]
     print(f"{len(niveaux)} niveaux écrits, largeur {min(tailles)}–{max(tailles)} cases, {err} erreur(s)")
+    print("Monde inca :", ", ".join(f"{i+1} {lv['name']} ({len(lv['map'][0])}×{len(lv['map'])}, {len(lv.get('checkpoints', []))} drapeau(x))" for i, lv in enumerate(inca)))
     sys.exit(1 if err else 0)
 
 

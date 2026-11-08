@@ -10,23 +10,28 @@ un archéologue tricheur qui a piégé tout le temple pour arriver le premier à
 Pas d'armes : on saute sur les ennemis ou on les assomme quelques secondes d'un coup de massue.
 La dynamite sert à ouvrir les murs fissurés.
 
-**100 niveaux en 10 actes**, avec une difficulté qui augmente et un niveau « Défi » tous les 3 niveaux :
+**5 mondes de 20 niveaux**, choisis sur une grande carte (voir `CADRAGE.md`). En touchant JOUER, on
+arrive sur la carte des mondes ; chaque monde a son chemin de 20 niveaux, et on peut rejouer tout ce
+qui est déjà ouvert. Chaque monde finit par un boss qu'on **assomme** (jamais tué).
 
-| Acte | Lieu | Nouveautés |
+| Monde | État | Contenu |
 |---|---|---|
-| 1 | La jungle | sauts, pics, serpents, dynamite, ressorts, fausses dalles, flèches, rocher |
-| 2 | La crypte | momies, faux murs, sols fissurés, éboulements, salle dans le noir |
-| 3 | Les mines | chauves-souris, pics au plafond, planches clignotantes, deux rochers |
-| 4 | Les cascades | commandes inversées, plateformes fantômes, ressort piégé |
-| 5 | Le sanctuaire | tout à la fois ; au niveau 50, l'Œil de Jade… est un faux |
-| 6 | Les catacombes | écraseurs, dalles à pression et grilles, plafond qui descend |
-| 7 | La cité engloutie | eau qui monte, sol glissant, plateformes mobiles, monte-charges |
-| 8 | Le volcan | lave qui monte, compte à rebours, forges à pilons |
-| 9 | Les jardins suspendus | vent, Max-miroir, nuages fantômes, balançoires |
-| 10 | La chambre du trésor | sable qui monte, tous les pièges réunis, la vraie finale (niveau 100) |
+| 1. L'Empire inca | **terminé** | 19 niveaux rallongés (2 à 3 parties, drapeaux) + le boss, le Jaguar de pierre |
+| 2. Les neiges de l'Himalaya | provisoire | anciens niveaux du temple, en attendant les vrais |
+| 3. Les abysses | provisoire | idem |
+| 4. Le royaume des nuages | provisoire | idem |
+| 5. La cité d'or | provisoire | idem |
+
+Nouveautés du monde inca : lianes qui se balancent, singes voleurs (ils chipent 3 pièces, on les
+assomme pour les récupérer), bébés jaguars qui bondissent, têtes de jaguar qui crachent du feu,
+rayon du dieu Soleil (on se cache derrière les piliers), salles secrètes cachées (faux mur, mur
+fissuré, corde dans le plafond, sol qui cède), ressorts fragiles, radeaux qui coulent, sabliers qui
+redonnent du temps, torches à allumer dans le noir, rocher qui casse les murs fissurés, flèches
+qui se plantent dans le mur et servent de marche. L'histoire est racontée **en fin de niveau**
+(Archibald ne parle presque plus pendant le jeu).
 
 **Pour rester accrocheur** (objectif : 3 ou 4 essais par niveau, 6 ou 7 pour les plus durs) :
-- un drapeau de sauvegarde au milieu des niveaux longs : après une chute, on repart de là ;
+- un ou deux drapeaux de sauvegarde dans les niveaux longs : après une chute, on repart du dernier atteint ;
 - aide automatique : tous les 3 échecs dans un niveau, les pièges ralentissent (flèches, rocher,
   eau, écraseurs) et le compte à rebours s'allonge ;
 - flèches tirées en volées synchronisées jusqu'à l'acte 4 ; vitesses des rochers et des crues
@@ -56,6 +61,7 @@ python -m http.server 8000   # puis http://localhost:8000/
 - `index.html` — page, accueil, carte des niveaux, pause, fin, contrôles tactiles
 - `game.js` — moteur (canvas, physique, ennemis, pièges, caméra, accueil animé)
 - `levels.js` — les 100 niveaux, **généré** par `outils/niveaux.py`
+- `mondes.js` — la carte des mondes et le chemin des niveaux de chaque monde
 - `outils/niveaux.py` — recettes des niveaux + vérificateur automatique
 
 ## Modifier les niveaux

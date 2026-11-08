@@ -267,6 +267,26 @@
     const s = JSON.parse(localStorage.getItem("temple-progres") || "null");
     if (s && typeof s.unlocked === "number") Object.assign(progress, s);
   } catch (_) {}
+  // Sauvegardes d'avant les mondes : les niveaux ont changé d'ordre (monde inca en tête).
+  // On retrouve chaque niveau par son numéro d'origine ; on reprend au premier niveau pas encore fini.
+  if (progress.v !== 2) {
+    const vieux = { best: progress.best || {}, stats: progress.stats || {}, coins: progress.coinsPris || {} };
+    const aJoue = progress.unlocked > 0 || Object.keys(vieux.best).length > 0;
+    progress.best = {}; progress.stats = {}; progress.coinsPris = {};
+    LEVELS.forEach((lv, i) => {
+      if (!lv.orig) return;
+      const o = lv.orig - 1;
+      if (vieux.best[o] != null) progress.best[i] = vieux.best[o];
+      if (vieux.stats[o]) progress.stats[i] = vieux.stats[o];
+      if (vieux.coins[o] && !lv.monde) progress.coinsPris[i] = vieux.coins[o];   // les niveaux refaits ont de nouvelles pièces
+    });
+    let u = 0;
+    while (u < LEVELS.length - 1 && progress.best[u] != null) u++;
+    progress.unlocked = aJoue ? u : 0;
+    progress.finished = false;
+    progress.v = 2;
+    try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {}
+  }
   function saveProgress() { try { localStorage.setItem("temple-progres", JSON.stringify(progress)); } catch (_) {} }
 
   /* ================= État ================= */
@@ -282,7 +302,8 @@
   function buildRoom(index) {
     const def = LEVELS[index];
     const act = ACTS[def.act] || ACTS[0];
-    P = PALETTES[act ? act.palette : "jungle"] || PALETTES.jungle;
+    const pal = def.palette || (act ? act.palette : "jungle");
+    P = PALETTES[pal] || PALETTES.jungle;
     const tiles = def.map.map((row) => row.split(""));
     ROWS = tiles.length; COLS = tiles[0].length; W = COLS * T; H = ROWS * T;
     const room = {
@@ -291,6 +312,7 @@
       player: null, door: null, shooters: [],
       enemies: [], pickups: [], arrows: [], dynamites: [], boulders: [], blocks: [], rival: null,
       particles: [], fired: new Set(), say: null, hint: null, shake: 0, t: 0, bCount: 0,
+      torches: [], stuck: [], sink: new Map(),
     };
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
@@ -300,7 +322,10 @@
         else if (c === "m") { room.enemies.push({ kind: "m", x: x * T + 2, y: y * T + 1, w: 12, h: 15, vx: -0.45, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "s") { room.enemies.push({ kind: "s", x: x * T + 2, y: y * T + 9, w: 12, h: 7, vx: -0.9, vy: 0, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
         else if (c === "b") { room.enemies.push({ kind: "b", x: x * T + 3, y: y * T + 4, by: y * T + 4, w: 10, h: 7, vx: 0.7, x0: x * T - 48, x1: x * T + 56, alive: true, t: Math.random() * 10 }); tiles[y][x] = "."; }
-        else if (c === "a" || c === "t" || c === "$") { room.pickups.push({ kind: c === "a" ? "coin" : c === "$" ? "gem" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
+        else if (c === "a" || c === "t" || c === "$" || c === "w") { room.pickups.push({ kind: c === "a" ? "coin" : c === "$" ? "gem" : c === "w" ? "sand" : "tnt", x: x * T + 4, y: y * T + 6, w: 8, h: 10, taken: false }); tiles[y][x] = "."; }
+        else if (c === "k") { room.enemies.push({ kind: "k", x: x * T + 3, y: y * T + 4, w: 10, h: 12, vx: -0.8, vy: 0, alive: true, t: Math.random() * 10, etat: "rode", butin: 0 }); tiles[y][x] = "."; }
+        else if (c === "j") { room.enemies.push({ kind: "j", x: x * T + 1, y: y * T + 6, w: 14, h: 10, vx: 0, vy: 0, alive: true, t: Math.random() * 10, etat: "guette", k: 0, face: -1 }); tiles[y][x] = "."; }
+        else if (c === "T") { room.torches.push({ x, y, lit: false }); tiles[y][x] = "."; }
         else if (c === "^" || c === "v") room.spikeAnim.set(x + "," + y, 1);
         else if (c === "<" || c === ">" || c === "(" || c === ")") {
           const left = c === "<" || c === "(";
@@ -310,7 +335,7 @@
       }
     }
     if (def.doorStart && room.door) { room.door.x = def.doorStart[0] * T + 2; room.door.y = def.doorStart[1] * T - 6; }
-    room.decor = genDecor(room, act ? act.palette : "jungle");
+    room.decor = genDecor(room, pal);
     for (const [cx, cy] of def.coins || []) room.pickups.push({ kind: "coin", x: cx * T + 4, y: cy * T + 6, w: 8, h: 10, taken: false });
     const pris = (progress.coinsPris || {})[index] || [];
     room.pickups.forEach((it, k) => { it.id = k; if ((it.kind === "coin" || it.kind === "gem") && pris.includes(k)) it.taken = true; });
@@ -319,7 +344,10 @@
     room.assist = Math.min(3, Math.floor(room.deaths / 3));   // 0 à 3
     room.slow = 1 - 0.12 * room.assist;                       // vitesse des pièges
     // point de sauvegarde : si Max l'a déjà atteint, il repart de là
-    room.cp = def.checkpoint ? { x: def.checkpoint[0], y: def.checkpoint[1], on: game.cpLevel === index } : null;
+    // drapeaux : un seul dans les anciens niveaux, deux dans les niveaux longs ; on repart du dernier atteint
+    const drapeaux = def.checkpoints || (def.checkpoint ? [def.checkpoint] : []);
+    room.cps = drapeaux.map(([x, y], k) => ({ x, y, k, on: game.cpLevel === index && game.cpIdx >= k }));
+    room.cp = game.cpLevel === index ? room.cps[game.cpIdx] || null : null;
     if (room.cp && room.cp.on && room.player) {
       room.player.x = room.cp.x * T + 3; room.player.y = room.cp.y * T + 1;
       // on repart dans l'état du niveau au moment du drapeau : grilles ouvertes, murs détruits,
@@ -333,6 +361,7 @@
         room.pickups.forEach((it, k) => { if (snap.taken[k]) it.taken = true; });
         room.enemies.forEach((e, k) => { if (snap.dead[k]) e.alive = false; });
         game.ammo.tnt = snap.tnt;
+        if (snap.torches) room.torches.forEach((t, k) => { t.lit = !!snap.torches[k]; });
       }
     }
     // plateformes mobiles : [x, y, largeur, dx, dy, vitesse] en cases
@@ -341,6 +370,17 @@
     room.crushers = (def.crushers || []).map(([x, y, ph, drop]) => ({ x: x * T + 1, y0: y * T, y: y * T, w: T - 2, h: T, drop: (drop || 3) * T, t: ph || 0 }));
     room.winds = (def.winds || []).map(([x0, x1, f]) => ({ x0: x0 * T, x1: (x1 + 1) * T, f }));
     room.flood = null; room.timer = 0;
+    // lianes qui se balancent : [x, y d'accroche, longueur en cases, amplitude (rad), décalage]
+    room.vines = (def.vines || []).map(([x, y, len, amp, ph], i) => ({ ax: x * T + 8, ay: y * T, L: len * T, amp: amp || 0.8, w: (2 * Math.PI) / (110 + len * 9), ph: ph != null ? ph : i * 1.7, ang: 0, px: 0, py: 0 }));
+    // têtes de jaguar qui crachent du feu : [x, y, sens, longueur, décalage]
+    room.flames = (def.flames || []).map(([x, y, dir, len, ph]) => ({ x, y, dir, len: len || 3, t: ph || 0, on: false, warn: false }));
+    // rayons du soleil : [x, y, angle de départ, angle d'arrivée, période]
+    room.beams = (def.beams || []).map(([x, y, a0, a1, per]) => ({ sx: x * T + 8, sy: y * T + 12, a0, a1, per: per || 300, ang: a0, pts: [] }));
+    // salles secrètes : cachées sous de la pierre jusqu'à ce que Max y entre
+    room.secretRooms = (def.secrets || []).map(([x, y, w, h]) => ({ x, y, w, h, seen: false, fade: 1 }));
+    // boss : le Jaguar de pierre (on l'assomme trois fois, il s'endort)
+    room.boss = null; room.rocks = []; room.bossSpikes = [];
+    if (def.boss === "jaguar") room.boss = { x: (COLS - 10) * T, y: (ROWS - 1) * T - 41, w: 60, h: 41, face: -1, etat: "attend", k: 110, hits: 0, vx: 0, t: 0 };
     room.mirror = def.mirror ? { axis: def.mirror * T } : null;   // ligne de l'eau : le reflet est symétrique par rapport à elle
     // le professeur Archibald attend à la porte, puis file devant le joueur
     if (room.door && !def.doorHidden && !def.doorStart) room.rival = { x: room.door.x - 22, y: room.door.y + 7, w: 10, h: 15, state: "wait", t: 0, face: -1 };
@@ -400,7 +440,8 @@
     return R.tiles[y][x];
   }
   // g = sol glissant, G = grille (s'ouvre avec la bonne dalle), _ = dalle à pression (non solide)
-  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">" || c === "(" || c === ")" || c === "g" || c === "G";
+  // q = ressort fragile (casse après un rebond), n = plateforme qui coule
+  const isSolid = (c) => c === "#" || c === "B" || c === "x" || c === "J" || c === "<" || c === ">" || c === "(" || c === ")" || c === "g" || c === "G" || c === "q" || c === "n";
   // planches qui clignotent : présentes ~1,6 s, absentes ~1 s, par groupes de deux décalés
   const BLINK = 160, BLINK_ON = 96;
   const blinkPhase = (x) => ((R ? R.t : 0) + (Math.floor(x / 2) % 2) * (BLINK / 2)) % BLINK;
@@ -440,6 +481,7 @@
     const p = R.player;
     R.def.triggers.forEach((tr, i) => {
       if (R.fired.has(i)) return;
+      if (tr.after != null && !R.fired.has(tr.after)) return;   // déclencheur qui attend qu'un autre ait eu lieu
       if (tr.min != null && R.deaths < tr.min) return;
       if (tr.max != null && R.deaths > tr.max) return;
       if (tr.allB) { if (atStart || R.bCount > 0) return; }
@@ -482,7 +524,7 @@
       case "set": setTiles(v[0], v[1], v[2], v[3], v[4], false); break;
       case "door": { const d = R.door; d.tx = v[0] * T + 2; d.ty = v[1] * T - 6; d.moving = true; sfx.flee(); break; }
       case "showdoor": { R.door.hidden = false; burst(R.door.x + 6, R.door.y + 10, C.door, 24, 2); sfx.door(); break; }
-      case "boulder": { const [x, y, dir, sp] = v; const speed = sp * R.slow; R.boulders.push({ x: x * T, y: y * T, w: 28, h: 28, vx: dir * speed, vy: 0, dir, speed, rot: 0 }); break; }
+      case "boulder": { const [x, y, dir, sp, casse] = v; const speed = sp * R.slow; R.boulders.push({ x: x * T, y: y * T, w: 28, h: 28, vx: dir * speed, vy: 0, dir, speed, rot: 0, casse: !!casse }); break; }
       case "fall": {
         const [x, y, w, h, delay] = v;
         R.blocks.push({ x: x * T, y: y * T, w: w * T, h: h * T, vy: 0, delay, tiles: [x, y, w, h], falling: false });
@@ -525,7 +567,7 @@
   /* ================= Mise à jour ================= */
   function update() {
     if (game.mode === "title" || game.mode === "end") { game.homeT++; return; }
-    if (game.paused || game.mode === "relance") return;
+    if (game.paused || game.mode === "relance" || game.mode === "recit") return;
     if (game.mode === "card") {
       pressed.jump = pressed.fire = pressed.tnt = false;
       game.cardT++;
@@ -537,7 +579,13 @@
     if (game.invert > 0) game.invert--;
 
     updateMovers();
+    updateVines();
     updatePlayer();
+    updateSink();
+    updateFlames();
+    updateBeams();
+    updateSecrets();
+    if (R.boss) updateBoss();
     updateCrushers();
     updateFlood();
     updateTilesFx();
@@ -558,7 +606,7 @@
     if (game.mode === "dead" && ++game.deadT === 32 && offrirRelance()) return;
     if (game.mode === "dead" && game.deadT > 50) restartRoom(true);
     majBoutonPasser();
-    if (game.mode === "win" && ++game.winT > 40) nextRoom();
+    if (game.mode === "win" && ++game.winT > 40) { if (R.def.fin) montrerRecit(); else nextRoom(); }
     pressed.jump = pressed.fire = pressed.tnt = false;
   }
 
@@ -579,6 +627,35 @@
     // vent : pousse Max sur le côté
     for (const w of R.winds) if (p.x + p.w / 2 > w.x0 && p.x + p.w / 2 < w.x1) p.x += w.f;
 
+    // liane qui se balance : Max s'y accroche en la touchant, SAUT pour lâcher au bon moment
+    if (p.vine) {
+      const v = p.vine, d = p.vineD;
+      const nx = v.ax + Math.sin(v.ang) * d - p.w / 2, ny = v.ay + Math.cos(v.ang) * d - 3;
+      p.vx = nx - p.x; p.vy = ny - p.y; p.x = nx; p.y = ny;
+      p.face = p.vx >= 0 ? 1 : -1;
+      p.anim += 0.05; p.grounded = false; p.coyote = 0;
+      if (pressed.jump) {
+        p.vine = null; p.vineCd = 20;
+        p.vx = Math.max(-3, Math.min(3, p.vx * 1.6 + (dir || p.face) * 1.3));
+        p.vy = Math.min(p.vy, 0) - 4.4; p.spring = false;
+        sfx.jump();
+      }
+      if (rectHitsSolid(p.x, p.y, p.w, p.h)) { p.vine = null; p.vineCd = 20; p.x -= p.vx; p.y -= p.vy; }
+      return finPlayer(p);
+    }
+    if (p.vineCd > 0) p.vineCd--;
+    else if (!p.grounded) for (const v of R.vines) {
+      // point le plus proche de Max sur la liane
+      const hx = p.x + p.w / 2, hy = p.y + 3;
+      const ux = Math.sin(v.ang), uy = Math.cos(v.ang);
+      const d = Math.max(v.L * 0.35, Math.min(v.L, (hx - v.ax) * ux + (hy - v.ay) * uy));
+      const qx = v.ax + ux * d, qy = v.ay + uy * d;
+      if (Math.abs(hx - qx) < 7 && Math.abs(hy - qy) < 9) {
+        p.vine = v; p.vineD = d; p.climb = false; sfx.pick();
+        if (!progress.lianeVue) { progress.lianeVue = true; saveProgress(); R.hint = { text: "Liane : appuie sur SAUT pour lâcher au bon moment", t: 0, dur: 220 }; }
+        return finPlayer(p);
+      }
+    }
     // cordes : SAUT maintenu = grimper, relâché = glisser doucement, ◀ ▶ = sauter de côté
     const rx = Math.floor((p.x + p.w / 2) / T);
     const surCorde = tileAt(rx, Math.floor((p.y + p.h / 2) / T)) === "|" || tileAt(rx, Math.floor((p.y + 3) / T)) === "|";
@@ -620,11 +697,20 @@
       for (const fx of [fx0, fx1]) {
         if (tileAt(fx, fy) === "x" && !R.shakeTiles.has(fx + "," + fy)) R.shakeTiles.set(fx + "," + fy, 12);
       }
-      if (tileAt(mid, fy) === "J") {
+      const sous = tileAt(mid, fy);
+      if (sous === "J" || sous === "q") {
         p.vy = PHYS.spring; p.spring = true; p.coyote = 0;
         R.springAnim.set(mid + "," + fy, 10);
         sfx.spring();
+        if (sous === "q") {   // ressort fragile : il casse après ce rebond
+          R.tiles[fy][mid] = ".";
+          R.shake = Math.max(R.shake, 2);
+          for (let i = 0; i < 8; i++) R.particles.push({ x: mid * T + 8, y: fy * T + 10, vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 2, s: 2, life: 40, color: i % 2 ? C.metal : C.wood, g: 0.2 });
+          sfx.crumble();
+          if (!progress.ressortVu) { progress.ressortVu = true; saveProgress(); R.hint = { text: "Ce ressort était fragile : il s'est cassé !", t: 0, dur: 180 }; }
+        }
       }
+      for (const fx of [fx0, fx1]) if (tileAt(fx, fy) === "n" && !R.sink.has(fx + "," + fy)) R.sink.set(fx + "," + fy, 0);
     }
 
     // coup de massue : assomme ce qui se trouve juste devant
@@ -635,6 +721,7 @@
         const hit = { x: p.face > 0 ? p.x + p.w - 2 : p.x - 14, y: p.y - 2, w: 16, h: 17 };
         for (const e of R.enemies) if (e.alive && !e.stun && overlap(hit, e)) stunEnemy(e, p.face);
         for (const a of R.arrows) if (!a.poison && !a.dead && overlap(hit, a)) breakArrow(a);
+        if (R.boss && overlap(hit, gemRect(R.boss))) bossTouche();
       }
     }
     if (pressed.tnt) {
@@ -657,20 +744,26 @@
           sfx.door(); R.shake = Math.max(R.shake, 2);
           burst(it.x + 4, it.y + 4, C.jade, 20, 2);
           R.hint = { text: "Trésor secret ! +10 pièces d'or", t: 0, dur: 180 };
-          R.say = { text: "Hé ! Ce trésor était caché pour moi ! Comment tu l'as trouvé ?", t: 0, dur: 150 };
         } else if (it.kind === "coin") {
           game.coins++; game.coinsTotal++;
           progress.pieces = (progress.pieces || 0) + 1;
           const cp = (progress.coinsPris = progress.coinsPris || {});
           (cp[R.index] = cp[R.index] || []).push(it.id);
           saveProgress();
+        } else if (it.kind === "sand") {
+          if (R.timer) R.timer += 10 * 60;
+          R.hint = { text: "Sablier : +10 secondes !", t: 0, dur: 120 };
+        } else if (it.kind === "coin2") {
+          progress.pieces = (progress.pieces || 0) + 1; game.coins++; saveProgress();
         } else game.ammo.tnt += 1;
         sfx.pick();
         burst(it.x + 4, it.y + 4, C.hat, 8);
       }
     }
-    if (R.cp && !R.cp.on && overlap(p, { x: R.cp.x * T, y: R.cp.y * T - 8, w: T, h: T + 8 })) {
-      R.cp.on = true; game.cpLevel = R.index;
+    const cpNouv = R.cps.find((c) => !c.on && overlap(p, { x: c.x * T, y: c.y * T - 8, w: T, h: T + 8 }));
+    if (cpNouv) {
+      for (const c of R.cps) if (c.k <= cpNouv.k) c.on = true;
+      R.cp = cpNouv; game.cpLevel = R.index; game.cpIdx = cpNouv.k;
       // photo du niveau au moment du drapeau (les déclencheurs « au départ » seront rejoués)
       game.cpSnap = {
         level: R.index,
@@ -681,11 +774,20 @@
         taken: R.pickups.map((it) => it.taken),
         dead: R.enemies.map((e) => !e.alive),
         tnt: game.ammo.tnt,
+        torches: R.torches.map((t) => t.lit),
       };
       if (R.door && R.door.moving) { game.cpSnap.door.x = R.door.tx; game.cpSnap.door.y = R.door.ty; }
       sfx.pick(); burst(R.cp.x * T + 8, R.cp.y * T, C.gold, 14, 1.6);
       R.hint = { text: "Drapeau ! Si tu tombes, tu repartiras d'ici.", t: 0, dur: 160 };
     }
+    for (const tc of R.torches) if (!tc.lit && overlap(p, { x: tc.x * T, y: tc.y * T - 8, w: T, h: T + 8 })) {
+      tc.lit = true; sfx.pick(); burst(tc.x * T + 8, tc.y * T + 2, "#ffb347", 14, 1.4);
+      if (!progress.torcheVue) { progress.torcheVue = true; saveProgress(); R.hint = { text: "Torche allumée : elle éclaire le chemin !", t: 0, dur: 160 }; }
+    }
+    finPlayer(p);
+  }
+
+  function finPlayer(p) {
     const d = R.door;
     if (d && !d.moving && !d.hidden && overlap(p, { x: d.x + 3, y: d.y + 4, w: d.w - 6, h: d.h - 4 })) {
       game.mode = "win"; game.winT = 0; sfx.door();
@@ -698,6 +800,164 @@
       const ok = tileAt(fx, fy) === "#" && tileAt(fx - 1, fy) === "#" && tileAt(fx + 1, fy) === "#" &&
         ![-1, 0, 1].some((d) => "^v".includes(tileAt(fx + d, my))) && !R.crushers.some((c) => Math.abs(c.x - fx * T) < 32);
       if (ok) p.safe = { x: fx * T + 3, y: p.y };
+    }
+  }
+
+  /* ---------- Le Jaguar de pierre ---------- */
+  const BOSS_K = 60 / 44;   // le dessin est fait à l'échelle 44×30, agrandi
+  const gemRect = (b) => ({ x: b.face > 0 ? b.x + 29 * BOSS_K : b.x + b.w - 41 * BOSS_K, y: b.y - 2, w: 12 * BOSS_K, h: 13 * BOSS_K });
+  function updateBoss() {
+    const b = R.boss, p = R.player;
+    b.t++;
+    const vif = b.etat === "gratte" || b.etat === "charge" || b.etat === "attend";
+    switch (b.etat) {
+      case "attend": if (--b.k <= 0) { b.etat = "gratte"; b.k = 70 - b.hits * 12; } break;
+      case "reveil":
+        if (--b.k <= 0) {
+          b.etat = "gratte"; b.k = 70 - b.hits * 12;
+          // il se secoue : si Max est sur son dos, il est éjecté sur le côté
+          if (p.alive && p.x + p.w > b.x && p.x < b.x + b.w && p.y + p.h <= b.y + 6 && p.y + p.h > b.y - 30) {
+            const cote = p.x + p.w / 2 < b.x + b.w / 2 ? -1 : 1;
+            p.vx = cote * 3; p.vy = -5; p.x = cote < 0 ? b.x - p.w - 1 : b.x + b.w + 1; p.invuln = Math.max(p.invuln, 40);
+          } else if (p.alive && overlap(p, b)) { p.x = p.x + p.w / 2 < b.x + b.w / 2 ? b.x - p.w - 1 : b.x + b.w + 1; }
+        }
+        break;
+      case "gratte":
+        b.face = p.x + p.w / 2 < b.x + b.w / 2 ? -1 : 1;
+        if (R.t % 4 === 0) R.particles.push({ x: b.x + b.w / 2 - b.face * 18, y: b.y + b.h, vx: -b.face * (0.5 + Math.random()), vy: -0.6, s: 2, life: 20, color: P.stoneDark, g: 0.05 });
+        if (--b.k <= 0) { b.etat = "charge"; b.vx = b.face * (2.9 + b.hits * 0.45) * R.slow; sfx.boom(); R.shake = Math.max(R.shake, 3); }
+        break;
+      case "charge": {
+        b.x += b.vx;
+        if (R.t % 3 === 0) R.particles.push({ x: b.x + b.w / 2 - b.face * 22, y: b.y + b.h - 2, vx: -b.face, vy: -0.5, s: 3, life: 18, color: P.stoneDark, g: 0.05 });
+        if (rectHitsSolid(b.x, b.y + 4, b.w, b.h - 8)) {
+          b.x = b.vx > 0 ? Math.floor((b.x + b.w) / T) * T - b.w : Math.floor(b.x / T + 1) * T;
+          b.vx = 0; b.etat = "sonne"; b.k = Math.round(190 * (1 + 0.15 * R.assist)); b.touche = false;
+          R.shake = 10; sfx.boom(); burst(b.face > 0 ? b.x + b.w : b.x, b.y + 12, P.stoneTop, 20, 2.5);
+          // le choc fait tomber des pierres du plafond
+          const n = 3 + b.hits;
+          for (let i = 0; i < n; i++) {
+            let rx = (2 + Math.random() * (COLS - 4)) * T;
+            if (i === 0) rx = p.x + (Math.random() - 0.5) * 20;
+            R.rocks.push({ x: rx, y: T, w: 10, h: 10, vy: 0, warn: 40 + i * 18 });
+          }
+          if (b.hits === 2) bossPics();
+          if (!progress.bossVu) { progress.bossVu = true; saveProgress(); R.hint = { text: "Il est sonné ! Frappe la pierre de jade sur son front (massue, ou saute-lui sur la tête)", t: 0, dur: 260 }; }
+        }
+        break;
+      }
+      case "sonne":
+        if (--b.k <= 0) { b.etat = "reveil"; b.k = 30; b.face = -b.face; }
+        break;
+      case "dort":
+        if (b.k > 0 && --b.k === 0) doAction(["showdoor"]);
+        if (R.t % 50 === 0) R.particles.push({ zzz: true, x: b.x + b.w / 2, y: b.y - 2, vx: 0.2, vy: -0.4, s: 6, life: 70, color: C.text, g: 0 });
+        break;
+    }
+    // pierres qui tombent
+    for (const r of R.rocks) {
+      if (r.warn > 0) { r.warn--; if (r.warn % 6 === 0) R.particles.push({ x: r.x + Math.random() * 10, y: T + 2, vx: 0, vy: 0.5, s: 2, life: 16, color: P.stoneTop, g: 0.1 }); continue; }
+      r.vy = Math.min(r.vy + PHYS.gravity, 7); r.y += r.vy;
+      if (rectHitsSolid(r.x, r.y, r.w, r.h)) { r.done = true; burst(r.x + 5, r.y + 8, P.stoneTop, 8, 1.4); sfx.crumble(); }
+    }
+    R.rocks = R.rocks.filter((r) => !r.done && r.y < H + 20);
+    // pics qui sortent du sol à la dernière phase
+    for (const s of R.bossSpikes) {
+      s.t--;
+      if (s.t === 120) { setTiles(s.x, s.y, s.w, 1, "^", true); sfx.spike(); }
+      if (s.t === 0) setTiles(s.x, s.y, s.w, 1, ".", false);
+      if (s.t > 120 && s.t % 8 === 0) for (let i = 0; i < s.w; i++) R.particles.push({ x: (s.x + i) * T + 8, y: (s.y + 1) * T, vx: 0, vy: -0.8, s: 2, life: 12, color: C.danger, g: 0 });
+    }
+    R.bossSpikes = R.bossSpikes.filter((s) => s.t > 0);
+    if (!p.alive || game.mode !== "play") return;
+    for (const r of R.rocks) if (r.warn <= 0 && overlap(p, r)) return kill("Une pierre sur la tête. Le temple se venge.");
+    if (vif && overlap(p, { x: b.x + 6, y: b.y + 8, w: b.w - 12, h: b.h - 8 })) return kill("Écrasé par le Jaguar de pierre !");
+  }
+  function bossPics() {
+    const p = R.player, px = Math.floor((p.x + p.w / 2) / T), y = ROWS - 2;
+    const zones = [];
+    for (let essai = 0; essai < 40 && zones.length < 2; essai++) {
+      const x = 4 + Math.floor(Math.random() * (COLS - 12));
+      if (Math.abs(x + 1 - px) < 5 || zones.some((z) => Math.abs(z - x) < 6)) continue;
+      zones.push(x);
+    }
+    for (const x of zones) R.bossSpikes.push({ x, y, w: 3, t: 160 });
+  }
+  function bossTouche() {
+    const b = R.boss;
+    if (b.etat !== "sonne" || b.touche) return false;
+    b.touche = true; b.hits++;
+    sfx.bonk(); R.shake = 6;
+    burst(gemRect(b).x + 6, gemRect(b).y + 5, C.jade, 22, 2.4);
+    if (b.hits >= 3) {
+      b.etat = "dort"; b.k = 0;
+      R.rocks = [];
+      for (const s of R.bossSpikes) setTiles(s.x, s.y, s.w, 1, ".", false);
+      R.bossSpikes = [];
+      R.hint = { text: "Le Jaguar de pierre s'endort… pour mille ans. La porte s'ouvre !", t: 0, dur: 240 };
+      b.k = 60;   // la porte apparaît une seconde plus tard
+    } else {
+      b.etat = "reveil"; b.k = 50; b.face = -b.face;
+      R.hint = { text: b.hits === 1 ? "Touché ! Encore deux fois." : "Touché ! Une dernière fois… attention, il s'énerve !", t: 0, dur: 160 };
+    }
+    return true;
+  }
+
+  function updateVines() {
+    for (const v of R.vines) { v.ang = v.amp * Math.sin(R.t * v.w * R.slow + v.ph); }
+  }
+  // plateformes qui coulent : une fois qu'on s'y pose, elles s'enfoncent d'une case toutes les ~0,4 s
+  function updateSink() {
+    for (const [k, t] of R.sink) {
+      const [x, y] = k.split(",").map(Number);
+      if (R.tiles[y][x] !== "n") { R.sink.delete(k); continue; }
+      const nt = t + R.slow;
+      if (Math.floor(nt / 34) > Math.floor(t / 34) && nt > 36) {
+        R.tiles[y][x] = ".";
+        R.sink.delete(k);
+        if (y + 1 < ROWS && tileAt(x, y + 1) === ".") { R.tiles[y + 1][x] = "n"; R.sink.set(x + "," + (y + 1), nt); }
+        for (let i = 0; i < 3; i++) R.particles.push({ x: x * T + Math.random() * T, y: y * T + 14, vx: (Math.random() - 0.5), vy: -0.6, s: 2, life: 20, color: "#8a6a3a", g: 0.05 });
+      } else R.sink.set(k, nt);
+    }
+  }
+  const FLAME_PER = 200;
+  function flameRect(f) {
+    const len = f.len * T;
+    return f.dir > 0 ? { x: (f.x + 1) * T, y: f.y * T + 4, w: len, h: 9 } : { x: f.x * T - len, y: f.y * T + 4, w: len, h: 9 };
+  }
+  function updateFlames() {
+    for (const f of R.flames) {
+      f.t += R.slow;
+      const ph = (f.t + 1000) % FLAME_PER;
+      f.warn = ph >= 70 && ph < 110;
+      f.on = ph >= 110 && ph < 165 && R.t > 100;
+      if (f.on && R.t % 2 === 0) R.particles.push({ x: flameRect(f).x + Math.random() * f.len * T, y: f.y * T + 6 + Math.random() * 5, vx: f.dir * (0.6 + Math.random()), vy: -0.4 - Math.random() * 0.6, s: 2 + Math.random() * 2, life: 14, color: Math.random() < 0.5 ? "#ffb347" : "#e8621f", g: -0.02 });
+    }
+  }
+  function updateBeams() {
+    for (const b of R.beams) {
+      const k = 0.5 - 0.5 * Math.cos((2 * Math.PI * R.t * R.slow) / b.per);
+      b.ang = b.a0 + (b.a1 - b.a0) * k;
+      b.pts = [];
+      if (R.t < 100) continue;
+      const dx = Math.sin(b.ang), dy = Math.cos(b.ang);
+      let x = b.sx, y = b.sy;
+      for (let i = 0; i < 400; i++) {
+        x += dx * 3; y += dy * 3;
+        if (x < 0 || x > W || y > H || isSolid(tileAt(Math.floor(x / T), Math.floor(y / T)))) break;
+        if (i % 2 === 0) b.pts.push([x, y]);
+      }
+      b.end = [x, y];
+    }
+  }
+  function updateSecrets() {
+    const p = R.player;
+    for (const s of R.secretRooms) {
+      if (!s.seen && p.alive && overlap(p, { x: s.x * T, y: s.y * T, w: s.w * T, h: s.h * T })) {
+        s.seen = true; sfx.door(); burst(p.x + 5, p.y + 4, C.jade, 16, 1.6);
+        R.hint = { text: "Salle secrète !", t: 0, dur: 140 };
+      }
+      if (s.seen && s.fade > 0) s.fade = Math.max(0, s.fade - 0.06);
     }
   }
 
@@ -715,6 +975,16 @@
   function landOnMovers(p, prevBottom) {
     p.onMover = null;
     if (p.vy < 0) return;
+    const bs = R.boss;
+    if (bs && (bs.etat === "sonne" || bs.etat === "dort" || bs.etat === "reveil") && p.x + p.w > bs.x + 4 && p.x < bs.x + bs.w - 4 && prevBottom <= bs.y + 3 && p.y + p.h >= bs.y - 0.5) {
+      // sur le dos du jaguar sonné : un saut sur la tête compte comme un coup
+      if (bossTouche()) { p.vy = -4.8; p.spring = false; return; }
+      p.y = bs.y - p.h; p.vy = 0; p.grounded = true; return;
+    }
+    for (const s of R.stuck) {
+      if (p.x + p.w <= s.x || p.x >= s.x + s.w) continue;
+      if (prevBottom <= s.y + 2 && p.y + p.h >= s.y - 0.5) { p.y = s.y - p.h; p.vy = 0; p.grounded = true; return; }
+    }
     for (const m of R.movers) {
       if (p.x + p.w <= m.x + 1 || p.x >= m.x + m.w - 1) continue;
       if (prevBottom <= m.y + 2 + Math.max(0, m.my) && p.y + p.h >= m.y - 0.5) {
@@ -783,9 +1053,11 @@
       if (e.stun > 0) {
         e.stun--;
         if (e.kind !== "b") { e.vx = 0; e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall); moveBody(e); if (e.y > H + 20) e.alive = false; }
-        if (e.stun === 0) e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : 0.7);
+        if (e.stun === 0) { e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : e.kind === "k" ? -0.8 : 0.7); if (e.kind === "j") { e.etat = "repos"; e.k = 40; e.vx = 0; } }
         continue;
       }
+      if (e.kind === "k" && updateSinge(e)) continue;
+      if (e.kind === "j") { updateJaguar(e); continue; }
       if (e.kind === "b") {
         e.x += e.vx;
         if (e.x < e.x0 || e.x + e.w > e.x1 || rectHitsSolid(e.x, e.y, e.w, e.h)) { e.x -= e.vx; e.vx = -e.vx; }
@@ -822,13 +1094,80 @@
   function updateProjectiles() {
     for (const a of R.arrows) {
       a.x += a.vx;
-      if (rectHitsSolid(a.x, a.y, a.w, a.h) || a.x < -20 || a.x > W + 20) { a.dead = true; burst(a.x + 4, a.y + 1, C.wood, 3, 0.5); }
+      if (rectHitsSolid(a.x, a.y, a.w, a.h) || a.x < -20 || a.x > W + 20) {
+        a.dead = true;
+        // niveau « flèches plantées » : une flèche en bois reste fichée dans la pierre et sert de marche
+        if (R.def.planter && !a.poison && a.x > 0 && a.x < W) {
+          const sx = a.vx > 0 ? Math.floor((a.x + a.w) / T) * T - 7 : Math.floor(a.x / T + 1) * T - 3;
+          R.stuck.push({ x: sx, y: a.y, w: 10, h: 3, vx: a.vx, life: 300 });
+          if (R.stuck.length > 6) R.stuck.shift();
+        } else burst(a.x + 4, a.y + 1, C.wood, 3, 0.5);
+      }
     }
+    for (const s of R.stuck) s.life--;
+    R.stuck = R.stuck.filter((s) => s.life > 0);
     R.arrows = R.arrows.filter((a) => !a.dead);
+  }
+
+  // Singe voleur : rôde, fonce sur Max, lui chipe 3 pièces et s'enfuit. Assommé, il les lâche.
+  function updateSinge(e) {
+    const p = R.player;
+    if (e.etat === "fuite") {
+      e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall);
+      e.vx = e.fuit * 2.5;
+      const hit = moveBody(e);
+      if (hit.hitX && e.grounded) e.vy = -5.6;
+      else if (hit.hitX) e.fuit = -e.fuit;
+      if (e.grounded && !solidAt(e.fuit > 0 ? e.x + e.w + 3 : e.x - 3, e.y + e.h + 2)) e.vy = -5.2;
+      if (R.t % 5 === 0) R.particles.push({ x: e.x + 5, y: e.y + 2, vx: 0, vy: -0.4, s: 2, life: 14, color: C.gold, g: 0 });
+      if (e.x < -30 || e.x > W + 30 || e.y > H + 20) { e.alive = false; if (e.butin) R.hint = { text: `Le singe s'est enfui avec ${e.butin} pièce${e.butin > 1 ? "s" : ""}…`, t: 0, dur: 150 }; }
+      return true;
+    }
+    if (e.etat === "rode" && p.alive && Math.abs(p.x - e.x) < 90 && Math.abs(p.y - e.y) < 26) { e.etat = "fonce"; sfx.flee(); }
+    if (e.etat === "fonce") e.vx = Math.sign(p.x - e.x || 1) * 2.1;
+    return false;
+  }
+  function volParSinge(e) {
+    const p = R.player;
+    const n = Math.min(3, progress.pieces || 0);
+    progress.pieces = (progress.pieces || 0) - n; saveProgress();
+    e.butin = n; e.etat = "fuite"; e.fuit = Math.sign(e.x - p.x) || 1; e.vy = -4;
+    p.vx = -e.fuit * 2.4; p.vy = -2.5; p.invuln = Math.max(p.invuln, 30);
+    sfx.flee(); R.shake = Math.max(R.shake, 2);
+    R.hint = { text: n ? `Un singe t'a volé ${n} pièce${n > 1 ? "s" : ""} ! Assomme-le pour les récupérer` : "Le singe n'a rien trouvé dans tes poches !", t: 0, dur: 200 };
+  }
+  // Jeune jaguar : guette, se ramasse quand Max passe devant lui, puis bondit
+  function updateJaguar(e) {
+    const p = R.player;
+    e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall);
+    if (e.etat === "guette") {
+      e.vx = 0;
+      const dx = p.x - e.x;
+      if (p.alive && Math.abs(dx) < 7 * T && Math.abs(p.y + p.h - (e.y + e.h)) < 20) { e.etat = "ramasse"; e.k = Math.round(40 / R.slow); e.face = Math.sign(dx) || 1; sfx.god(); }
+    } else if (e.etat === "ramasse") {
+      e.vx = 0;
+      if (--e.k <= 0) { e.etat = "bond"; e.vx = e.face * 3.1 * R.slow; e.vy = -3.8; }
+    } else if (e.etat === "bond") {
+      if (e.grounded && e.vy >= 0) { e.etat = "repos"; e.k = 70; e.vx = 0; }
+    } else if (e.etat === "repos") {
+      e.vx = 0;
+      if (--e.k <= 0) { e.etat = "guette"; e.face = Math.sign(p.x - e.x) || e.face; }
+    }
+    const hit = moveBody(e);
+    if (hit.hitX) e.vx = 0;
+    if (e.grounded && e.etat === "bond") { e.etat = "repos"; e.k = 70; e.vx = 0; }
+    if (e.y > H + 20) e.alive = false;
   }
 
   // Assommé : l'ennemi ne bouge plus et devient inoffensif pendant ~4 secondes
   function stunEnemy(e, dir) {
+    if (e.kind === "k" && e.butin) {
+      // le singe lâche les pièces volées
+      for (let i = 0; i < e.butin; i++) R.pickups.push({ kind: "coin2", x: e.x + i * 6 - 4, y: e.y - 4, w: 8, h: 10, taken: false, id: -1 });
+      R.hint = { text: "Tu as récupéré tes pièces !", t: 0, dur: 120 };
+      e.butin = 0;
+    }
+    if (e.kind === "k") e.etat = "rode";
     if (e.vx) e.dirBack = e.vx;
     e.stun = 260;
     if (e.kind !== "b") { e.vx = 0; e.vy = -2; e.x += (dir || 0) * 3; }
@@ -847,7 +1186,7 @@
       r.face = p.x < r.x ? -1 : 1;
       if (Math.abs(p.x - r.x) < 150 && Math.abs(p.y - r.y) < 70 && game.mode === "play") {
         r.state = "run";
-        if (!R.say) R.say = { text: RIVAL_DOOR[(R.index + R.deaths) % RIVAL_DOOR.length], t: 0, dur: 140 };
+        if (!R.say && !R.def.monde) R.say = { text: RIVAL_DOOR[(R.index + R.deaths) % RIVAL_DOOR.length], t: 0, dur: 140 };
         sfx.flee();
       }
     } else if (r.state === "run") {
@@ -898,6 +1237,13 @@
     for (const b of R.boulders) {
       b.vy = Math.min(b.vy + PHYS.gravity, PHYS.maxFall);
       b.vx = b.dir * b.speed;
+      if (b.casse) {
+        const fx = Math.floor((b.dir > 0 ? b.x + b.w + 2 : b.x - 2) / T);
+        for (let ty = Math.floor(b.y / T); ty <= Math.floor((b.y + b.h - 1) / T); ty++) if (tileAt(fx, ty) === "B") {
+          R.tiles[ty][fx] = "."; R.bCount--; R.shake = Math.max(R.shake, 5); sfx.boom();
+          for (let i = 0; i < 6; i++) R.particles.push({ x: fx * T + 8, y: ty * T + 8, vx: b.dir * Math.random() * 3, vy: -Math.random() * 3, s: 3 + Math.random() * 3, life: 50, color: P.crack, g: 0.2 });
+        }
+      }
       const hit = moveBody(b);
       if (hit.hitX) b.dir = -b.dir;
       b.rot += (b.dir * b.speed) / 14;
@@ -967,8 +1313,15 @@
       if (!e.alive || e.stun) continue;
       if (!overlap(p, { x: e.x + 1, y: e.y + 1, w: e.w - 2, h: e.h - 1 })) continue;
       if (p.vy > 0.5 && p.y + p.h - e.y < 10) { stunEnemy(e, 0); p.vy = -4.6; p.spring = false; continue; }
-      return kill();
+      if (e.kind === "k") { if (e.etat !== "fuite" && !(p.invuln > 0)) volParSinge(e); continue; }
+      return kill(e.kind === "j" ? "Croqué par un bébé jaguar. Il est mignon, pourtant." : null);
     }
+    for (const f of R.flames) {
+      if (!f.on) continue;
+      const fr = flameRect(f);
+      if (overlap(p, fr)) return kill("Grillé par la tête de jaguar !");
+    }
+    for (const b of R.beams) for (const q of b.pts) if (q[0] > p.x - 2 && q[0] < p.x + p.w + 2 && q[1] > p.y && q[1] < p.y + p.h) return kill("Le rayon du dieu Soleil ! Il fallait rester à l'ombre.");
     for (const a of R.arrows) {
       if (a.dead || !overlap(p, a)) continue;
       if (!a.poison && p.vy > 0.3 && p.y + p.h - a.y < 8) { breakArrow(a); p.vy = -4.6; p.spring = false; continue; }
@@ -1313,6 +1666,24 @@
     else { game.mode = "end"; R = null; showEnd(); }
   }
 
+  // Fin de niveau : Archibald raconte la suite de l'histoire (on a le temps de lire)
+  function montrerRecit() {
+    game.mode = "recit";
+    releaseAll();
+    const d = R.def, nm = window.MondesUI ? MondesUI.NIV : 20;
+    document.getElementById("recit-surtitre").textContent = `Niveau ${(R.index % nm) + 1} terminé · ${d.name}`;
+    const t = d.fin.replace(/^Histoire\.\s*/, "");
+    document.getElementById("recit-texte").textContent = t;
+    document.getElementById("recit-histoire").hidden = !/^Histoire\./.test(d.fin) && !d.boss;
+    const img = document.getElementById("recit-archibald");
+    if (img && !img.src.startsWith("data:")) img.src = lesSprites().archibald;
+    const morts = game.deathsByRoom[R.index];
+    document.getElementById("recit-morts").textContent = morts ? `${morts} chute${morts > 1 ? "s" : ""}` : "Sans une chute !";
+    showOverlay("recit");
+    setTimeout(() => document.getElementById("btn-recit-suite").focus(), 50);
+  }
+  document.getElementById("btn-recit-suite").addEventListener("click", () => { if (game.mode === "recit") { showOverlay(null); nextRoom(); } });
+
   function goHome() {
     game.mode = "title"; game.paused = false; R = null;
     releaseAll();
@@ -1353,7 +1724,7 @@
     drawTiles(false);
     drawDecor();
     drawDoor();
-    if (R.cp) drawCheckpoint(R.cp);
+    for (const c of R.cps) drawCheckpoint(c);
     for (const it of R.pickups) if (!it.taken) drawPickup(it);
     for (const e of R.enemies) if (e.alive) drawEnemy(e);
     for (const k2 of R.blocks) drawBlock(k2);
@@ -1363,8 +1734,15 @@
     if (R.rival && R.rival.state !== "gone") drawRival(R.rival);
     drawMovers();
     drawCrushers();
+    drawStuck();
+    drawTorches();
+    drawFlames();
+    drawVines();
     if (R.mirror) drawMirror();
     drawPlayer();
+    drawBeams();
+    drawSecrets();
+    if (R.boss) drawBoss();
     drawWinds();
     drawFlood();
     drawTiles(true); // faux murs par-dessus le joueur
@@ -1381,7 +1759,7 @@
   }
 
   function drawBackground() {
-    const decor = R.def.decor || (ACTS[R.def.act] || {}).palette;
+    const decor = R.def.decor || R.def.palette || (ACTS[R.def.act] || {}).palette;
     // mur du fond : grandes briques sombres, légèrement décalées par la parallaxe
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
@@ -1642,6 +2020,7 @@
     const dr = R.door;
     if (dr && !dr.hidden) hole(dr.x + dr.w / 2, dr.y + dr.h / 2, 30 + Math.sin(R.t / 15) * 3);
     for (const t of R.decor) if (t.k === "torch") hole(t.x * T + 8, t.y * T + 6, 26);
+    for (const t of R.torches) if (t.lit) hole(t.x * T + 8, t.y * T, 64 + Math.sin(R.t / 5 + t.x) * 3); else hole(t.x * T + 8, t.y * T, 9);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(darkCanvas, 0, 0);
     ctx.setTransform(k, 0, 0, k, 0, 0);
@@ -1762,7 +2141,14 @@
         ctx.strokeStyle = C.gold; ctx.lineWidth = 0.8; ctx.setLineDash([2, 2]);
         ctx.strokeRect(px + 1, py + 1, T - 2, T - 2);
         ctx.setLineDash([]); ctx.globalAlpha = 1;
-      } else if (c === "J") {
+      } else if (c === "n") {
+        // plateforme de bois qui flotte (et coule)
+        const s = R.sink.get(x + "," + y) || 0, wob = s ? Math.sin(R.t / 3) * 0.8 : 0;
+        ctx.fillStyle = "#7a5230"; ctx.fillRect(px, py + 2 + wob, T, 6);
+        ctx.fillStyle = "#a8774a"; ctx.fillRect(px, py + 2 + wob, T, 1.5);
+        ctx.fillStyle = "#4a3018"; ctx.fillRect(px + 5, py + 3 + wob, 1, 5); ctx.fillRect(px + 11, py + 3 + wob, 1, 5);
+        if (s) { ctx.fillStyle = "rgba(160,220,235,0.5)"; ctx.fillRect(px + (R.t % 12), py + 8, 2, 1); }
+      } else if (c === "J" || c === "q") {
         const sq = R.springAnim.get(x + "," + y) || 0;
         const top = py + 4 + (sq > 5 ? 3 : 0);
         ctx.fillStyle = C.metal; ctx.fillRect(px + 1, py + T - 4, T - 2, 4);
@@ -1773,7 +2159,160 @@
         ctx.stroke();
         ctx.fillStyle = C.wood; ctx.fillRect(px, top, T, 3);
         ctx.fillStyle = C.danger; ctx.fillRect(px + 6, top - 1, 4, 1);
+        if (c === "q") {   // ressort fragile : bois fendu et ressort rouillé
+          ctx.strokeStyle = "#3a2210"; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(px + 2, top); ctx.lineTo(px + 5, top + 2); ctx.lineTo(px + 8, top); ctx.moveTo(px + 11, top + 1); ctx.lineTo(px + 14, top + 3); ctx.stroke();
+          ctx.fillStyle = "#a0522d"; ctx.fillRect(px + 4, py + T - 7, 2, 2); ctx.fillRect(px + 10, py + T - 10, 2, 2);
+        }
       }
+    }
+  }
+
+  function drawBoss() {
+    const b = R.boss;
+    for (const r of R.rocks) {
+      if (r.warn > 0) {   // ombre au sol qui annonce la chute
+        let fy = Math.floor(r.y / T); while (fy < ROWS - 1 && !isSolid(tileAt(Math.floor((r.x + 5) / T), fy + 1))) fy++;
+        ctx.fillStyle = `rgba(0,0,0,${0.25 + 0.25 * Math.sin(R.t / 3)})`; ctx.beginPath(); ctx.ellipse(r.x + 5, (fy + 1) * T - 1, 7, 2, 0, 0, Math.PI * 2); ctx.fill();
+        continue;
+      }
+      ctx.fillStyle = P.stone; ctx.beginPath(); ctx.arc(r.x + 5, r.y + 5, 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = P.stoneTop; ctx.fillRect(r.x + 2, r.y + 2, 3, 2);
+    }
+    const f = b.face;
+    const dors = b.etat === "dort", sonne = b.etat === "sonne", gr = b.etat === "gratte";
+    ctx.save();
+    ctx.translate(Math.round(b.x), Math.round(b.y));
+    if (f < 0) { ctx.translate(b.w, 0); ctx.scale(-1, 1); }
+    ctx.scale(BOSS_K, BOSS_K);
+    const x = 0, y = 0;
+    const sq = dors ? 6 : sonne ? 3 : 0, run = b.etat === "charge" ? Math.sin(b.t * 0.6) * 2 : gr ? Math.sin(b.t * 0.9) : 0;
+    // queue
+    ctx.strokeStyle = "#7d6a4a"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(x + 4, y + 12 + sq); ctx.quadraticCurveTo(x - 8, y + 6 + sq, x - 6, y - 2 + sq + Math.sin(b.t / 10) * 2); ctx.stroke();
+    // pattes
+    ctx.fillStyle = "#6e5a3e";
+    if (!dors) { ctx.fillRect(x + 6 + run, y + 22, 6, 8); ctx.fillRect(x + 16 - run, y + 22, 6, 8); ctx.fillRect(x + 26 + run, y + 22, 6, 8); ctx.fillRect(x + 34 - run, y + 22, 6, 8); }
+    // corps de pierre
+    ctx.fillStyle = "#9c8a66"; ctx.fillRect(x + 2, y + 8 + sq, 36, 16 - (dors ? 2 : 0));
+    ctx.fillStyle = "#b8a27a"; ctx.fillRect(x + 2, y + 8 + sq, 36, 3);
+    ctx.fillStyle = "#7d6a4a"; for (let i = 0; i < 5; i++) ctx.fillRect(x + 6 + i * 7, y + 13 + sq + (i % 2) * 4, 3, 3);   // taches sculptées
+    ctx.strokeStyle = "#5a4a32"; ctx.lineWidth = 1; ctx.strokeRect(x + 2.5, y + 8.5 + sq, 35, 15);
+    // tête
+    const hy = y + sq + (gr ? 3 : 0);
+    ctx.fillStyle = "#a8946e"; ctx.fillRect(x + 28, hy, 16, 16);
+    ctx.fillStyle = "#8a7a5a"; ctx.fillRect(x + 29, hy - 4, 4, 5); ctx.fillRect(x + 39, hy - 4, 4, 5);   // oreilles
+    ctx.fillStyle = "#7d6a4a"; ctx.fillRect(x + 38, hy + 9, 6, 6);                                    // museau
+    ctx.fillStyle = "#f2e0c0"; ctx.fillRect(x + 39, hy + 14, 2, 3); ctx.fillRect(x + 42, hy + 14, 2, 3); // crocs
+    // yeux : rouges quand il charge, fermés quand il dort, étoiles quand il est sonné
+    if (dors) { ctx.fillStyle = "#3a2a1a"; ctx.fillRect(x + 35, hy + 7, 5, 1); }
+    else { ctx.fillStyle = b.etat === "charge" || gr ? "#ff3a2a" : "#2a1a10"; ctx.fillRect(x + 36, hy + 5, 3, 3); }
+    // pierre de jade sur le front
+    const g = sonne ? 0.5 + 0.5 * Math.sin(R.t / 4) : 0;
+    if (sonne) { ctx.fillStyle = `rgba(63,208,138,${0.25 + g * 0.3})`; ctx.beginPath(); ctx.arc(x + 35, hy + 3, 8, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = b.hits >= 3 ? "#2a6a4a" : C.jade; ctx.beginPath(); ctx.moveTo(x + 35, hy - 2); ctx.lineTo(x + 39, hy + 3); ctx.lineTo(x + 35, hy + 8); ctx.lineTo(x + 31, hy + 3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#d9ffe9"; ctx.fillRect(x + 33, hy + 1, 2, 2);
+    // fissures selon les coups reçus
+    ctx.strokeStyle = "#3a2a1a"; ctx.lineWidth = 1;
+    if (b.hits >= 1) { ctx.beginPath(); ctx.moveTo(x + 30, hy + 2); ctx.lineTo(x + 33, hy + 7); ctx.lineTo(x + 31, hy + 12); ctx.stroke(); }
+    if (b.hits >= 2) { ctx.beginPath(); ctx.moveTo(x + 12, y + 9 + sq); ctx.lineTo(x + 15, y + 15 + sq); ctx.lineTo(x + 12, y + 20 + sq); ctx.stroke(); }
+    ctx.restore();
+    if (sonne) drawStars(b.x + b.w / 2 + f * 12, b.y - 4, b.k);
+    // vies du boss : trois pierres de jade
+    for (let i = 0; i < 3; i++) {
+      const cx = b.x + b.w / 2 - 12 + i * 12, cy = b.y - 14;
+      ctx.fillStyle = i < 3 - b.hits ? C.jade : "rgba(63,208,138,0.2)";
+      ctx.beginPath(); ctx.moveTo(cx, cy - 4); ctx.lineTo(cx + 3, cy); ctx.lineTo(cx, cy + 4); ctx.lineTo(cx - 3, cy); ctx.closePath(); ctx.fill();
+    }
+  }
+  function drawVines() {
+    for (const v of R.vines) {
+      const ex = v.ax + Math.sin(v.ang) * v.L, ey = v.ay + Math.cos(v.ang) * v.L;
+      ctx.fillStyle = C.wood; ctx.fillRect(v.ax - 5, v.ay - 2, 10, 3);
+      ctx.strokeStyle = "#3f7a45"; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(v.ax, v.ay);
+      const mx = v.ax + Math.sin(v.ang * 0.8) * v.L * 0.5, my = v.ay + Math.cos(v.ang * 0.8) * v.L * 0.5;
+      ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
+      ctx.fillStyle = "#5f9a55";
+      for (let k = 0.2; k < 1; k += 0.2) {
+        const lx = v.ax + Math.sin(v.ang) * v.L * k, ly = v.ay + Math.cos(v.ang) * v.L * k;
+        ctx.beginPath(); ctx.ellipse(lx + 3, ly, 3, 1.5, 0.5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = "#2f5d3a"; ctx.beginPath(); ctx.arc(ex, ey, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  function drawFlames() {
+    for (const f of R.flames) {
+      if (!inView(f.x, f.y, 8)) continue;
+      const px = f.x * T, py = f.y * T;
+      // tête de jaguar sculptée
+      drawStone(px, py, f.x, f.y);
+      ctx.fillStyle = "#c9a24a"; ctx.fillRect(px + 2, py + 2, 12, 12);
+      ctx.fillStyle = "#8a6a2a"; ctx.fillRect(px + 2, py + 2, 12, 2); ctx.fillRect(px + 3, py, 2, 3); ctx.fillRect(px + 11, py, 2, 3);
+      const eyeX = f.dir > 0 ? px + 9 : px + 4;
+      ctx.fillStyle = f.warn || f.on ? "#ff4a2a" : "#2a1a10"; ctx.fillRect(eyeX, py + 5, 3, 2);
+      ctx.fillStyle = "#2a1a10"; ctx.fillRect(f.dir > 0 ? px + 11 : px + 1, py + 9, 4, 3);
+      if (f.warn && R.t % 4 < 2) { ctx.fillStyle = "#ffb347"; ctx.fillRect(f.dir > 0 ? px + 15 : px - 1, py + 9 + (R.t % 3), 2, 2); }
+      if (f.on) {
+        const r = flameRect(f);
+        const g = ctx.createLinearGradient(f.dir > 0 ? r.x : r.x + r.w, 0, f.dir > 0 ? r.x + r.w : r.x, 0);
+        g.addColorStop(0, "rgba(255,240,170,0.95)"); g.addColorStop(0.5, "rgba(255,150,50,0.85)"); g.addColorStop(1, "rgba(232,80,30,0.1)");
+        ctx.fillStyle = g;
+        const fl = Math.sin(R.t / 2) * 1.5;
+        ctx.beginPath(); ctx.moveTo(f.dir > 0 ? r.x : r.x + r.w, r.y + 4);
+        ctx.quadraticCurveTo(r.x + r.w / 2, r.y - 2 + fl, f.dir > 0 ? r.x + r.w : r.x, r.y + 4);
+        ctx.quadraticCurveTo(r.x + r.w / 2, r.y + r.h + 2 - fl, f.dir > 0 ? r.x : r.x + r.w, r.y + 4);
+        ctx.fill();
+      }
+    }
+  }
+  function drawBeams() {
+    for (const b of R.beams) {
+      // miroir solaire au plafond
+      ctx.fillStyle = "#8a6a2a"; ctx.fillRect(b.sx - 7, b.sy - 12, 14, 4);
+      ctx.fillStyle = "#ffd34a"; ctx.beginPath(); ctx.arc(b.sx, b.sy - 4, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff3c4"; ctx.beginPath(); ctx.arc(b.sx - 2, b.sy - 6, 2, 0, Math.PI * 2); ctx.fill();
+      if (!b.end) {
+        // avant de s'allumer : un mince trait montre où le rayon passera
+        ctx.strokeStyle = "rgba(255,211,74,0.25)"; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.moveTo(b.sx, b.sy); ctx.lineTo(b.sx + Math.sin(b.ang) * 200, b.sy + Math.cos(b.ang) * 200); ctx.stroke(); ctx.setLineDash([]);
+        continue;
+      }
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(255,200,80,0.25)"; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.moveTo(b.sx, b.sy); ctx.lineTo(b.end[0], b.end[1]); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,240,180,0.85)"; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(b.sx, b.sy); ctx.lineTo(b.end[0], b.end[1]); ctx.stroke();
+      ctx.fillStyle = "rgba(255,220,120,0.5)"; ctx.beginPath(); ctx.arc(b.end[0], b.end[1], 5 + Math.sin(R.t / 3), 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+  function drawSecrets() {
+    for (const s of R.secretRooms) {
+      if (s.fade <= 0) continue;
+      ctx.globalAlpha = s.fade;
+      for (let y = s.y; y < s.y + s.h; y++) for (let x = s.x; x < s.x + s.w; x++) if (inView(x, y)) drawStone(x * T, y * T, x, y);
+      ctx.globalAlpha = 1;
+    }
+  }
+  function drawTorches() {
+    for (const tc of R.torches) {
+      const px = tc.x * T, py = tc.y * T;
+      ctx.fillStyle = C.wood; ctx.fillRect(px + 7, py + 4, 2, 12);
+      ctx.fillStyle = "#4a3018"; ctx.fillRect(px + 5, py + 2, 6, 3);
+      if (tc.lit) {
+        const fl = Math.sin(R.t / 3 + tc.x) * 1.2;
+        ctx.fillStyle = "#e8621f"; ctx.beginPath(); ctx.ellipse(px + 8, py - 1, 3, 5 + fl, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ffd34a"; ctx.beginPath(); ctx.ellipse(px + 8, py, 1.6, 3 + fl / 2, 0, 0, Math.PI * 2); ctx.fill();
+      } else { ctx.fillStyle = "rgba(255,211,74,0.35)"; ctx.fillRect(px + 7, py, 2, 2); }
+    }
+  }
+  function drawStuck() {
+    for (const s of R.stuck) {
+      ctx.globalAlpha = s.life < 60 && Math.floor(s.life / 5) % 2 ? 0.4 : 1;
+      ctx.fillStyle = C.wood; ctx.fillRect(s.x, s.y, s.w, 2);
+      ctx.fillStyle = "#3fbf7f"; ctx.fillRect(s.vx > 0 ? s.x : s.x + s.w - 3, s.y - 1, 3, 4);
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -1815,6 +2354,13 @@
       return;
     }
     const bob = Math.sin(R.t / 10 + it.x) * 1.5;
+    if (it.kind === "sand") {
+      const x = it.x, y = it.y + bob;
+      ctx.fillStyle = C.wood; ctx.fillRect(x - 1, y - 1, 10, 2); ctx.fillRect(x - 1, y + 10, 10, 2);
+      ctx.fillStyle = "rgba(220,240,255,0.55)"; ctx.beginPath(); ctx.moveTo(x, y + 1); ctx.lineTo(x + 8, y + 1); ctx.lineTo(x + 4, y + 5.5); ctx.lineTo(x + 8, y + 10); ctx.lineTo(x, y + 10); ctx.lineTo(x + 4, y + 5.5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#e8c060"; ctx.fillRect(x + 2, y + 2, 4, 2); ctx.fillRect(x + 1, y + 8, 6, 2); ctx.fillRect(x + 3.5, y + 5, 1, 3);
+      return;
+    }
     if (it.kind === "tnt") {
       ctx.fillStyle = C.danger; ctx.fillRect(it.x + 1, it.y + bob, 6, 10);
       ctx.fillStyle = C.text; ctx.fillRect(it.x + 1, it.y + 4 + bob, 6, 1);
@@ -1829,7 +2375,7 @@
   }
 
   function drawEnemy(e) {
-    const f = (e.stun ? e.dirBack || e.vx : e.vx) > 0 ? 1 : -1;
+    const f = e.kind === "j" ? e.face : (e.stun ? e.dirBack || e.vx : e.vx) > 0 ? 1 : -1;
     ctx.save();
     if (e.stun) {
       // assommé : écrasé et un peu penché
@@ -1838,6 +2384,8 @@
     if (f < 0) { ctx.translate(e.x * 2 + e.w, 0); ctx.scale(-1, 1); }
     if (e.kind === "m") drawMummy(e);
     else if (e.kind === "s") drawSnake(e);
+    else if (e.kind === "k") drawSinge(e);
+    else if (e.kind === "j") drawJaguar(e);
     else drawBat(e);
     ctx.restore();
     if (e.stun) drawStars(e.x + e.w / 2, e.y - 3, e.stun);
@@ -1928,6 +2476,41 @@
     ctx.fillStyle = C.snakeDark; ctx.fillRect(x + 11, hy, 4, 1);
     ctx.fillStyle = C.snakeBelly; ctx.fillRect(x + 13, hy + 1, 1, 1);
     if (Math.sin(e.t * 1.7) > 0.3) { ctx.fillStyle = C.danger; ctx.fillRect(x + 15, hy + 2, 2, 1); ctx.fillRect(x + 17, hy + 1, 1, 1); ctx.fillRect(x + 17, hy + 3, 1, 1); }
+  }
+
+  // Singe voleur : pelage brun, longue queue enroulée, sac de pièces quand il a volé
+  function drawSinge(e) {
+    const x = e.x, y = Math.round(e.y), run = e.etat !== "rode" || Math.abs(e.vx) > 0.5, ph = Math.sin(e.t * (run ? 6 : 3));
+    ctx.strokeStyle = "#6b4426"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x + 1, y + 8); ctx.quadraticCurveTo(x - 5, y + 6 + ph * 2, x - 3, y + 1); ctx.stroke();
+    ctx.fillStyle = "#8a5a32"; ctx.fillRect(x + 1, y + 5, 8, 5);
+    ctx.fillRect(x + 1 + (ph > 0 ? 1 : 0), y + 10, 2, 2); ctx.fillRect(x + 6 - (ph > 0 ? 1 : 0), y + 10, 2, 2);
+    ctx.fillRect(x + 7, y + 6 + Math.round(ph), 4, 2);
+    ctx.fillStyle = "#8a5a32"; ctx.fillRect(x + 4, y, 7, 6);
+    ctx.fillStyle = "#e0b98a"; ctx.fillRect(x + 6, y + 2, 5, 4); ctx.fillRect(x + 3, y + 1, 2, 2);
+    ctx.fillStyle = C.void; ctx.fillRect(x + 8, y + 2, 1, 1); ctx.fillRect(x + 10, y + 2, 1, 1); ctx.fillRect(x + 8, y + 4, 3, 1);
+    if (e.butin) { ctx.fillStyle = "#c9a24a"; ctx.beginPath(); ctx.arc(x + 4, y + 4, 3, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#fff3c4"; ctx.fillRect(x + 3, y + 3, 1, 1); }
+  }
+
+  // Jeune jaguar : tacheté, se ramasse avant de bondir (yeux qui brillent)
+  function drawJaguar(e) {
+    const x = e.x, y = Math.round(e.y), cr = e.etat === "ramasse", air = e.etat === "bond";
+    const low = cr ? 2 : 0, wag = Math.sin(e.t * 4);
+    ctx.fillStyle = "#d99a3a";
+    ctx.fillRect(x + 1, y + 3 + low, 10, 5 - (air ? 1 : 0));
+    ctx.fillRect(x + 9, y + 1 + low, 5, 5);                       // tête
+    ctx.fillRect(x + 9, y, 1, 2); ctx.fillRect(x + 12, y, 1, 2);  // oreilles
+    ctx.strokeStyle = "#d99a3a"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x + 1, y + 4 + low); ctx.quadraticCurveTo(x - 3, y + 2 + wag * 2, x - 3, y - 1 + wag); ctx.stroke();
+    const leg = air ? 0 : Math.sin(e.t * 5) * (e.vx ? 1 : 0);
+    ctx.fillStyle = "#b07a2a";
+    if (air) { ctx.fillRect(x, y + 6, 3, 2); ctx.fillRect(x + 11, y + 5, 3, 2); }
+    else { ctx.fillRect(x + 2, y + 8, 2, 2 - low / 2 + leg); ctx.fillRect(x + 8, y + 8, 2, 2 - low / 2 - leg); }
+    ctx.fillStyle = "#5a3a14";
+    ctx.fillRect(x + 3, y + 4 + low, 1, 1); ctx.fillRect(x + 6, y + 5 + low, 1, 1); ctx.fillRect(x + 8, y + 4 + low, 1, 1); ctx.fillRect(x + 4, y + 6 + low, 1, 1);
+    ctx.fillStyle = cr ? "#fff36b" : C.void; ctx.fillRect(x + 12, y + 2 + low, 1, 1);
+    ctx.fillStyle = "#f2e0c0"; ctx.fillRect(x + 12, y + 4 + low, 2, 1);
+    if (cr && Math.floor(e.k / 4) % 2) { ctx.fillStyle = C.danger; ctx.fillRect(x + 6, y - 6, 2, 4); ctx.fillRect(x + 6, y - 1, 2, 1); }
   }
 
   // Chauve-souris : ailes qui battent, yeux rouges
@@ -2069,6 +2652,7 @@
         continue;
       }
       ctx.globalAlpha = Math.min(1, q.life / 20);
+      if (q.zzz) { ctx.fillStyle = q.color; ctx.font = `8px ${FONT_PIX}`; ctx.textAlign = "center"; ctx.fillText("z", q.x, q.y); continue; }
       ctx.fillStyle = q.color; ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s);
     }
     ctx.globalAlpha = 1;
@@ -2083,9 +2667,10 @@
     ctx.textBaseline = "middle"; ctx.font = `8px ${FONT_PIX}`;
     ctx.fillStyle = ty.color; ctx.fillRect(6, 4, 7, 7);
     ctx.fillStyle = C.text; ctx.textAlign = "left";
-    ctx.fillText(`${R.index + 1}/${LEVELS.length}  ${R.def.name.toUpperCase()}`, 18, 8);
+    const nm = window.MondesUI ? MondesUI.NIV : 20, etiq = `${Math.floor(R.index / nm) + 1}-${(R.index % nm) + 1}  ${R.def.name.toUpperCase()}`;
+    ctx.fillText(etiq, 18, 8);
     if (R.def.defi) {
-      const nw = ctx.measureText(`${R.index + 1}/${LEVELS.length}  ${R.def.name.toUpperCase()}`).width;
+      const nw = ctx.measureText(etiq).width;
       ctx.fillStyle = C.danger; ctx.fillRect(24 + nw, 3, 30, 10);
       ctx.fillStyle = C.text; ctx.fillText("DÉFI", 27 + nw, 8);
     }
@@ -2174,7 +2759,9 @@
     const ty = TYPES[R.def.type], act = ACTS[R.def.act] || { nom: "" };
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.font = `8px ${FONT_PIX}`; ctx.fillStyle = C.dim;
-    ctx.fillText(`ACTE ${R.def.act + 1} · ${act.nom.toUpperCase()}  —  NIVEAU ${R.index + 1} SUR ${LEVELS.length}`, VW2, VH2 - 32);
+    const MO = window.MondesUI, nm = MO ? MO.NIV : 20, k = Math.floor(R.index / nm);
+    const nomMonde = MO && MO.MONDES[k] ? MO.MONDES[k].nom.toUpperCase() : act.nom.toUpperCase();
+    ctx.fillText(`MONDE ${k + 1} · ${nomMonde}  —  NIVEAU ${(R.index % nm) + 1} SUR ${nm}`, VW2, VH2 - 32);
     ctx.font = `16px ${FONT_PIX}`; ctx.fillStyle = C.text;
     ctx.fillText(R.def.name.toUpperCase(), VW2, VH2 - 8);
     ctx.font = `8px ${FONT_PIX}`;
@@ -2392,6 +2979,7 @@
     quitter: document.getElementById("ecran-quitter"),
     pause: document.getElementById("ecran-pause"),
     fin: document.getElementById("ecran-fin"),
+    recit: document.getElementById("ecran-recit"),
   };
   function showOverlay(name) {
     for (const k in overlays) overlays[k].hidden = k !== name;
@@ -2400,7 +2988,7 @@
   }
 
   function togglePause() {
-    if (game.mode === "title" || game.mode === "end" || game.mode === "relance") return;
+    if (game.mode === "title" || game.mode === "end" || game.mode === "relance" || game.mode === "recit") return;
     const ua = document.getElementById("btn-utiliser-amulette");
     ua.hidden = !R || !R.player || R.player.shield > 0 || (progress.amulettes || 0) <= 0;
     ua.textContent = `✦ Activer une amulette (${progress.amulettes || 0})`;
@@ -2690,5 +3278,29 @@
     for (let i = 0; i < n; i++) { update(); render(); }
     return (performance.now() - t0) / n;
   }
-  window.__temple = { mesurePerf, game, get room() { return R; }, LEVELS, input, pressed, startLevel, playFrom, progress };
+  // Aperçu d'un niveau entier (outil de relecture des niveaux, sans effet sur le jeu)
+  function apercuNiveau(i, k = 1) {
+    const vraiR = R, vraiCtx = ctx, vc = { ...cam }, vv = { ...view };
+    R = buildRoom(i); R.t = 1;
+    const c = document.createElement("canvas"); c.width = W * k; c.height = H * k;
+    ctx = c.getContext("2d"); ctx.scale(k, k);
+    cam.x = 0; cam.y = 0; view.w = W; view.h = H;
+    try {
+      ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H);
+      drawBackground(); drawTiles(false); drawDecor(); drawDoor();
+      for (const cp of R.cps) drawCheckpoint(cp);
+      for (const it of R.pickups) drawPickup(it);
+      for (const e of R.enemies) drawEnemy(e);
+      drawMovers(); drawCrushers(); drawTorches(); drawFlames(); drawVines(); drawPlayer(); drawTiles(true);
+      if (R.boss) drawBoss();
+      // marquer les pièges déclenchés (zones) pour la relecture
+      ctx.strokeStyle = "rgba(255,80,120,0.7)"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+      for (const tr of R.def.triggers) for (const a of tr.act) if (["collapse", "spikes", "fall", "dropspike", "appear", "boulder", "door"].includes(a[0])) ctx.strokeRect(a[1] * T, a[2] * T, (a[3] && a[0] !== "boulder" && a[0] !== "door" ? a[3] : 1) * T, (a[4] && ["collapse", "spikes", "fall", "appear"].includes(a[0]) ? Math.min(a[4], 3) : 1) * T);
+      ctx.setLineDash([]);
+      for (const b of R.beams) { ctx.strokeStyle = "rgba(255,220,120,0.6)"; ctx.beginPath(); ctx.moveTo(b.sx, b.sy); ctx.lineTo(b.sx + Math.sin(b.a0) * 300, b.sy + Math.cos(b.a0) * 300); ctx.moveTo(b.sx, b.sy); ctx.lineTo(b.sx + Math.sin(b.a1) * 300, b.sy + Math.cos(b.a1) * 300); ctx.stroke(); }
+      for (const s of R.secretRooms) { ctx.strokeStyle = "rgba(63,208,138,0.9)"; ctx.setLineDash([2, 2]); ctx.strokeRect(s.x * T, s.y * T, s.w * T, s.h * T); ctx.setLineDash([]); }
+      return c.toDataURL("image/png");
+    } finally { R = vraiR; ctx = vraiCtx; Object.assign(cam, vc); Object.assign(view, vv); }
+  }
+  window.__temple = { mesurePerf, game, get room() { return R; }, LEVELS, input, pressed, startLevel, playFrom, progress, apercuNiveau };
 })();

@@ -181,6 +181,14 @@
   @media (prefers-reduced-motion: reduce) { .zone { transition: none; } }
 
   /* ---------- Choix du niveau ---------- */
+  /* ---------- Fin de niveau : le récit ---------- */
+  .recit-carte { width: min(100%, 640px); }
+  .recit-ligne { display: grid; grid-template-columns: 80px 1fr; gap: 16px; align-items: start; }
+  .recit-portrait { width: 80px; height: 96px; image-rendering: pixelated; background: rgba(236,220,180,.08); border: 1px solid rgba(236,220,180,.25); border-radius: 6px; }
+  .recit-bulle { margin: 0; font-family: var(--f-carnet); font-size: 18px; line-height: 1.5; color: var(--parchemin); background: rgba(236,220,180,.07); border-left: 3px solid var(--or); padding: 10px 14px; border-radius: 0 6px 6px 0; }
+  .recit-badge { display: inline-block; margin: 0 0 8px; font-family: var(--f-pix); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; background: #3d6c8c; color: #fff; padding: 2px 8px; border-radius: 4px; }
+  .recit-morts { font-family: var(--f-pix); font-size: 12px; color: var(--terne); }
+
   /* ---------- Carte des mondes ---------- */
   .panneau.mondes { padding: 0; place-items: stretch; background: radial-gradient(circle at 50% 40%, #4a3020, #1a0f08 75%); overflow: hidden; }
   .mondes-carte { position: absolute; inset: 0; display: grid; place-items: center;
@@ -332,6 +340,20 @@
   <button id="btn-mondes-prec" class="bouton discret mo-fleche mo-prec" type="button" aria-label="Monde précédent" hidden>◀</button>
   <button id="btn-mondes-suiv" class="bouton discret mo-fleche mo-suiv" type="button" aria-label="Monde suivant" hidden>▶</button>
   <p id="mondes-msg" class="mo-msg" role="status" hidden></p>
+</section>
+
+<section id="ecran-recit" class="panneau recit-fin" hidden>
+  <div class="carte recit-carte">
+    <p class="surtitre" id="recit-surtitre">Niveau terminé</p>
+    <div class="recit-ligne">
+      <img id="recit-archibald" class="recit-portrait" alt="Le professeur Archibald" width="80" height="96">
+      <div>
+        <p class="recit-badge" id="recit-histoire" hidden>Histoire</p>
+        <p class="recit-bulle" id="recit-texte"></p>
+      </div>
+    </div>
+    <div class="actions"><button id="btn-recit-suite" class="bouton" type="button">Continuer ▶</button><span class="recit-morts" id="recit-morts"></span></div>
+  </div>
 </section>
 
 <section id="ecran-avis" class="panneau" hidden>
