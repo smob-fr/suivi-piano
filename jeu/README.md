@@ -18,7 +18,7 @@ qui est déjà ouvert. Chaque monde finit par un boss qu'on **assomme** (jamais 
 |---|---|---|
 | 1. L'Empire inca | **terminé** | 19 niveaux longs (160 à 240 cases, un drapeau au milieu) + le boss, le Jaguar de pierre |
 | 2. Les neiges de l'Himalaya | **terminé** | 19 niveaux longs + le boss, le Yéti grognon |
-| 3. Les abysses | **essai** | niveaux 1 à 3 : nage, oxygène, bulles, méduses, crabes, anguilles (toujours ouverts pour tester) ; la suite = anciens niveaux |
+| 3. Les abysses | **terminé** | 19 niveaux longs (170 à 220 cases) qui alternent îles et plongée : méduses, crabes, anguilles, poissons-globes, requin, mines à pousser, sas, tourbillons, coffres qui mordent, torpilles, algues, abysses noirs avec poisson-lanterne + le boss, la pieuvre géante |
 | 4. Le royaume des nuages | provisoire | idem |
 | 5. La cité d'or | provisoire | idem |
 

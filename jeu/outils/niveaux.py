@@ -2280,6 +2280,500 @@ def abysses_essai():
 
 
 # =====================================================================
+#  MONDE 3 — LES ABYSSES (20 niveaux) : on alterne la surface (îles, radeaux) et la plongée
+# =====================================================================
+EAU, FOND = 7, 18
+
+
+class Ocean:
+    """Niveau sous-marin construit colonne par colonne. Lignes >= eau : sous l'eau."""
+    def __init__(self, nom, type_, num, h=22, eau=EAU, fond=FOND, ammo=(6, 1), **opts):
+        self.nom, self.type, self.num, self.h, self.eau, self.fond = nom, type_, num, h, eau, fond
+        self.ammo, self.opts = list(ammo), opts
+        self.defi = num in DEFIS_MONDE
+        self.cols, self.trig, self.winds, self.sas, self.tourb, self.secrets = [], [], [], [], [], []
+        self.lanterne = False
+        self.cols.append(["#"] * h)
+
+    @property
+    def x(self):
+        return len(self.cols)
+
+    def col(self, fond, plafond=0):
+        c = ["."] * self.h
+        for r in range(0, plafond + 1):
+            c[r] = "#"
+        for r in range(fond, self.h):
+            c[r] = "#"
+        self.cols.append(c)
+        return len(self.cols) - 1
+
+    def put(self, x, y, ch):
+        self.cols[x][y] = ch
+
+    def Z(self, x):
+        return [x, 1, 1, self.h - 2]
+
+    def t(self, act, zone=None, **kw):
+        tr = {"act": act}
+        if zone is not None:
+            tr["zone"] = zone
+        tr.update(kw)
+        self.trig.append(tr)
+
+    def astuce(self, texte, x, **kw):
+        self.t([["hint", texte]], self.Z(x), **kw)
+
+    # ---------- segments de base ----------
+    def ile(self, n, ennemi=None, objet=None, relief=None):
+        """Île au-dessus de l'eau ; relief = hauteurs (0, 1 ou 2 cases de plus) colonne par colonne."""
+        x0 = self.x
+        for k in range(n):
+            self.col(self.eau - 1 - (relief[k] if relief else 0))
+        if ennemi:
+            self.put(x0 + n // 2, self.eau - 2, ennemi)
+        if objet:
+            self.put(x0 + max(0, n // 2 - 1), self.eau - 2, objet)
+        return x0
+
+    def mer(self, n, fond=None, plafond=0):
+        x0 = self.x
+        for _ in range(n):
+            self.col(fond or self.fond, plafond)
+        return x0
+
+    def depart(self):
+        x0 = self.ile(5)
+        self.put(x0 + 1, self.eau - 2, "P")
+
+    def porte(self):
+        x0 = self.ile(6)
+        self.put(x0 + 4, self.eau - 2, "D")
+
+    def milieu(self):
+        return (self.eau + self.fond) // 2
+
+    def fini(self):
+        self.cols.append(["#"] * self.h)
+        rows = ["".join(c[y] for c in self.cols) for y in range(self.h)]
+        d = {"name": self.nom, "type": self.type, "ammo": self.ammo, "map": rows, "triggers": self.trig, "eau": self.eau,
+             "palette": "abysses", "decor": "abysses", "monde": 3, "_tnt": 0}
+        if self.defi:
+            d["defi"] = True
+        for k, v in (("winds", self.winds), ("sas", self.sas), ("tourbillons", self.tourb), ("secrets", self.secrets)):
+            if v:
+                d[k] = v
+        if self.lanterne:
+            d["dark"] = True
+            d["lanterne"] = self._chemin_lanterne(rows)
+        d.update(self.opts)
+        return d
+
+    def _chemin_lanterne(self, rows):
+        """Points du poisson-lanterne : une case d'eau libre toutes les 7 colonnes, au plus près du milieu."""
+        pts, W = [], len(rows[0])
+        for x in range(4, W - 3, 7):
+            libres = [y for y in range(1, self.h - 1) if rows[y][x] in ".Q" and rows[y - 1][x] in ".Q" and rows[y + 1][x] in ".Q"]
+            if libres:
+                cible = self.milieu() if any(y >= self.eau for y in libres) else self.eau - 3
+                pts.append([x, min(libres, key=lambda y: abs(y - cible))])
+        return pts
+
+
+def _o_rocher(o, x, haut, corail=True):
+    """Rocher qui monte du fond jusqu'à la ligne `haut`, coiffé de corail urticant."""
+    for y in range(haut, o.fond):
+        o.put(x, y, "#")
+    if corail:
+        o.put(x, haut - 1, "^")
+
+
+def _o_coraux(o, d, r):
+    x0 = o.mer(10 + 2 * d)
+    for k in range(2, 10 + 2 * d, 3):
+        if r.random() < 0.6:
+            o.put(x0 + k, o.fond - 1, "^")
+    for k in r.sample(range(3, 9 + 2 * d), 1 + d // 2 + 1):
+        _o_rocher(o, x0 + k, o.fond - r.choice((3, 4, 5, 6)))
+    o.put(x0 + 1, o.milieu(), "a")
+
+
+def _o_iles(o, d, r):
+    for k in range(3 + d):
+        o.mer(r.choice((2, 3, 3)), fond=o.fond)
+        if r.random() < 0.35:
+            x = o.mer(2)
+            o.put(x, o.eau - 1, "n"); o.put(x + 1, o.eau - 1, "n")   # radeau qui coule
+        else:
+            o.ile(r.choice((2, 3)), ennemi="r" if r.random() < 0.25 else None)
+    if r.random() < 0.5:
+        o.put(o.x - 4, o.fond - 1, "^")
+
+
+def _o_grotte(o, d, r):
+    n = 12 + 3 * d
+    o.mer(3)   # entrée à l'air libre
+    x0 = o.mer(n, plafond=o.eau + 1)
+    for k in range(3, n, 9):
+        o.put(x0 + k, o.fond - 1, "u")
+    for k in range(5, n - 2, 6):
+        if r.random() < 0.5:
+            o.put(x0 + k, o.fond - 1, "^")
+    if d:
+        o.put(x0 + n // 2, o.eau + 4, r.choice("eh"))
+    o.mer(3)   # sortie à l'air libre (une île collée à la grotte la boucherait)
+
+
+def _o_meduses(o, d, r):
+    n = 11 + 2 * d
+    x0 = o.mer(n)
+    for k in range(2, n - 1, 4 - (d > 1)):
+        o.put(x0 + k, r.randint(o.eau + 1, o.fond - 4), "e")
+    o.put(x0 + n - 2, o.fond - 1, "u")
+
+
+def _o_anguilles(o, d, r):
+    x0 = o.mer(13 + 2 * d)
+    for k in (3, 8) + ((12,) if d else ()):
+        haut = o.fond - r.choice((4, 5, 6))
+        for y in range(haut, o.fond):
+            o.put(x0 + k, y, "#"); o.put(x0 + k + 1, y, "#")
+        o.put(x0 + k - 1, r.randint(haut, o.fond - 2), "l")
+        o.put(x0 + k, haut - 1, "^")
+
+
+def _o_crabes(o, d, r):
+    n = 10 + 2 * d
+    x0 = o.mer(n, fond=o.fond)
+    for k in range(3, n - 1, 4):
+        o.put(x0 + k, o.fond - 1, "r")
+    o.put(x0 + 1, o.fond - 1, "^")
+    if d:
+        o.put(x0 + n - 2, o.fond - 1, "^")
+
+
+def _o_courant(o, d, r):
+    n = 12 + 2 * d
+    x0 = o.mer(n)
+    for k in range(2, n, 4):
+        o.put(x0 + k, o.fond - 1, "^")
+    _o_rocher(o, x0 + n // 2, o.fond - 4)
+    o.winds.append([x0, x0 + n - 1, r.choice((-1, 1)) * (0.3 + 0.07 * d)])
+
+
+def _o_globes(o, d, r):
+    n = 12 + 2 * d
+    x0 = o.mer(n)
+    for k in range(3, n - 1, 5):
+        o.put(x0 + k, r.randint(o.eau + 2, o.fond - 3), "h")
+        o.put(x0 + k + 1, o.fond - 1, "^"); o.put(x0 + k - 1, o.fond - 1, "^")
+
+
+def _o_mine_mur(o, d, r):
+    x0 = o.mer(8)
+    ym = o.milieu()
+    o.put(x0 + 2, ym, "M")
+    x = o.col(o.fond)
+    for y in range(1, o.fond):
+        o.put(x, y, "B")
+    o.mer(3)
+    o.put(x - 7, o.fond - 1, "^")
+
+
+def _o_mines(o, d, r):
+    n = 12 + 2 * d
+    x0 = o.mer(n)
+    for k in range(2, n - 1, 3):
+        o.put(x0 + k, r.randint(o.eau + 1, o.fond - 2), "M")
+
+
+def _o_algues(o, d, r):
+    n = 12 + 2 * d
+    x0 = o.mer(n)
+    for k in range(n):
+        for y in range(o.fond - r.choice((2, 3, 4)), o.fond):
+            o.put(x0 + k, y, "Q")
+    for k in range(3, n, 5):
+        o.put(x0 + k, o.fond - 1, r.choice("r^"))
+    if d:
+        o.put(x0 + n - 3, o.fond - 3, "e")
+
+
+def _o_tourbillon(o, d, r):
+    n = 13
+    x0 = o.mer(n)
+    o.tourb.append([x0 + 6, o.milieu(), 2.6 + 0.3 * d])
+    for k in (1, 2, 10, 11):
+        o.put(x0 + k, o.fond - 1, "^")
+
+
+def _o_sas(o, d, r):
+    o.mer(3)
+    x = o.col(o.fond)
+    gy = r.randint(o.eau + 2, o.fond - 4)
+    for y in range(1, o.fond):
+        o.put(x, y, "." if gy <= y < gy + 3 else "#")
+    o.sas.append([x, gy, 3, r.choice((220, 240, 260)) - 20 * d, r.randint(0, 200)])
+    o.mer(4)
+
+
+def _o_coffres(o, d, r):
+    n = 11
+    x0 = o.mer(n)
+    for k in (3, 7):
+        o.put(x0 + k, o.fond - 1, "X")
+    o.put(x0 + 5, o.fond - 1, "a"); o.put(x0 + 9, o.fond - 1, "a")
+
+
+def _o_torpilles(o, d, r):
+    n = 14 + 2 * d
+    x0 = o.mer(n)
+    for k in range(3, n - 1, 5 - (d > 1)):
+        o.put(x0 + k, o.fond - 1, "K")
+
+
+def _o_requin(o, d, r):
+    x0 = o.mer(3)
+    o.put(x0 + 1, o.milieu(), "Z")
+    n = 18 + 2 * d
+    x1 = o.mer(n)
+    for a in (3, 11) + ((16,) if d else ()):   # petites grottes : le requin est trop gros pour y entrer
+        for k in range(4):
+            o.put(x1 + a + k, o.fond - 2, "#")
+            o.put(x1 + a + k, o.fond - 3, "^" if k in (1, 2) and d > 1 else ".")
+    for k in (8, 9):
+        o.put(x1 + k, o.fond - 1, "^")
+
+
+def _o_epave(o, d, r):
+    """Une coque de bateau posée au fond : on entre par une écoutille, la cabine du pont est pleine d'air."""
+    n = 26
+    x0 = o.mer(n)
+    pont = o.eau + 1
+    for k in range(1, n - 1):
+        o.put(x0 + k, pont, "#")
+        o.put(x0 + k, o.fond - 1, "#")
+    for y in range(pont, o.fond):
+        o.put(x0 + 1, y, "#"); o.put(x0 + n - 2, y, "#")
+    for k in (4, 5, 18, 19):
+        o.put(x0 + k, pont, ".")
+    for y in range(pont + 1, o.fond - 3):
+        o.put(x0 + 12, y, "#")
+    o.put(x0 + 9, o.fond - 2, "u"); o.put(x0 + 15, o.fond - 2, "r"); o.put(x0 + 21, o.fond - 2, "X")
+    o.put(x0 + 7, o.fond - 2, "a"); o.put(x0 + 16, o.fond - 2, "a")
+    # sortie par le flanc
+    for y in range(o.fond - 4, o.fond - 1):
+        o.put(x0 + n - 2, y, ".")
+
+
+MOTIFS_MER = {"coraux": _o_coraux, "iles": _o_iles, "grotte": _o_grotte, "meduses": _o_meduses, "anguilles": _o_anguilles,
+              "crabes": _o_crabes, "courant": _o_courant, "globes": _o_globes, "mine_mur": _o_mine_mur, "mines": _o_mines,
+              "algues": _o_algues, "tourbillon": _o_tourbillon, "sas": _o_sas, "coffres": _o_coffres,
+              "torpilles": _o_torpilles, "requin": _o_requin, "epave": _o_epave}
+
+
+def remplir_mer(o, motifs, cible, d0=0):
+    """Enchaîne les passages du niveau jusqu'à sa longueur ; entre deux, une île ou une ligne droite piégée."""
+    import random
+    r = random.Random(3000 + o.num)
+    debut = o.x
+    base = o.fond
+    prec, compte, garde = None, {}, 0
+    while o.x < cible and garde < 80:
+        garde += 1
+        d = min(2, d0 + int(3 * (o.x - debut) / max(1, cible - debut)))
+        choix = [m for m in motifs if m != prec and compte.get(m, 0) < (4 if m == motifs[0] else 2)] or [m for m in motifs if m != prec]
+        m = r.choices(choix, [3 if c == motifs[0] else 1 for c in choix])[0]
+        MOTIFS_MER[m](o, d, r)
+        prec = m; compte[m] = compte.get(m, 0) + 1
+        # respirer : une île de temps en temps (la surface et la plongée alternent)
+        # le fond change de profondeur d'un passage à l'autre
+        o.fond = base - r.choice((0, 0, 1, 2, 3))
+        tirage = r.random()
+        if tirage < 0.6:
+            n = r.choice((3, 9, 10, 11))
+            relief = None
+            if n >= 9 and r.random() < 0.6:
+                a = r.randint(2, 4); b = r.randint(a + 2, n - 2)
+                hh = r.choice((1, 2))
+                relief = [hh if a <= k < b else 0 for k in range(n)]
+            o.ile(n, ennemi="r" if r.random() < 0.2 else None, relief=relief)
+        if tirage >= 0.35:
+            o.mer(r.choice((10, 11, 12)))   # eau libre… qui recevra une surprise
+    o.fond = base
+
+
+# ---------- pièges surprises des abysses ----------
+def _pm_requin(lv, x, y, H, r, eau, fond):
+    return [{"zone": [x, 1, 1, H - 2], "act": [["spawn", "Z", max(2, x - 9), (eau + fond) // 2], ["hint", "Un requin !"]]}]
+def _pm_meduse(lv, x, y, H, r, eau, fond):
+    return [{"zone": [x, 1, 1, H - 2], "act": [["spawn", "e", x + 4, eau + 1]]}]
+def _pm_courant(lv, x, y, H, r, eau, fond):
+    return [{"zone": [x, 1, 1, H - 2], "act": [["courant", x - 6, x + 9, r.choice((-0.5, 0.5)), 150]]}]
+def _pm_coraux(lv, x, y, H, r, eau, fond):
+    fs = y   # profondeur du fond colonne par colonne
+    return [{"zone": [x, 1, 1, H - 2], "act": [["spikes", x + k, fs[k] - 1, 1, 1] for k in range(2, 6)]}]
+def _pm_mine(lv, x, y, H, r, eau, fond):
+    return [{"zone": [x, 1, 1, H - 2], "act": [["spawn", "M", x + 6, r.randint(eau + 1, fond - 2)]]}]
+def _pm_globe(lv, x, y, H, r, eau, fond):
+    return [{"zone": [x, 1, 1, H - 2], "act": [["spawn", "h", x + 5, r.randint(eau + 2, fond - 3)]]}]
+PIEGES_MER = {"requin": _pm_requin, "meduse": _pm_meduse, "courant": _pm_courant, "coraux": _pm_coraux, "mine": _pm_mine, "globe": _pm_globe}
+
+
+def pimenter_mer(lv, graine):
+    """Surprises des abysses : dans l'eau libre (requin, méduse qui tombe, courant, coraux, mine, globe)
+    et sur les îles (pics qui jaillissent)."""
+    import random
+    r = random.Random(graine)
+    g = lv["map"]; H = len(g); W = len(g[0]); eau = lv["eau"]
+    occ = _occupees(lv)
+    px = next(x for y in range(H) for x in range(W) if g[y][x] == "P")
+    porte = next(x for y in range(H) for x in range(W) if g[y][x] == "D")
+    def eau_libre(x):
+        if x in occ or x < px + 8 or x > W - 10 or abs(x - porte) < 6:
+            return None
+        col = [g[y][x] for y in range(H)]
+        if col[0] != "#" or any(c != "." for c in col[1:eau + 2]):
+            return None
+        f = next((y for y in range(eau, H) if col[y] != "."), None)
+        if f is None or f - eau < 6 or any(c not in "#" for c in col[f:]):
+            return None
+        return f
+    poses, prec, x = 0, None, 1
+    while x < W - 10:
+        fs = [eau_libre(x + k) for k in range(9)]
+        if all(f is not None for f in fs):
+            noms = [k for k in PIEGES_MER if k != prec]
+            nom = r.choice(noms)
+            trs = PIEGES_MER[nom](lv, x, fs, H, r, eau, min(fs))
+            lv["triggers"].extend(trs)
+            if _jouable(lv):
+                poses += 1; prec = nom; x += 12; continue
+            del lv["triggers"][-len(trs):]
+        x += 1
+    # îles : pics qui jaillissent
+    for x0, L, y in lignes_droites(lv, 6):
+        if y >= eau:
+            continue
+        k = r.choice((2, 3))
+        tr = {"zone": [x0, 1, 1, H - 2], "act": [["spikes", x0 + k, y, 2, 1]]}
+        lv["triggers"].append(tr)
+        if _jouable(lv):
+            poses += 1
+        else:
+            lv["triggers"].pop()
+    return poses
+
+
+FIN_ABYSSES = {
+    1: "Archibald, en maillot rayé : « L'eau est bonne, hein ? J'ai oublié de te dire qu'il faut respirer. »",
+    2: "Archibald retire un oursin de son mollet : « Ce récif est magnifique. Et très piquant. Surtout piquant. »",
+    3: "Archibald, emporté par le courant : « Je ne nage pas, Max, je me laisse porter ! C'est une stratégie ! »",
+    4: "Archibald, les cheveux dressés sur la tête : « Les méduses, c'est comme l'électricité. Il ne faut pas toucher. Je viens de vérifier. »",
+    5: "Histoire. Dans la cabine du capitaine, Max trouve le journal de bord : « Le grand-père d'Archibald cherchait déjà l'Œil de Jade. Il a coulé avec. » Archibald, tout bas : « …Ne le dis à personne. »",
+    6: "Archibald, mordu au derrière : « Ces anguilles n'ont aucune éducation. »",
+    7: "Archibald contemple une statue engloutie : « Une cité entière sous l'eau. Et pas un seul panneau pour indiquer la sortie. »",
+    8: "Archibald, tout noir de suie : « J'ai poussé la mine du mauvais côté. Ça arrive aux meilleurs. »",
+    9: "Archibald, caché dans une grotte : « Le requin ? Un vieil ami. Il m'a juste… un peu poursuivi. »",
+    10: "Histoire. Dans le noir, le poisson-lanterne éclaire une fresque : un palais englouti, gardé par une pieuvre géante, et l'Œil de Jade gravé sur sa porte. Archibald, derrière Max : « Ah. Une pieuvre. Évidemment. »",
+    11: "Archibald remonte dans une colonne de bulles : « Ascenseur sous-marin ! Sans musique d'ascenseur, hélas. »",
+    12: "Archibald a un crabe accroché au nez : « Tout va bien. On fait connaissance. »",
+    13: "Archibald, qui tourne encore sur lui-même : « Où est le haut ? Pourquoi la mer est au plafond ? »",
+    14: "Archibald compte ses doigts : « Huit… neuf… dix. Ouf. Ce coffre m'a seulement fait peur. »",
+    15: "Histoire. Au milieu des algues, Archibald s'assoit enfin : « Mon grand-père disait que l'Œil de Jade réunit ceux qui le cherchent. Je pensais qu'il parlait de trésor… » Il se tait, puis repart en nageant très vite.",
+    16: "Archibald, coincé dans un sas : « Elle s'ouvre toutes les quatre secondes. Je compte. Un… deux… »",
+    17: "Archibald sort de son sous-marin, tout penaud : « Ce n'étaient que des torpilles d'entraînement ! Enfin, presque. »",
+    18: "Archibald, tout au fond de la fosse : « Il fait noir, il fait froid, et j'ai oublié mon goûter. »",
+    19: "Archibald, devant la porte du palais : « La pieuvre est derrière. Tu passes en premier ? Je te couvre. De loin. »",
+    20: "La pieuvre géante ronfle dans sa grotte, entourée de bulles. Derrière elle, dans un coquillage, le troisième morceau de carte ! Archibald : « Il mène… au-dessus des nuages ? » Rendez-vous dans le royaume des nuages !",
+}
+
+NIVEAUX_MER = [
+    # nom, type, motifs (le premier est la vedette), options
+    ("La plongée", "exploration", ["coraux", "iles", "meduses", "crabes"], {}),
+    ("Le récif de corail", "exploration", ["coraux", "globes", "crabes", "iles"], {}),
+    ("Les courants", "action", ["courant", "coraux", "iles", "meduses"], {}),
+    ("Les méduses", "action", ["meduses", "coraux", "grotte", "iles"], {}),
+    ("L'épave", "histoire", ["epave", "crabes", "coraux", "iles"], {}),
+    ("Les anguilles", "action", ["anguilles", "grotte", "coraux", "iles"], {}),
+    ("La cité engloutie", "exploration", ["sas", "anguilles", "coraux", "grotte"], {}),
+    ("Les mines flottantes", "action", ["mine_mur", "mines", "iles", "coraux"], {}),
+    ("Le requin", "action", ["requin", "coraux", "iles", "grotte"], {}),
+    ("Les abysses noirs", "histoire", ["grotte", "coraux", "meduses", "anguilles"], {"_noir": True}),
+    ("Les bulles ascenseur", "exploration", ["grotte", "meduses", "coraux", "globes"], {"_profond": True}),
+    ("Les crabes", "action", ["crabes", "iles", "coraux", "globes"], {}),
+    ("Le tourbillon", "trahison", ["tourbillon", "coraux", "courant", "meduses"], {}),
+    ("Les coffres piégés", "trahison", ["coffres", "crabes", "grotte", "iles"], {}),
+    ("Le jardin d'algues", "histoire", ["algues", "crabes", "meduses", "iles"], {}),
+    ("Les sas", "action", ["sas", "grotte", "meduses", "coraux"], {}),
+    ("Les torpilles d'Archibald", "action", ["torpilles", "iles", "coraux", "mines"], {}),
+    ("La fosse", "action", ["grotte", "meduses", "anguilles", "globes"], {"_profond": True}),
+    ("Le palais englouti", "exploration", ["sas", "mine_mur", "requin", "tourbillon", "algues", "torpilles", "coffres", "anguilles"], {}),
+]
+
+INTRO_MER = {
+    1: ["Saute dans l'eau ! SAUT = une brasse. Surveille ta réserve d'AIR", "Près de la surface, SAUT te fait sortir de l'eau"],
+    2: ["Poisson-globe : il se gonfle et te repousse… parfois sur le corail !"],
+    3: ["Les courants te poussent : nage fort, ou laisse-toi porter"],
+    4: ["Méduse : passe quand elle ne brille pas (ou assomme-la)"],
+    5: ["L'épave du grand-père d'Archibald… Entre par une écoutille"],
+    6: ["Attention aux trous dans les rochers : il y a des anguilles"],
+    7: ["Les sas s'ouvrent et se ferment en rythme : quand ils clignotent, ils vont se fermer !"],
+    8: ["Mine ! Ne la touche pas : pousse-la d'un COUP de massue contre le mur fissuré"],
+    9: ["Un requin dort ici… Les petites grottes sont trop étroites pour lui"],
+    10: ["Il fait tout noir… Suis le poisson-lanterne, il t'attend"],
+    11: ["Les colonnes de bulles font remonter et redonnent de l'air"],
+    12: ["Les crabes ont une carapace dure : saute-leur dessus ou assomme-les"],
+    13: ["Tourbillon ! Il t'aspire et inverse tes commandes"],
+    14: ["Certains coffres ont des dents… Un COUP de massue les calme"],
+    15: ["Les algues ralentissent et cachent ce qui vit dessous"],
+    16: ["Sas : attends qu'il s'ouvre, puis fonce avant qu'il clignote"],
+    17: ["Le sous-marin d'Archibald tire des torpilles depuis le fond !"],
+    18: ["La fosse : on descend très profond, avec peu de bulles"],
+    19: ["Le palais englouti : tout l'océan réuni. Courage !"],
+}
+
+
+def monde_abysses():
+    L = []
+    for i, (nom, type_, motifs, opts) in enumerate(NIVEAUX_MER):
+        num = i + 1
+        profond = opts.pop("_profond", False) if isinstance(opts, dict) else False
+        noir = opts.pop("_noir", False)
+        h, fond = (30, 27) if profond else (22, FOND)
+        o = Ocean(nom, type_, num, h=h, fond=fond)
+        o.depart()
+        for k, txt in enumerate(INTRO_MER.get(num, [])):
+            o.astuce(txt, 4 + k * 14, max=0)
+        cible = 150 if type_ == "histoire" else 195 if o.defi else 180
+        remplir_mer(o, motifs, cible, d0=1 if o.defi else 0)
+        o.porte()
+        if noir:
+            o.lanterne = True
+        lv = o.fini()
+        lv["fin"] = FIN_ABYSSES[num]
+        L.append(lv)
+    L.append(boss_pieuvre())
+    L[-1]["fin"] = FIN_ABYSSES[20]
+    return L
+
+
+def boss_pieuvre():
+    W, h, eau = 40, 17, 3
+    rows = [["#"] * W for _ in range(h)]
+    for r in range(1, h - 1):
+        for x in range(1, W - 1):
+            rows[r][x] = "."
+    rows[h - 2][3] = "P"; rows[h - 2][W - 4] = "D"
+    for bx in (1, 11, 19, W - 12):
+        rows[h - 2][bx] = "u"
+    return {"name": "La pieuvre géante", "type": "histoire", "ammo": [6, 0], "map": ["".join(r) for r in rows],
+            "triggers": [{"zone": [6, 1, 1, h - 2], "max": 0, "act": [["hint", "Écarte-toi de l'ombre d'une tentacule ! Quand elle est coincée au sol, coupe l'algue du coquillage au-dessus (COUP)."]]}],
+            "coquillages": [[7, 9], [15, 9], [23, 9]], "boss": "pieuvre", "doorHidden": True, "eau": eau, "monde": 3,
+            "palette": "abysses", "decor": "abysses", "_tnt": 0}
+
+
+# =====================================================================
 #  MONDE 2 — LES NEIGES DE L'HIMALAYA (20 niveaux)
 # =====================================================================
 FIN_HIMALAYA = {
@@ -2585,13 +3079,13 @@ def accessible(g, porte, liens=(), depart=None, eau=None, bulles=(), chaud=None)
             return False
         if y >= H:
             return True
-        return g[y][x] not in "#J<>()^vcgG=qnziyV"  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
+        return g[y][x] not in "#J<>()^vcgG=qnziyVK"  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
 
     def mortel(x, y):
         return 0 <= y < H and 0 <= x < W and g[y][x] in "^v"
 
     def porteur(x, y):
-        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG=qnziyV"   # q (ressort fragile) compte comme un simple sol
+        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG=qnziyVK"   # q (ressort fragile) compte comme un simple sol
 
     def debout(x, y):
         if 0 <= y < H and 0 <= x < W and g[y][x] == "|":
@@ -2838,6 +3332,8 @@ def point_de_sauvegarde(lv, plage=(0.35, 0.7), deja=()):
     def sur(x, y):
         if x in interdit or not (0 < y < len(rows) - 1):
             return False
+        if lv.get("eau") is not None and y >= lv["eau"]:
+            return False   # dans les abysses, le drapeau est toujours planté hors de l'eau
         for dx in (-1, 0, 1):
             if rows[y][x + dx] in "^vxcoJ<>" or rows[y + 1][x + dx] not in "#":
                 return False
@@ -3093,10 +3589,12 @@ def main():
         drapeaux(lv)
         pieces(lv)
     # Monde 3 : les 3 premiers niveaux sont les essais des abysses (ils remplacent 3 anciens niveaux)
-    mer = abysses_essai()
-    for lv in mer:
+    mer = monde_abysses()
+    for i, lv in enumerate(mer):
         lv["act"] = 3
         adoucir(lv)
+        if not lv.get("boss"):
+            lv["_pieges"] = pimenter_mer(lv, 3000 + i)
         drapeaux(lv)
         pieces(lv)
     him = monde_himalaya()
@@ -3123,15 +3621,15 @@ def main():
     # identifiants stables : la sauvegarde suit chaque niveau même s'il change de place
     for i, lv in enumerate(inca): lv["id"] = f"inca-{i+1}"
     for i, lv in enumerate(him): lv["id"] = f"him-{i+1}"
-    for i, lv in enumerate(mer): lv["id"] = f"mer-{i+1}"
+    for i, lv in enumerate(mer): lv["id"] = f"aby-{i+1}"
     for lv in autres: lv["id"] = f"old-{lv['orig']}"
     ordre_v2 = [lv["id"] for lv in inca] + [lv["id"] for lv in autres]
-    ordre_v3 = [lv["id"] for lv in inca] + [lv["id"] for lv in autres[:20]] + [lv["id"] for lv in mer] + [lv["id"] for lv in autres[23:]]
-    niveaux = inca + him + mer + autres[-57:]
+    ordre_v3 = [lv["id"] for lv in inca] + [lv["id"] for lv in autres[:20]] + ["mer-1", "mer-2", "mer-3"] + [lv["id"] for lv in autres[23:]]
+    niveaux = inca + him + mer + autres[-40:]
     assert len(niveaux) == 100, len(niveaux)
     err = verifier(niveaux)
     print("Pièges refusés par le vérificateur :", REJETS)
-    print("Pièges surprises :", " ".join(f"{lv['id']}:{lv.get('_pieges', 0)}" for lv in inca + him))
+    print("Pièges surprises :", " ".join(f"{lv['id']}:{lv.get('_pieges', 0)}" for lv in inca + him + mer))
     for lv in niveaux:
         lv.pop("_pieges", None)
         lv.pop("_tnt", None)
