@@ -3256,9 +3256,17 @@
     const run = p.grounded && Math.abs(p.vx) > 0.3;
     const air = !p.grounded, ph = Math.sin(p.anim), bob = run ? Math.abs(ph) : 0;
     const x = Math.round(p.x), y = Math.round(p.y - bob);
+    // sous l'eau, Max nage à l'horizontale : tête devant, il bat des jambes, la tête plonge quand il coule
+    const nageH = p.swim && !p.grounded;
     ctx.save();
-    if (p.face < 0) { ctx.translate(x + p.w, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
-    const legA = run ? ph * 2 : air ? -1 : 0, legB = run ? -ph * 2 : air ? 1 : 0;
+    if (nageH) {
+      ctx.translate(p.x + p.w / 2, p.y + p.h / 2 + 2 + Math.sin(R.t / 14) * 0.6);
+      if (p.face < 0) ctx.scale(-1, 1);
+      ctx.rotate(Math.PI / 2 + Math.max(-0.45, Math.min(0.45, p.vy * 0.2)));
+      ctx.translate(-5, -6);
+    } else if (p.face < 0) { ctx.translate(x + p.w, y); ctx.scale(-1, 1); } else ctx.translate(x, y);
+    const kick = nageH ? Math.sin(p.anim * 2.2) * 1.6 : 0;
+    const legA = nageH ? kick : run ? ph * 2 : air ? -1 : 0, legB = nageH ? -kick : run ? -ph * 2 : air ? 1 : 0;
     ctx.fillStyle = C.pants; ctx.fillRect(2 + legA, 10, 3, 3); ctx.fillRect(5 + legB, 10, 3, 3);
     ctx.fillStyle = C.boots; ctx.fillRect(2 + legA, 13, 3, 2); ctx.fillRect(5 + legB, 13, 4, 2);
     ctx.fillStyle = C.shirt; ctx.fillRect(2, 5, 6, 5);
@@ -3269,8 +3277,18 @@
     ctx.strokeStyle = C.whip; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(8.5, 10.5, 1.6, 0, Math.PI * 2); ctx.stroke();
     const arm = run ? -ph * 1.5 : 0;
+    if (nageH && p.stroke > 0) {
+      // brasse : le bras part devant la tête puis revient le long du corps
+      const k = p.stroke / 10, ay = Math.round(-3 + (1 - k) * 8);
+      ctx.fillStyle = C.jacket; ctx.fillRect(7, ay, 2, 4);
+      ctx.fillStyle = C.skin; ctx.fillRect(7, ay - 1, 2, 1);
+    } else if (nageH) {
+      ctx.fillStyle = C.jacket; ctx.fillRect(7, 6, 2, 4);
+      ctx.fillStyle = C.skin; ctx.fillRect(7, 10, 2, 1);
+    } else {
     ctx.fillStyle = C.jacket; ctx.fillRect(7 + (arm > 0 ? 1 : 0), 6, 2, 3);
     ctx.fillStyle = C.skin; ctx.fillRect(8 + (arm > 0 ? 1 : 0), 9 + Math.round(arm * 0.5), 2, 1);
+    }
     if (p.club > 0) {
       // massue : grand arc de haut en bas devant le héros
       const k = 1 - p.club / 18, ang = -2.2 + k * 3.0;

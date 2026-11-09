@@ -16,7 +16,7 @@ qui est déjà ouvert. Chaque monde finit par un boss qu'on **assomme** (jamais 
 
 | Monde | État | Contenu |
 |---|---|---|
-| 1. L'Empire inca | **terminé** | 19 niveaux longs (160 à 240 cases, 3 drapeaux) + le boss, le Jaguar de pierre |
+| 1. L'Empire inca | **terminé** | 19 niveaux longs (160 à 240 cases, un drapeau au milieu) + le boss, le Jaguar de pierre |
 | 2. Les neiges de l'Himalaya | **terminé** | 19 niveaux longs + le boss, le Yéti grognon |
 | 3. Les abysses | **essai** | niveaux 1 à 3 : nage, oxygène, bulles, méduses, crabes, anguilles (toujours ouverts pour tester) ; la suite = anciens niveaux |
 | 4. Le royaume des nuages | provisoire | idem |
@@ -33,7 +33,7 @@ L'histoire est racontée **en fin de niveau**
 (Archibald ne parle presque plus pendant le jeu).
 
 **Pour rester accrocheur** (objectif : 3 ou 4 essais par niveau, 6 ou 7 pour les plus durs) :
-- un ou deux drapeaux de sauvegarde dans les niveaux longs : après une chute, on repart du dernier atteint ;
+- un seul drapeau de sauvegarde, au milieu de chaque niveau : après une chute, on repart de là ;
 - aide automatique : tous les 3 échecs dans un niveau, les pièges ralentissent (flèches, rocher,
   eau, écraseurs) et le compte à rebours s'allonge ;
 - flèches tirées en volées synchronisées jusqu'à l'acte 4 ; vitesses des rochers et des crues

@@ -2834,12 +2834,12 @@ def point_de_sauvegarde(lv, plage=(0.35, 0.7), deja=()):
 
 
 def drapeaux(lv):
-    """Niveaux des mondes : un drapeau au milieu, deux dans les niveaux longs (vers 1/3 et 2/3)."""
+    """Niveaux des mondes : un seul drapeau, au milieu du niveau."""
     W = len(lv["map"][0])
     lv.pop("checkpoint", None)
     if W < 40:
         return
-    zones = [(0.2, 0.33), (0.45, 0.58), (0.7, 0.83)] if W >= 160 else [(0.25, 0.42), (0.58, 0.76)] if W >= 95 else [(0.38, 0.66)]
+    zones = [(0.42, 0.62)]
     pris = []
     for a, b in zones:
         lv["checkpoint"] = None
