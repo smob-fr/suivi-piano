@@ -34,6 +34,7 @@ L'histoire est racontée **en fin de niveau**
 
 **Pour rester accrocheur** (objectif : 3 ou 4 essais par niveau, 6 ou 7 pour les plus durs) :
 - un seul drapeau de sauvegarde, au milieu de chaque niveau : après une chute, on repart de là ;
+- des pièges surprises à la Level Devil : chaque ligne droite cache quelque chose (sol qui s'ouvre, pics qui jaillissent, bloc qui tombe, piège qui change de place après une mort…) ;
 - aide automatique : tous les 3 échecs dans un niveau, les pièges ralentissent (flèches, rocher,
   eau, écraseurs) et le compte à rebours s'allonge ;
 - flèches tirées en volées synchronisées jusqu'à l'acte 4 ; vitesses des rochers et des crues

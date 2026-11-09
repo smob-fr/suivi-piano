@@ -329,7 +329,7 @@
       def, index, deaths: game.deathsByRoom[index], tiles,
       shakeTiles: new Map(), spikeAnim: new Map(), springAnim: new Map(), wobble: new Set(),
       player: null, door: null, shooters: [],
-      enemies: [], pickups: [], arrows: [], dynamites: [], boulders: [], blocks: [], rival: null,
+      enemies: [], pickups: [], arrows: [], dynamites: [], boulders: [], blocks: [], later: [], rival: null,
       particles: [], fired: new Set(), say: null, hint: null, shake: 0, t: 0, bCount: 0,
       torches: [], stuck: [], sink: new Map(), bulles: [], braseros: [], boules: [], glaceFine: new Map(), gz: [],
     };
@@ -600,6 +600,7 @@
         sfx.pick();
         break;
       }
+      case "later": R.later.push({ t: v[0], act: v.slice(1) }); break;   // actions retardées (pièges en deux temps)
       case "dropspike": {
         const [x, y, delay] = v;
         if (R.tiles[y][x] !== "v") break;
@@ -656,7 +657,11 @@
     updateBoulders();
     updateBlocks();
     updateParticles();
-    if (game.mode === "play") { runTriggers(false); checkHazards(); updateTimer(); }
+    if (game.mode === "play") {
+      runTriggers(false);
+      if (R.later.length) { for (const l of R.later) if (--l.t <= 0) l.act.forEach(doAction); R.later = R.later.filter((l) => l.t > 0); }
+      checkHazards(); updateTimer();
+    }
 
     if (R.say) { R.say.t++; if (R.say.t > R.say.dur) R.say = null; }
     if (R.hint) { R.hint.t++; if (R.hint.t > R.hint.dur) R.hint = null; }

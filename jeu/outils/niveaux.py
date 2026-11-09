@@ -1716,6 +1716,16 @@ def _m_vent(n, d, r): n.vent(((2, 3, 0), (2, 3, 0), (2, 3, 0)), r.choice([-0.35,
 def _m_vent_tourne(n, d, r): n.vent(((2, 3, 0), (2, 3, 0), (2, 3, 0)), 0.4); n.winds[-1].append(150 - 20 * d)
 def _m_mobile(n, d, r): n.plat(2); n.mobile(7 + d, 0.9 + 0.15 * d); n.plat(2)
 def _m_brasero(n, d, r): n.plat(3, objet="f")
+def _m_sauts(n, d, r):
+    """Piliers au-dessus du vide, à des hauteurs différentes : il faut sauter en rythme."""
+    liste, y = [], n.y
+    for _ in range(3 + d):
+        dy = r.choice((-1, 0, 0, 1, 1)) if 7 <= y <= n.h - 4 else (1 if y < 7 else -1)
+        ecart = r.choice((1, 2, 2) + ((3,) if d and dy > 0 else ()))
+        if dy < 0:
+            ecart = min(ecart, 2)
+        liste.append((ecart, r.choice((1, 2, 2, 3)), dy)); y += dy
+    n.plat(1); n.plateformes(liste, fond="vide"); n.plat(1)
 
 MOTIFS = {
     "pics": _m_pics, "fosse": _m_fosse, "vide": _m_vide, "serpent": _ennemi("s"), "momie": _ennemi("m"), "singe": _ennemi("k"),
@@ -1729,7 +1739,7 @@ MOTIFS = {
     "neige": _m_neige, "glace": _m_glace, "pont_corde": _m_pont_corde, "lac": _m_lac, "geyser": _m_geyser, "ski": _m_ski,
     "avalanche": _m_avalanche, "crevasse": _m_crevasse, "loup": _ennemi("L", 9), "aigle": _m_aigle, "yeti": _ennemi("Y", 6),
     "chevre": _ennemi("C", 7), "bonhomme": _ennemi("S", 6), "vent": _m_vent, "vent_tourne": _m_vent_tourne,
-    "mobile": _m_mobile, "brasero": _m_brasero,
+    "mobile": _m_mobile, "brasero": _m_brasero, "sauts": _m_sauts,
 }
 
 # mécaniques de chaque niveau (la première est la vedette : elle revient le plus souvent)
@@ -1796,14 +1806,21 @@ def allonger(n):
             continue
         prec = m
         compte[m] = compte.get(m, 0) + 1
-        n.plat(rng.choice((2, 3, 3, 4)))
-        # du relief entre deux passages : on monte ou on descend d'une ou deux marches
-        if rng.random() < 0.6 and not n.opts.get("ski"):
+        n.plat(rng.choice((1, 2, 2, 3)))
+        if n.opts.get("ski"):
+            continue
+        # une ligne droite innocente… qui recevra un piège surprise (voir pimenter)
+        if rng.random() < 0.55:
+            n.plat(rng.choice((8, 9, 10, 11)))
+        # entre deux passages : des piliers à sauter, ou au moins une marche à monter ou descendre
+        if rng.random() < 0.4 and prec != "sauts":
+            _m_sauts(n, d, rng); prec = "sauts"; n.plat(2)
+        elif rng.random() < 0.75:
             k = rng.choice((-2, -1, -1, 1, 1, 2))
             if k < 0 and n.y + k >= 7:
-                n.monte(-k); n.plat(rng.choice((3, 4, 5)))
+                n.monte(-k); n.plat(rng.choice((2, 3, 4)))
             elif k > 0 and n.y + k <= n.h - 2:
-                n.descend(k); n.plat(rng.choice((3, 4, 5)))
+                n.descend(k); n.plat(rng.choice((2, 3, 4)))
         if n.opts.get("froid") and n.x - dernier_brasero > 22:
             n.plat(2, objet="f"); dernier_brasero = n.x
     n.plat(3)
@@ -2506,7 +2523,10 @@ def appliquer(lv, morts):
             continue
         if tr.get("max") is not None and morts > tr["max"]:
             continue
+        acts = []
         for a in tr["act"]:
+            acts.extend(a[2:] if a[0] == "later" else [a])
+        for a in acts:
             k = a[0]
             if k == "appear":
                 x0, y0, w, h = a[1:5]
@@ -2833,6 +2853,190 @@ def point_de_sauvegarde(lv, plage=(0.35, 0.7), deja=()):
             return
 
 
+# =====================================================================
+#  Pièges surprises « à la Level Devil » : plus aucune ligne droite tranquille
+# =====================================================================
+def _occupees(lv):
+    """Colonnes déjà prises par un piège, un déclencheur ou un objet mobile."""
+    occ = set()
+    for tr in lv["triggers"]:
+        if "zone" in tr:
+            zx, _, zw, _ = tr["zone"]
+            occ.update(range(zx - 1, zx + zw + 1))
+    for k in ("movers", "crushers", "winds", "vines", "flames", "beams", "secrets", "glacons"):
+        for e in lv.get(k, []):
+            if k == "winds": occ.update(range(e[0] - 1, e[1] + 2))
+            elif k == "movers": occ.update(range(e[0] - 1, e[0] + e[2] + e[3] + 2))
+            elif k == "secrets": occ.update(range(e[0] - 1, e[0] + e[2] + 1))
+            elif k == "vines": occ.update(range(e[0] - 6, e[0] + 7))
+            else: occ.update(range(e[0] - 2, e[0] + 3))
+    return occ
+
+
+def lignes_droites(lv, mini=5):
+    """Suites de colonnes où il ne se passe rien : un seul sol, à la même hauteur, sans ennemi ni piège."""
+    g = lv["map"]; H = len(g); W = len(g[0])
+    occ = _occupees(lv)
+    px = next(x for y in range(H) for x in range(W) if g[y][x] == "P")
+    porte = next(x for y in range(H) for x in range(W) if g[y][x] == "D")
+    def sol(x):
+        if x in occ or not (px + 5 <= x <= W - 6) or abs(x - porte) < 4:
+            return None
+        for xx in (x - 1, x, x + 1):
+            if any(g[y][xx] not in ".#o" for y in range(H)):
+                return None
+        fl = [y for y in range(1, H - 1) if g[y][x] in ".o" and g[y + 1][x] == "#"]
+        if len(fl) != 1:
+            return None
+        y = fl[0]
+        if y < 4 or any(g[yy][x] != "#" for yy in range(y + 1, H)) or any(g[yy][x] not in ".o" for yy in range(y - 3, y + 1)):
+            return None
+        return y
+    runs, cur = [], []
+    for x in range(1, W - 1):
+        y = sol(x)
+        if y is not None and (not cur or cur[-1][1] == y):
+            cur.append((x, y)); continue
+        if len(cur) >= mini: runs.append(cur)
+        cur = [(x, y)] if y is not None else []
+    if len(cur) >= mini: runs.append(cur)
+    return [(r[0][0], len(r), r[0][1]) for r in runs]
+
+
+def _plafond(g, x, y):
+    """Ligne du plafond au-dessus de (x, y) si c'est de la pierre pleine jusqu'en haut, sinon None."""
+    c = y - 1
+    while c >= 0 and g[c][x] in ".o":
+        c -= 1
+    if c < 0 or y - c < 4 or any(g[r][x] != "#" for r in range(0, c + 1)):
+        return None
+    return c
+
+
+def _p_trou(lv, g, x, L, y, r, H):
+    k = r.choice((2, 3, 3, 4)); w = 2
+    if L < k + w + 2: return None
+    return k + w + 1, [{"zone": [x, 1, 1, H - 2], "act": [["collapse", x + k, y + 1, w, H - y - 1, 0], ["shake", 3]]}]
+def _p_sous_pieds(lv, g, x, L, y, r, H):
+    if L < 7: return None
+    return 6, [{"zone": [x + 1, 1, 1, H - 2], "act": [["collapse", x + 2, y + 1, 3, H - y - 1, 44], ["shake", 2]]}]
+def _p_pics(lv, g, x, L, y, r, H):
+    k = r.choice((2, 3, 4)); n = r.choice((1, 2, 2))
+    if L < k + n + 2: return None
+    return k + n + 1, [{"zone": [x, 1, 1, H - 2], "act": [["spikes", x + k, y, n, 1]]}]
+def _p_mur_trou(lv, g, x, L, y, r, H):
+    if L < 8: return None
+    return 7, [{"zone": [x, 1, 1, H - 2], "act": [["appear", x + 3, y, 1, 1], ["collapse", x + 4, y + 1, 1, H - y - 1, 0]]}]
+def _p_fausse_alerte(lv, g, x, L, y, r, H):
+    if L < 11: return None
+    return 10, [{"zone": [x, 1, 1, H - 2], "act": [["shake", 6], ["wobble", x + 3, y + 1, 50], ["wobble", x + 4, y + 1, 50]]},
+                {"zone": [x + 5, 1, 1, H - 2], "act": [["collapse", x + 7, y + 1, 2, H - y - 1, 0]]}]
+def _p_coince(lv, g, x, L, y, r, H):
+    if L < 10: return None
+    return 9, [{"zone": [x + 3, 1, 1, H - 2], "act": [["spikes", x, y, 2, 1], ["later", 12, ["spikes", x + 7, y, 2, 1]]]}]
+def _p_bloc(lv, g, x, L, y, r, H):
+    if L < 8: return None
+    c = _plafond(g, x + 5, y)
+    if c is None: return None
+    return 7, [{"zone": [x, 1, 1, H - 2], "act": [["fall", x + 5, c, 1, 1, 8]]}]
+def _p_change(lv, g, x, L, y, r, H):
+    if L < 10: return None
+    return 9, [{"zone": [x, 1, 1, H - 2], "act": [["collapse", x + 3, y + 1, 2, H - y - 1, 0]], "max": 0},
+               {"zone": [x + 2, 1, 1, H - 2], "act": [["collapse", x + 6, y + 1, 2, H - y - 1, 0]], "min": 1}]
+def _p_saut(lv, g, x, L, y, r, H):
+    """Un petit trou visible ; dès qu'on saute, l'autre bord s'effondre et le trou s'élargit."""
+    if L < 8: return None
+    rows = [list(l) for l in g]
+    for yy in range(y + 1, H):
+        rows[yy][x + 2] = "."
+    g[:] = ["".join(l) for l in rows]
+    return 7, [{"zone": [x + 1, 1, 2, y + 1], "air": True, "act": [["collapse", x + 3, y + 1, 1, H - y - 1, 0]]}]
+
+
+REJETS = {}
+
+
+def _jouable(lv):
+    for morts in range(4):
+        g, porte, liens = appliquer(lv, morts)
+        if not acces(lv, g, porte, liens)[0]:
+            return False
+    return True
+
+
+PIEGES = {"trou": _p_trou, "sous_pieds": _p_sous_pieds, "pics": _p_pics, "mur_trou": _p_mur_trou,
+          "fausse_alerte": _p_fausse_alerte, "coince": _p_coince, "bloc": _p_bloc, "change": _p_change, "saut": _p_saut}
+
+
+def pimenter(lv, graine):
+    """Remplit chaque ligne droite d'au moins un piège surprise, toujours différent du précédent."""
+    import random
+    r = random.Random(graine)
+    g = list(lv["map"]); H = len(g)
+    prec = None
+    poses = 0
+    for x0, L, y in lignes_droites(lv):
+        x, reste = x0, L
+        while reste >= 6:
+            noms = [k for k in PIEGES if k != prec]
+            r.shuffle(noms)
+            for nom in noms:
+                avant = list(g)
+                res = PIEGES[nom](lv, g, x, reste, y, r, H)
+                if res:
+                    used, trs = res
+                    lv["triggers"].extend(trs)
+                    lv["map"] = list(g)
+                    if not _jouable(lv):
+                        del lv["triggers"][-len(trs):]
+                        g[:] = avant; lv["map"] = list(g)
+                        REJETS[nom] = REJETS.get(nom, 0) + 1
+                        continue
+                    prec = nom; poses += 1
+                    x += used + 1; reste -= used + 1
+                    break
+            else:
+                break
+    lv["map"] = g
+    # trous et piliers visibles qui trahissent : le bord d'en face recule, le pilier s'écroule sous les pieds
+    W = len(g[0])
+    for x in range(3, W - 6):
+        if r.random() > 0.45:
+            continue
+        col = [g[yy][x] for yy in range(H)]
+        # pilier fin (une épaisseur, vide dessous), large de 2 ou 3, entouré de vide
+        if g[1][x] == ".":
+            pass
+        ys = [yy for yy in range(2, H - 2) if g[yy][x] == "#" and g[yy - 1][x] == "." and all(g[k][x] == "." for k in range(yy + 1, H))]
+        if ys and g[ys[0]][x - 1] != "#":
+            yy = ys[0]; w = 0
+            while g[yy][x + w] == "#" and all(g[k][x + w] == "." for k in range(yy + 1, H)) and g[yy - 1][x + w] == ".":
+                w += 1
+            if 2 <= w <= 3 and not (set(range(x - 1, x + w + 1)) & _occupees(lv)):
+                # « lethal » : le vérificateur garde le pilier (on a le temps de rebondir dessus)
+                lv["triggers"].append({"zone": [x, yy - 2, w, 2], "act": [["collapse", x, yy, w, 1, 28]], "lethal": True})
+                poses += 1
+    # pics visibles qui glissent de deux cases quand on arrive
+    for y in range(2, H - 1):
+        ligne = g[y]
+        x = 1
+        while x < len(ligne) - 8:
+            if ligne[x] == "^" and ligne[x - 1] != "^" and g[y + 1][x] == "#" and r.random() < 0.5:
+                n = 1 + (ligne[x + 1] == "^")
+                if ligne[x + n] != "^" and all(g[y][xx] in ".o" and g[y + 1][xx] == "#" and g[y - 1][xx] in ".o" for xx in list(range(x - 3, x)) + list(range(x + n, x + n + 4))):
+                    occ = _occupees(lv)
+                    if not (set(range(x - 3, x + n + 4)) & occ):
+                        lv["triggers"].append({"zone": [x - 2, 1, 1, H - 2], "act": [["set", x, y, n, 1, "."], ["spikes", x + 2, y, n, 1]]})
+                        if not _jouable(lv):
+                            lv["triggers"].pop(); REJETS["glisse"] = REJETS.get("glisse", 0) + 1
+                            x += 1; continue
+                        poses += 1
+                        x += n + 4
+                        continue
+            x += 1
+    return poses
+
+
 def drapeaux(lv):
     """Niveaux des mondes : un seul drapeau, au milieu du niveau."""
     W = len(lv["map"][0])
@@ -2884,6 +3088,8 @@ def main():
             tr["act"] = [a for a in tr["act"] if a[0] != "say"]
         lv["triggers"] = [tr for tr in lv["triggers"] if tr["act"]]
         adoucir(lv)
+        if not lv.get("boss") and not lv.get("mirror"):
+            lv["_pieges"] = pimenter(lv, 1000 + i)
         drapeaux(lv)
         pieces(lv)
     # Monde 3 : les 3 premiers niveaux sont les essais des abysses (ils remplacent 3 anciens niveaux)
@@ -2909,6 +3115,8 @@ def main():
             lv["map"] = ["".join(r) for r in rows]
             lv.setdefault("decor", "himalaya")
         adoucir(lv)
+        if not lv.get("boss") and not lv.get("mirror") and not lv.get("ski"):
+            lv["_pieges"] = pimenter(lv, 2000 + him.index(lv))
         drapeaux(lv)
         pieces(lv)
     # Mondes 3 à 5 : les essais des abysses, puis les anciens niveaux restants (les plus difficiles)
@@ -2922,7 +3130,10 @@ def main():
     niveaux = inca + him + mer + autres[-57:]
     assert len(niveaux) == 100, len(niveaux)
     err = verifier(niveaux)
+    print("Pièges refusés par le vérificateur :", REJETS)
+    print("Pièges surprises :", " ".join(f"{lv['id']}:{lv.get('_pieges', 0)}" for lv in inca + him))
     for lv in niveaux:
+        lv.pop("_pieges", None)
         lv.pop("_tnt", None)
         lv.pop("_liens", None)
     with open(SORTIE, "w", encoding="utf-8") as f:
