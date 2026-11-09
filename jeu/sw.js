@@ -1,7 +1,7 @@
 // Max et l'Œil de Jade — service worker (version installée)
 // Réseau d'abord : en ligne, on récupère toujours la dernière version ;
 // le cache sert seulement hors ligne. Incrémente VERSION à chaque mise en ligne.
-const VERSION = "jeu-v18";
+const VERSION = "jeu-v19";
 const FICHIERS = ["./", "./index.html", "./mondes.js", "./game.js", "./levels.js", "./manifest.webmanifest", "./images/accueil.webp", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {

@@ -19,8 +19,8 @@ qui est déjà ouvert. Chaque monde finit par un boss qu'on **assomme** (jamais 
 | 1. L'Empire inca | **terminé** | 19 niveaux longs (160 à 240 cases, un drapeau au milieu) + le boss, le Jaguar de pierre |
 | 2. Les neiges de l'Himalaya | **terminé** | 19 niveaux longs + le boss, le Yéti grognon |
 | 3. Les abysses | **terminé** | 19 niveaux longs (170 à 220 cases) qui alternent îles et plongée : méduses, crabes, anguilles, poissons-globes, requin, mines à pousser, sas, tourbillons, coffres qui mordent, torpilles, algues, abysses noirs avec poisson-lanterne + le boss, la pieuvre géante |
-| 4. Le royaume des nuages | provisoire | idem |
-| 5. La cité d'or | provisoire | idem |
+| 4. Le royaume des nuages | **terminé** | 19 niveaux longs sans sol, de nuage en nuage : nuages qui fondent, faux nuages, nuages-trampolines, nuages voyageurs, arcs-en-ciel, orage annoncé par une ombre, ballons, moulins célestes, cerfs-volants, pluie, grêle, nuages souffleurs, oiseaux migrateurs, petits éclairs vivants + le boss, l'Oiseau-tonnerre (on sonne les cloches quand il passe) |
+| 5. La cité d'or | **terminé** | 19 niveaux longs dans le volcan : lave, tapis roulants, jets de feu, wagonnet, pluie de magma, dalles d'or qui fondent, engrenages, pistons, vapeur, miroirs solaires, effondrement, compte à rebours ; golems de lave (deux coups), salamandres, gardiens d'or qui bougent quand on leur tourne le dos, robots d'alarme + le boss, le Fouisseur d'Archibald (de la dynamite dans ses trois cheminées) |
 
 Nouveautés du monde inca : lianes qui se balancent, singes voleurs (ils chipent 3 pièces, on les
 assomme pour les récupérer), bébés jaguars qui bondissent, têtes de jaguar qui crachent du feu,

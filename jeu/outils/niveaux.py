@@ -2774,6 +2774,759 @@ def boss_pieuvre():
 
 
 # =====================================================================
+#  MONDE 4 — LE ROYAUME DES NUAGES (20 niveaux) : pas de sol, on va de nuage en nuage
+# =====================================================================
+class Ciel:
+    """Niveau dans le ciel construit colonne par colonne. Max se tient sur la ligne `y`, le nuage est en y+1.
+    En dessous : le vide (tomber, c'est repartir du drapeau)."""
+    def __init__(self, nom, type_, num, h=20, y=12, ammo=(6, 1), **opts):
+        self.nom, self.type, self.num, self.h, self.y = nom, type_, num, h, y
+        self.ammo, self.opts = list(ammo), opts
+        self.defi = num in DEFIS_MONDE
+        self.cols, self.trig = [], []
+        self.movers, self.winds, self.eclairs, self.souffleurs, self.pluies, self.grele, self.moulins, self.liens = [], [], [], [], [], [], [], []
+        self.cols.append(["#"] * h)
+
+    @property
+    def x(self):
+        return len(self.cols)
+
+    def put(self, x, y, ch):
+        self.cols[x][y] = ch
+
+    def Z(self, x):
+        return [x, 1, 1, self.h - 2]
+
+    def t(self, act, zone=None, **kw):
+        tr = {"act": act}
+        if zone is not None:
+            tr["zone"] = zone
+        tr.update(kw)
+        self.trig.append(tr)
+
+    def astuce(self, texte, x, **kw):
+        self.t([["hint", texte]], self.Z(x), **kw)
+
+    def borne(self, y):
+        return max(5, min(self.h - 4, y))
+
+    def vide(self, n):
+        x0 = self.x
+        for _ in range(n):
+            self.cols.append(["."] * self.h)
+        return x0
+
+    def nuage(self, n, y=None, ch="~", ennemi=None, objet=None):
+        if y is not None:
+            self.y = self.borne(y)
+        x0 = self.x
+        for _ in range(n):
+            c = ["."] * self.h
+            c[self.y + 1] = ch
+            self.cols.append(c)
+        if ennemi:
+            self.put(x0 + n // 2, self.y, ennemi)
+        if objet:
+            self.put(x0 + max(0, n // 2 - 1), self.y, objet)
+        return x0
+
+    def depart(self):
+        x0 = self.nuage(5)
+        self.put(x0 + 1, self.y, "P")
+
+    def porte(self):
+        self.vide(2)
+        x0 = self.nuage(6)
+        self.put(x0 + 4, self.y, "D")
+
+    def fini(self):
+        self.cols.append(["#"] * self.h)
+        rows = ["".join(c[y] for c in self.cols) for y in range(self.h)]
+        d = {"name": self.nom, "type": self.type, "ammo": self.ammo, "map": rows, "triggers": self.trig,
+             "palette": "nuages", "decor": "nuages", "monde": 4, "_tnt": 0}
+        if self.defi:
+            d["defi"] = True
+        for k, v in (("movers", self.movers), ("winds", self.winds), ("eclairs", self.eclairs), ("souffleurs", self.souffleurs),
+                     ("pluies", self.pluies), ("grele", self.grele), ("moulins", self.moulins), ("_liens", self.liens)):
+            if v:
+                d[k] = v
+        if self.eclairs:
+            d["orage"] = True
+        d.update(self.opts)
+        return d
+
+
+def _dy(r, *choix):
+    return r.choice(choix)
+
+
+def _c_sauts(c, d, r):
+    for _ in range(3 + d):
+        c.vide(r.choice((2, 2, 3)))
+        c.nuage(r.choice((2, 3, 3, 4)), c.y + _dy(r, -1, 0, 0, 1))
+    c.vide(2); c.nuage(3)
+
+
+def _c_fondants(c, d, r):
+    c.astuce("Nuages roses : ils fondent sous tes pieds !", c.x - 3, max=0)
+    for _ in range(3 + d):
+        c.vide(r.choice((1, 2, 2)))
+        c.nuage(r.choice((2, 3)), c.y + _dy(r, -1, 0, 0, 1), ch="%")
+    c.vide(2); c.nuage(4)
+
+
+def _c_voyageurs(c, d, r):
+    for _ in range(1 + (d > 0)):
+        n = 7 + d
+        x0 = c.vide(n)
+        c.movers.append([x0, c.y + 1, 2, n - 2, 0, round(0.8 + 0.15 * d, 2)])
+        c.nuage(3)
+
+
+def _c_orage(c, d, r):
+    n = 10 + 2 * d
+    x0 = c.nuage(n)
+    per = r.choice((150, 170, 190))
+    for k, xx in enumerate(range(x0 + 2, x0 + n - 1, 4)):
+        c.eclairs.append([xx, per, (k * 55) % per])
+    c.vide(2); c.nuage(3)
+
+
+def _c_arcs(c, d, r):
+    n = 6 + d
+    x0 = c.vide(n)
+    for k in range(n):
+        c.put(x0 + k, c.y + 1, "c")
+    c.astuce("Les arcs-en-ciel apparaissent et disparaissent…", x0 - 2, max=0)
+    c.nuage(4)
+
+
+def _c_ballons(c, d, r):
+    haut = min(r.choice((4, 5, 6)), c.y - 5)
+    if haut < 3:
+        return _c_chute(c, d, r)
+    c.vide(1)
+    x0 = c.vide(2)
+    c.movers.append([x0, c.y + 1, 2, 0, -haut, 0.8, "ballon"])
+    c.y -= haut
+    c.nuage(4)
+
+
+def _c_oiseaux(c, d, r):
+    x0 = c.nuage(12 + 2 * d)
+    y = c.y
+    c.vide(2); c.nuage(3)
+    for k, (dx, dy) in enumerate(((10, 0), (13, -3), (15, -4), (17, -3))[:2 + d]):
+        c.put(x0 + dx, y + dy, "O")
+
+
+def _c_chute(c, d, r):
+    for _ in range(3 + d):
+        c.vide(1)
+        n = r.choice((2, 3, 4))
+        x0 = c.nuage(n, c.y + r.choice((2, 3)))
+        if n == 4 and r.random() < 0.5:
+            c.put(x0 + 3, c.y, "^")   # épine d'orage au bout : on s'arrête avant
+    c.vide(1); c.nuage(4)
+
+
+def _c_vent(c, d, r):
+    x0 = c.x
+    for _ in range(3):
+        c.vide(2); c.nuage(2 + (r.random() < 0.5), c.y + _dy(r, -1, 0, 1))
+    f = r.choice((-0.4, 0.4)) * (1 + 0.15 * d)
+    c.winds.append([x0, c.x - 1, round(f, 2), r.choice((0, 0, 160))])
+    c.vide(2); c.nuage(3)
+
+
+def _c_trampolines(c, d, r):
+    if c.y < 10:
+        return _c_chute(c, d, r)
+    x0 = c.nuage(3)
+    c.put(x0 + 2, c.y + 1, "*")
+    c.vide(1)
+    c.nuage(3, c.y - 4)
+    if d and c.y >= 10:
+        c.put(c.x - 1, c.y + 1, "*")
+        c.vide(1); c.nuage(3, c.y - 4)
+    c.vide(1); c.nuage(2, c.y + 2); c.vide(1); c.nuage(3, c.y + 2)
+
+
+def _c_pluie(c, d, r):
+    x0 = c.x
+    for _ in range(4 + d):
+        c.vide(2); c.nuage(r.choice((2, 3)), c.y + _dy(r, 0, 0, 1))
+    c.pluies.append([x0, c.x - 1])
+    c.astuce("La pluie te plaque vers le bas : petits sauts !", x0 - 2, max=0)
+    c.vide(2); c.nuage(3)
+
+
+def _c_faux(c, d, r):
+    """Un nuage tout pareil… qui ne porte rien. Le vrai chemin passe au-dessus."""
+    x0 = c.nuage(6, ch=":")
+    y = c.y
+    for k in range(1, 6, 3):
+        c.put(x0 + k, y - 1, "~"); c.put(x0 + k + 1, y - 1, "~")
+    c.vide(1); c.nuage(3, y)
+
+
+def _c_moulin(c, d, r):
+    if c.y < 9:
+        return _c_chute(c, d, r)
+    rr = 3
+    a = (c.x - 1, c.y)
+    c.vide(1)
+    x0 = c.vide(2 * rr + 3)
+    cx, cy = x0 + rr + 1, c.y - 1
+    c.moulins.append([cx, cy, rr, round(0.9 + 0.15 * d, 2), 4])
+    c.nuage(4, c.y - 3)
+    c.liens.append([list(a), [c.x - 4, c.y]])
+    c.astuce("Moulin céleste : monte sur une pale, laisse-toi porter", x0 - 3, max=0)
+
+
+def _c_cerfs(c, d, r):
+    for _ in range(1 + (d > 0)):
+        a = (c.x - 1, c.y)
+        n = 8
+        x0 = c.vide(n)
+        c.movers.append([x0, c.y + 1, 2, n - 2, -2, 0.7, "cerf"])
+        c.nuage(3, c.y - 2)
+        c.liens.append([list(a), [c.x - 3, c.y]])
+
+
+def _c_grele(c, d, r):
+    n = 12 + 2 * d
+    x0 = c.nuage(n)
+    c.grele.append([x0, x0 + n - 1, 140 - 20 * d, r.randint(0, 60)])
+    c.vide(2); c.nuage(3)
+
+
+def _c_etincelles(c, d, r):
+    c.vide(2); c.nuage(8, ennemi="E")
+    c.vide(2); c.nuage(6, c.y + _dy(r, -1, 0, 1), ennemi="E" if d else None)
+    c.vide(2); c.nuage(3)
+
+
+def _c_souffleur(c, d, r):
+    x0 = c.nuage(4)
+    c.vide(2)
+    x1 = c.nuage(6 + d)
+    c.souffleurs.append([x1 + 6 + d, c.y - 2, -1, 12, r.randint(0, 200)])
+    c.vide(2); c.nuage(3)
+
+
+def _c_escalier(c, d, r):
+    if c.y < 9:
+        return _c_chute(c, d, r)
+    x0 = c.x
+    for _ in range(3 + d):
+        if c.y <= 6:
+            break
+        u = r.choice((1, 2))
+        c.vide(1 if u == 2 else r.choice((1, 2)))
+        c.nuage(2, c.y - u)
+    per = 170
+    for k, xx in enumerate(range(x0 + 2, c.x, 5)):
+        c.eclairs.append([xx, per, (k * 60) % per])
+    c.vide(1); c.nuage(3)
+
+
+def _c_palais(c, d, r):
+    """Terrasse de marbre du palais céleste, avec ses colonnes."""
+    n = 12
+    x0 = c.x
+    for k in range(n):
+        col = ["."] * c.h
+        col[c.y + 1] = "#"; col[c.y + 2] = "#"
+        if 1 <= k <= 10:
+            col[c.y - 5] = "#"   # le toit du palais
+        c.cols.append(col)
+    c.put(x0 + 6, c.y, "a")
+    c.vide(2); c.nuage(3)
+
+
+MOTIFS_CIEL = {"sauts": _c_sauts, "fondants": _c_fondants, "voyageurs": _c_voyageurs, "orage": _c_orage, "arcs": _c_arcs,
+               "ballons": _c_ballons, "oiseaux": _c_oiseaux, "chute": _c_chute, "vent": _c_vent, "trampolines": _c_trampolines,
+               "pluie": _c_pluie, "faux": _c_faux, "moulin": _c_moulin, "cerfs": _c_cerfs, "grele": _c_grele,
+               "etincelles": _c_etincelles, "souffleur": _c_souffleur, "escalier": _c_escalier, "palais": _c_palais}
+MONTEES = {"ballons", "trampolines", "escalier", "moulin"}
+
+
+def remplir_ciel(c, motifs, cible, d0=0):
+    import random
+    r = random.Random(4000 + c.num)
+    c.vide(2); c.nuage(6)   # un peu de calme au départ
+    debut = c.x
+    prec, compte, garde = None, {}, 0
+    while c.x < cible and garde < 80:
+        garde += 1
+        d = min(2, d0 + int(3 * (c.x - debut) / max(1, cible - debut)))
+        choix = [m for m in motifs if m != prec and compte.get(m, 0) < (4 if m == motifs[0] else 2)] or [m for m in motifs if m != prec]
+        if c.y <= 7:
+            choix = [m for m in choix if m not in MONTEES] or ["chute"]
+        # la mécanique vedette revient un passage sur deux
+        m = motifs[0] if motifs[0] in choix and prec != motifs[0] else r.choice([x for x in choix if x != motifs[0]] or choix)
+        MOTIFS_CIEL[m](c, d, r)
+        prec = m; compte[m] = compte.get(m, 0) + 1
+        # entre deux passages : un long nuage tranquille… qui recevra une surprise
+        if r.random() < 0.55:
+            c.vide(2)
+            c.nuage(r.choice((9, 10, 11)), c.y + _dy(r, -1, 0, 0, 1, 2 if c.y < 9 else 0))
+
+
+# ---------- pièges surprises du ciel ----------
+def nuages_droits(lv, mini=6):
+    """Suites de cases où Max marche sur des nuages, sans rien autour."""
+    g = lv["map"]; H = len(g); W = len(g[0])
+    occ = _occupees(lv)
+    for e in lv.get("eclairs", []): occ.update(range(e[0] - 2, e[0] + 3))
+    for e in lv.get("souffleurs", []): occ.update(range(e[0] - 14, e[0] + 14))
+    for e in lv.get("moulins", []): occ.update(range(e[0] - e[2] - 3, e[0] + e[2] + 4))
+    for k in ("pluies", "grele"):
+        for e in lv.get(k, []): occ.update(range(e[0] - 1, e[1] + 2))
+    px = next(x for y in range(H) for x in range(W) if g[y][x] == "P")
+    porte = next(x for y in range(H) for x in range(W) if g[y][x] == "D")
+    runs = []
+    for y in range(4, H - 2):
+        cur = []
+        for x in range(1, W - 1):
+            ok = (x not in occ and px + 6 <= x <= W - 8 and abs(x - porte) > 5 and g[y + 1][x] == "~"
+                  and all(g[yy][x] == "." for yy in range(y - 3, y + 1)) and all(g[yy][x] == "." for yy in range(y + 2, min(H, y + 4))))
+            if ok:
+                cur.append(x); continue
+            if len(cur) >= mini: runs.append((cur[0], len(cur), y))
+            cur = []
+        if len(cur) >= mini: runs.append((cur[0], len(cur), y))
+    return sorted(runs)
+
+
+def _pc_fond(lv, g, x, L, y, r, H):
+    k = r.choice((2, 3, 4))
+    if L < k + 4: return None
+    return k + 3, [{"zone": [x, 1, 1, H - 2], "act": [["fond", x + k, y + 1, 2]]}]
+def _pc_faux(lv, g, x, L, y, r, H):
+    k = r.choice((3, 4))
+    if L < k + 4: return None
+    rows = [list(l) for l in g]
+    rows[y + 1][x + k] = ":"; rows[y + 1][x + k + 1] = ":"
+    g[:] = ["".join(l) for l in rows]
+    return k + 3, []
+def _pc_eclair(lv, g, x, L, y, r, H):
+    if L < 7: return None
+    return 7, [{"zone": [x, 1, 1, H - 2], "act": [["eclair", x + 5]]}]
+def _pc_oiseau(lv, g, x, L, y, r, H):
+    if L < 6: return None
+    return 6, [{"zone": [x, 1, 1, H - 2], "act": [["spawn", "O", x + 15, y]]}]
+def _pc_rafale(lv, g, x, L, y, r, H):
+    if L < 8: return None
+    return 8, [{"zone": [x, 1, 1, H - 2], "act": [["courant", x - 2, x + L + 2, r.choice((-0.6, 0.6)), 80]]}]
+def _pc_pics(lv, g, x, L, y, r, H):
+    k = r.choice((2, 3, 4))
+    if L < k + 3: return None
+    return k + 2, [{"zone": [x, 1, 1, H - 2], "act": [["spikes", x + k, y, 1, 1]]}]
+def _pc_etincelle(lv, g, x, L, y, r, H):
+    if L < 9: return None
+    return 9, [{"zone": [x, 1, 1, H - 2], "act": [["spawn", "E", x + 7, y]]}]
+PIEGES_CIEL = {"fond": _pc_fond, "faux": _pc_faux, "eclair": _pc_eclair, "oiseau": _pc_oiseau, "rafale": _pc_rafale,
+               "pics": _pc_pics, "etincelle": _pc_etincelle}
+
+
+def pimenter_ciel(lv, graine):
+    import random
+    r = random.Random(graine)
+    H = len(lv["map"])
+    poses, prec = 0, None
+    for x0, L, y in nuages_droits(lv, 5):
+        x, fin = x0, x0 + L
+        while fin - x >= 6:
+            noms = [k for k in PIEGES_CIEL if k != prec]
+            r.shuffle(noms)
+            fait = False
+            for nom in noms:
+                avant = list(lv["map"])
+                res = PIEGES_CIEL[nom](lv, lv["map"], x, fin - x, y, r, H)
+                if res is None:
+                    lv["map"] = avant; continue
+                pas, trs = res
+                lv["triggers"].extend(trs)
+                if _jouable(lv):
+                    poses += 1; prec = nom; x += pas + 1; fait = True; break
+                if trs:
+                    del lv["triggers"][-len(trs):]
+                lv["map"] = avant
+                REJETS[nom] = REJETS.get(nom, 0) + 1
+            if not fait:
+                x += 2
+    # petits nuages : un oiseau ou un éclair surgit pendant qu'on saute de l'un à l'autre
+    g = lv["map"]; W = len(g[0])
+    occ = _occupees(lv)
+    for e in lv.get("eclairs", []): occ.update(range(e[0] - 3, e[0] + 4))
+    for e in lv.get("souffleurs", []): occ.update(range(e[0] - 14, e[0] + 14))
+    for e in lv.get("moulins", []): occ.update(range(e[0] - e[2] - 3, e[0] + e[2] + 4))
+    for k in ("pluies", "grele"):
+        for e in lv.get(k, []): occ.update(range(e[0] - 1, e[1] + 2))
+    px = next(x for y in range(H) for x in range(W) if g[y][x] == "P")
+    porte = next(x for y in range(H) for x in range(W) if g[y][x] == "D")
+    x = px + 10
+    while x < W - 14 and poses < 9:
+        if any(xx in occ for xx in range(x - 4, x + 8)) or abs(x - porte) < 10:
+            x += 1; continue
+        ys = [y for y in range(3, H - 2) if g[y + 1][x] in "~%" and g[y][x] == "."]
+        if not ys:
+            x += 1; continue
+        y = ys[0]
+        nom = r.choice(("oiseau", "eclair")) if prec != "oiseau" else "eclair"
+        act = [["spawn", "O", x + 14, y - r.choice((0, 0, 1))]] if nom == "oiseau" else [["eclair", x + 4]]
+        lv["triggers"].append({"zone": [x, 1, 1, H - 2], "act": act})
+        occ.update(range(x - 2, x + 3))
+        poses += 1; prec = nom
+        x += 16
+    return poses
+
+
+FIN_NUAGES = {
+    1: "Archibald, accroché à un nuage : « C'est mou, c'est blanc, c'est froid. Et il n'y a RIEN en dessous. »",
+    2: "Archibald, les pieds mouillés : « Mon nuage a fondu. Comme une glace à la vanille. En moins bon. »",
+    3: "Archibald, sur un nuage qui s'éloigne : « Je ne pars pas, Max. C'est le nuage qui part. Au revoir ! »",
+    4: "Archibald, les cheveux tout droits : « La foudre ne tombe jamais deux fois au même endroit. Sauf ici. Trois fois. »",
+    5: "Histoire. Au palais céleste, un gardien de marbre parle enfin : « L'Œil de Jade a été caché au cœur du volcan, pour que personne ne le prenne seul. » Archibald note tout dans son carnet… à l'envers.",
+    6: "Archibald, assis sur un arc-en-ciel qui disparaît : « Il était là il y a une seconde, je te jure ! »",
+    7: "Archibald s'envole accroché à un ballon : « Max ! Comment on descend ?! MAX ! »",
+    8: "Archibald, couvert de plumes : « Les oiseaux migrateurs ne respectent pas les priorités. »",
+    9: "Archibald, la tête en bas : « J'ai fait une chute libre. Enfin, surtout une chute. Pas très libre. »",
+    10: "Histoire. Le vent céleste se calme. Archibald regarde la terre, tout en bas : « Mon grand-père disait que d'ici on voit le volcan d'or. » Max le voit aussi : une montagne qui fume, au loin.",
+    11: "Archibald rebondit encore : « Boing ! Je n'arrive plus à m'arrêter ! Boing ! »",
+    12: "Archibald, trempé : « Il pleut dans le ciel. Logique. Mais pas sur MOI, quand même ! »",
+    13: "Archibald passe à travers un faux nuage : « Ce nuage était un menteur ! Je porterai plainte ! »",
+    14: "Archibald tourne sur une pale de moulin : « C'est un manège ! Ça tourne ! Je vais être malaaaade… »",
+    15: "Histoire. Au bout de l'arc-en-ciel perdu, une porte de lumière s'ouvre sur le volcan. Archibald hésite : « Et si… on y allait ensemble ? » Puis il se reprend : « Non. Bien sûr que non. Moi d'abord ! »",
+    16: "Archibald pend sous un cerf-volant : « Celui-là a essayé de voler mon chapeau. Je l'ai attrapé. Ou c'est lui qui m'a attrapé. »",
+    17: "Archibald, des grêlons plein la moustache : « On dirait des glaçons. Il ne manque que la limonade. »",
+    18: "Archibald, tout essoufflé en haut de l'escalier céleste : « Qui a construit un escalier SANS ascenseur ? »",
+    19: "Archibald, caché derrière le nid : « L'Oiseau-tonnerre dort là-haut. Tu sonnes les cloches, je… je surveille. »",
+    20: "L'Oiseau-tonnerre dort, la tête sous l'aile. Dans son nid, le dernier morceau de la carte ! Archibald : « Il mène… au cœur du volcan. À la cité d'or ! » Rendez-vous dans la cité d'or !",
+}
+
+NIVEAUX_CIEL = [
+    ("Les premiers nuages", "exploration", ["sauts", "voyageurs", "fondants"], {}),
+    ("Les nuages fondants", "action", ["fondants", "sauts", "voyageurs"], {}),
+    ("Les nuages voyageurs", "action", ["voyageurs", "sauts", "fondants", "arcs"], {}),
+    ("L'orage", "action", ["orage", "sauts", "voyageurs", "fondants"], {}),
+    ("Le palais céleste", "histoire", ["palais", "sauts", "arcs", "etincelles"], {}),
+    ("Les arcs-en-ciel", "action", ["arcs", "fondants", "sauts", "orage"], {}),
+    ("Les ballons", "exploration", ["ballons", "chute", "sauts", "oiseaux"], {}),
+    ("Les oiseaux", "action", ["oiseaux", "sauts", "voyageurs", "etincelles"], {}),
+    ("La chute libre", "action", ["chute", "ballons", "oiseaux", "fondants"], {"_haut": True}),
+    ("Le vent céleste", "histoire", ["vent", "souffleur", "sauts", "arcs"], {}),
+    ("Les trampolines", "action", ["trampolines", "chute", "sauts", "etincelles"], {}),
+    ("La pluie", "trahison", ["pluie", "sauts", "fondants", "orage"], {}),
+    ("Les faux nuages", "trahison", ["faux", "sauts", "fondants", "voyageurs"], {}),
+    ("Les moulins célestes", "exploration", ["moulin", "chute", "sauts", "vent"], {}),
+    ("L'arc-en-ciel perdu", "histoire", ["arcs", "palais", "fondants", "souffleur"], {}),
+    ("Les cerfs-volants", "action", ["cerfs", "chute", "oiseaux", "sauts"], {}),
+    ("La grêle", "action", ["grele", "sauts", "fondants", "etincelles"], {}),
+    ("L'escalier céleste", "action", ["escalier", "chute", "ballons", "orage"], {"_haut": True}),
+    ("Le nid de l'Oiseau-tonnerre", "exploration", ["orage", "faux", "moulin", "grele", "souffleur", "cerfs", "trampolines", "arcs"], {}),
+]
+
+INTRO_CIEL = {
+    1: ["Pas de sol ici : va de nuage en nuage. Si tu tombes, tu repars du drapeau !"],
+    2: ["Les nuages roses fondent peu après qu'on se pose dessus"],
+    3: ["Les nuages voyageurs t'emmènent de l'autre côté"],
+    4: ["Orage ! Une ombre sur le nuage annonce l'éclair : ne reste pas dessous"],
+    5: ["Le palais céleste… ses gardiens ont des choses à raconter"],
+    6: ["Les arcs-en-ciel s'effacent en clignotant : traverse vite !"],
+    7: ["Monte dans la nacelle du ballon : elle t'emmène là-haut"],
+    8: ["Volées d'oiseaux ! Saute par-dessus, ou un COUP de massue"],
+    9: ["La chute libre : on descend, on descend… sans rater les nuages !"],
+    10: ["Les nuages souffleurs gonflent les joues… puis soufflent fort !"],
+    11: ["Nuage-trampoline : chaque rebond enchaîné monte plus haut"],
+    12: ["Sous la pluie, Max saute moins haut"],
+    13: ["Certains nuages ne portent rien… Ils brillent un tout petit peu"],
+    14: ["Moulin céleste : monte sur une pale, laisse-toi porter"],
+    15: ["L'arc-en-ciel perdu mène à la porte du volcan"],
+    16: ["Les cerfs-volants te portent… s'ils le veulent bien"],
+    17: ["Grêle ! Les ombres annoncent où tombent les grêlons"],
+    18: ["L'escalier céleste : on monte, on monte, sous l'orage"],
+    19: ["Le nid de l'Oiseau-tonnerre : tout le ciel réuni. Courage !"],
+}
+
+
+def monde_nuages():
+    L = []
+    for i, (nom, type_, motifs, opts) in enumerate(NIVEAUX_CIEL):
+        num = i + 1
+        opts = dict(opts)
+        haut = opts.pop("_haut", False)
+        c = Ciel(nom, type_, num, h=30 if haut else 20, y=(8 if nom == "La chute libre" else 25) if haut else 12)
+        c.depart()
+        for k, txt in enumerate(INTRO_CIEL.get(num, [])):
+            c.astuce(txt, 4 + k * 14, max=0)
+        cible = 150 if type_ == "histoire" else 195 if c.defi else 180
+        if nom == "La chute libre":
+            # on commence tout en haut : de longues descentes, puis des ballons pour remonter
+            remplir_ciel(c, motifs, cible, d0=0)
+        else:
+            remplir_ciel(c, motifs, cible, d0=1 if c.defi else 0)
+        c.porte()
+        lv = c.fini()
+        lv["fin"] = FIN_NUAGES[num]
+        L.append(lv)
+    L.append(boss_oiseau())
+    L[-1]["fin"] = FIN_NUAGES[20]
+    return L
+
+
+def boss_oiseau():
+    """Arène du boss : un sol de nuages, trois cloches sur des nuages à trois hauteurs, le nid au milieu."""
+    W, h = 44, 18
+    rows = [["."] * W for _ in range(h)]
+    for y in range(h):
+        rows[y][0] = rows[y][W - 1] = "#"
+    sol = h - 3
+    for x in range(1, W - 1):
+        rows[sol][x] = "~"
+    cloches = []
+    for (x, y) in ((8, sol - 4), (21, sol - 7), (34, sol - 4)):
+        for k in range(-2, 3):
+            rows[y + 1][x + k] = "~"
+        cloches.append([x, y])
+    # marches de nuages pour monter aux cloches
+    for (x, y) in ((4, sol - 2), (13, sol - 2), (16, sol - 4), (25, sol - 4), (28, sol - 2), (38, sol - 2)):
+        rows[y][x] = rows[y][x + 1] = "~"
+    rows[sol - 1][3] = "P"; rows[sol - 1][W - 4] = "D"
+    return {"name": "L'Oiseau-tonnerre", "type": "histoire", "ammo": [6, 0], "map": ["".join(r) for r in rows],
+            "triggers": [{"zone": [5, 1, 1, h - 2], "max": 0, "act": [["hint", "Sonne une cloche (COUP) quand l'Oiseau-tonnerre passe juste au-dessus ! Et fuis l'ombre des éclairs."]]}],
+            "cloches": cloches, "nid": [21, sol], "boss": "oiseau", "doorHidden": True, "monde": 4,
+            "palette": "nuages", "decor": "nuages", "orage": True, "_tnt": 0}
+
+
+# =====================================================================
+#  MONDE 5 — LA CITÉ D'OR (20 niveaux) : la lave, et des mécanismes dorés qui bougent tout le temps
+# =====================================================================
+def _lave_fond(n, c):
+    """Colonne au-dessus du vide… avec de la lave tout au fond."""
+    n.put(c, n.h - 2, "R"); n.put(c, n.h - 1, "#")
+
+
+def _fosse_possible(n):
+    """Il faut au moins deux cases de vide sous le sol pour une fosse de lave : sinon on monte d'abord."""
+    while n.y > n.h - 5:
+        n.monte(min(2, n.y - (n.h - 5))); n.plat(2)
+
+
+def _v_lave(n, d, r):
+    n.plat(2)
+    for _ in range(2 + (d > 0 and r.random() < 0.5)):
+        c = n.colonne(); n.put(c, n.y + 1, "R")
+    n.plat(2)
+
+
+def _v_tapis(n, d, r):
+    sens = r.choice("{}}")
+    x0 = n.plat(1)
+    for _ in range(6 + 2 * d):
+        c = n.colonne(); n.put(c, n.y + 1, sens)
+    for _ in range(2):
+        c = n.colonne(); n.put(c, n.y + 1, "R")
+    n.plat(2)
+    n.astuce("Tapis roulant : il t'emporte… jusqu'à la lave !" if sens == "}" else "Ce tapis roule à l'envers : prends de l'élan !", x0, max=0)
+
+
+def _v_jets(n, d, r):
+    long = 9 + 2 * d
+    x0 = n.plat(long)
+    per = r.choice((160, 180))
+    for k, x in enumerate(range(x0 + 2, x0 + long - 1, 3)):
+        n.opts.setdefault("jets", []).append([x, n.y, 3, per, (k * 50) % per])
+    n.astuce("Quand la grille fume, le feu va jaillir !", x0 - 2, max=0)
+
+
+def _v_wagon(n, d, r):
+    if n.y < 7:
+        return False
+    _fosse_possible(n)
+    n.plat(2)
+    L = 14 + 2 * d
+    x0 = n.x
+    for k in range(L):
+        c = n.colonne(fond="vide"); _lave_fond(n, c)
+        if d and k in (5, 6, 10, 11):
+            n.put(c, n.y - 4, "#"); n.put(c, n.y - 3, "v")   # pics au plafond : ne saute pas ici
+    n.movers.append([x0, n.y + 1, 3, L - 3, 0, 0, "wagon"])
+    n.plat(4)
+    n.astuce("Monte dans le wagonnet ! Il bascule au bout des rails : saute avant !", x0 - 2, max=0)
+
+
+def _v_magma(n, d, r):
+    long = 12 + 2 * d
+    x0 = n.plat(long)
+    n.opts.setdefault("grele", []).append([x0, x0 + long - 1, 130 - 15 * d, r.randint(0, 60), 1])
+    n.astuce("Pluie de magma : regarde les ombres au sol", x0 - 2, max=0)
+
+
+def _v_pont(n, d, r):
+    _fosse_possible(n)
+    x0 = n.plat(2)
+    for _ in range(5 + d):
+        c = n.colonne(fond="vide"); n.put(c, n.y + 1, "%"); _lave_fond(n, c)
+    n.plat(2)
+    n.astuce("Les dalles d'or fondent sous tes pieds : cours !", x0, max=0)
+
+
+def _v_engrenage(n, d, r):
+    if n.y < 9:
+        return False
+    _fosse_possible(n)
+    rr = 3
+    a = (n.x - 1, n.y)
+    x0 = n.x
+    for _ in range(2 * rr + 3):
+        c = n.colonne(fond="vide"); _lave_fond(n, c)
+    cx, cy = x0 + rr + 1, n.y - 1
+    n.opts.setdefault("moulins", []).append([cx, cy, rr, round(0.9 + 0.15 * d, 2), 4, "engrenage"])
+    n.y -= 3
+    n.plat(4)
+    n.liens.append([list(a), [n.x - 4, n.y]])
+    n.astuce("Engrenage : monte sur une dent, laisse-toi porter", x0 - 3, max=0)
+
+
+def _v_effondre(n, d, r):
+    avant = len(n.trig)
+    n.fuite_effondrement(14 + 2 * d)
+    for tr in n.trig[avant:]:
+        if any(a[0] == "collapse" for a in tr["act"]):
+            tr["lethal"] = True   # le sol tombe derrière Max : le vérificateur regarde le chemin, pas l'après
+
+
+def _v_leviers(n, d, r):
+    if n.y < 6:
+        return False
+    n.leviers()
+
+
+MOTIFS.update({"lave": _v_lave, "tapis": _v_tapis, "jets": _v_jets, "wagon": _v_wagon, "magma": _v_magma,
+               "pont_or": _v_pont, "engrenage": _v_engrenage, "effondre_or": _v_effondre, "leviers": _v_leviers,
+               "golem": _ennemi("N", 8), "salamandre": _ennemi("I", 10), "gardien": _ennemi("U", 8), "robot": _ennemi("d", 10),
+               "pistons": _m_ecraseurs, "vapeur": _m_geyser, "miroirs": _m_soleil})
+
+NIVEAUX_OR = [
+    ("Les portes d'or", "exploration", ["tapis", "lave", "jets", "salamandre"], {}),
+    ("La rivière de lave", "action", ["lave", "pont_or", "engrenage", "salamandre"], {}),
+    ("Les jets de feu", "action", ["jets", "lave", "tapis", "golem"], {}),
+    ("Le wagonnet", "action", ["wagon", "lave", "jets", "salamandre"], {}),
+    ("La salle des trésors", "histoire", ["gardien", "leviers", "tapis", "lave"], {}),
+    ("Les tapis roulants", "trahison", ["tapis", "jets", "lave", "robot"], {}),
+    ("Les golems", "action", ["golem", "lave", "pistons", "tapis"], {}),
+    ("La pluie de magma", "action", ["magma", "lave", "golem", "jets"], {}),
+    ("La fournaise", "action", ["jets", "lave", "tapis", "pont_or"], {"_timer": True}),
+    ("Les miroirs solaires", "histoire", ["miroirs", "gardien", "lave", "tapis"], {}),
+    ("Les salamandres", "action", ["salamandre", "lave", "jets", "pont_or"], {}),
+    ("Les engrenages", "exploration", ["engrenage", "lave", "tapis", "golem"], {}),
+    ("Les pistons d'or", "trahison", ["pistons", "tapis", "lave", "salamandre"], {}),
+    ("La vapeur", "exploration", ["vapeur", "jets", "lave", "golem"], {}),
+    ("Le marché aux trésors", "histoire", ["gardien", "tapis", "pont_or", "robot"], {}),
+    ("Les ponts qui fondent", "action", ["pont_or", "lave", "magma", "salamandre"], {}),
+    ("La forge d'Archibald", "action", ["robot", "pistons", "tapis", "jets"], {}),
+    ("L'effondrement", "action", ["effondre_or", "lave", "magma", "golem"], {}),
+    ("Le cœur du volcan", "exploration", ["lave", "wagon", "engrenage", "magma", "pont_or", "gardien", "robot", "jets", "tapis"], {}),
+]
+
+INTRO_OR = {
+    1: ["La cité d'or ! Ici, tout bouge : tapis, engrenages, jets de feu… Et la lave brûle !"],
+    2: ["Lave : ne tombe pas dedans. Les dalles d'or fondent sous les pieds"],
+    3: ["Jets de feu : quand la grille fume, attends"],
+    4: ["Le wagonnet t'emmène au-dessus de la lave. Saute avant qu'il bascule !"],
+    5: ["La salle des trésors… Les gardiens d'or bougent quand tu leur tournes le dos"],
+    6: ["Certains tapis roulent vers la lave, d'autres à l'envers"],
+    7: ["Golem de lave : il faut deux coups pour l'assommer"],
+    8: ["Pluie de magma ! Les ombres annoncent les pierres en fusion"],
+    9: ["La fournaise : Archibald a allumé une mèche. Vite !"],
+    10: ["Les miroirs d'or renvoient le soleil : reste à l'ombre des piliers"],
+    11: ["Salamandre : elle file et laisse une traînée de feu"],
+    12: ["Engrenage : monte sur une dent, laisse-toi porter"],
+    13: ["Pistons d'or : passe quand ils remontent"],
+    14: ["La vapeur te propulse vers le haut"],
+    15: ["Le marché aux trésors : ne tourne pas le dos aux gardiens !"],
+    16: ["Les dalles d'or fondent : cours sans t'arrêter"],
+    17: ["Robots d'Archibald : s'ils te voient, ALARME et pluie de magma !"],
+    18: ["Tout s'effondre derrière toi : fonce !"],
+    19: ["Le cœur du volcan : tout le jeu réuni. Courage, Max !"],
+}
+
+FIN_OR = {
+    1: "Archibald, devant une porte d'or : « Une cité entière en or ! Je vais être riche ! Enfin… plus riche. Enfin… riche. »",
+    2: "Archibald souffle sur ses bottes qui fument : « La lave, c'est comme le chocolat chaud. Ça a l'air bon, mais ça brûle. »",
+    3: "Archibald, les sourcils roussis : « Ma moustache ! Ma belle moustache ! Il en reste la moitié. »",
+    4: "Archibald sort du wagonnet, tout ébouriffé : « Encore ! Encore un tour ! Non. En fait non. »",
+    5: "Histoire. Dans la salle des trésors, Archibald trouve la dernière pièce de sa carte. Elle montre le cœur du volcan… et une phrase de son grand-père : « Ensemble, ou pas du tout. » Il range vite la carte dans sa poche.",
+    6: "Archibald court à reculons sur un tapis : « J'avance ! Je recule ! Je ne sais plus ! »",
+    7: "Archibald, assis sur un golem endormi : « Il ronfle. Comme mon oncle Gérard. »",
+    8: "Archibald, avec une casserole sur la tête : « Un chapeau, c'est bien. Une casserole, c'est mieux. »",
+    9: "Archibald, en sueur : « Il fait chaud, il fait chaud, il fait CHAUD ! Quelqu'un a de la glace ? »",
+    10: "Histoire. Les miroirs d'or s'alignent et éclairent une fresque : deux explorateurs qui portent ensemble l'Œil de Jade. Archibald regarde longtemps. « Mon grand-père… et le tien, Max ? »",
+    11: "Archibald saute d'un pied sur l'autre : « Ces salamandres laissent du feu partout ! Aucune politesse ! »",
+    12: "Archibald, coincé dans un engrenage : « Je suis devenu une pièce de la machine. Une pièce très importante. »",
+    13: "Archibald, aplati comme une crêpe : « Je vais bien. Je suis juste… plus large. »",
+    14: "Archibald, propulsé par la vapeur : « Je voooole ! Comme l'Oiseau-tonnerre ! En moins gracieux ! »",
+    15: "Histoire. Au marché aux trésors, Archibald tend la main : « Max, je te propose un marché. L'Œil de Jade… on le prend à deux ? » Puis il se ravise : « Non ! Il est à moi ! Rendez-vous au cœur du volcan ! »",
+    16: "Archibald, sur une dalle qui fond : « Ma dalle fond. Ma dalle fond ! Pourquoi c'est toujours MA dalle ? »",
+    17: "Archibald, au milieu de ses robots : « Ils sont gentils, en vrai. Ils sonnent juste un peu fort. »",
+    18: "Archibald, couvert de poussière : « Tout s'est effondré. Sauf mon moral. Enfin, un peu mon moral aussi. »",
+    19: "Archibald, devant une énorme machine à vapeur : « Tu aimes mon Fouisseur ? Il creuse jusqu'à l'Œil de Jade ! Recule, Max ! »",
+    20: "Le Fouisseur cale dans un nuage de suie. Archibald en sort, tout noir, et tousse : « D'accord, d'accord… Tu as gagné. » Il sourit enfin : « On le prend ensemble, l'Œil de Jade ? » Max hoche la tête. Ensemble, ils ouvrent le cœur du volcan. FIN… pour l'instant !",
+}
+
+
+def monde_or():
+    NUMERO[0] = 0
+    L = []
+    for i, (nom, type_, motifs, opts) in enumerate(NIVEAUX_OR):
+        opts = dict(opts)
+        timer = opts.pop("_timer", False)
+        n = Niveau(nom, type_, monde=5, sol=12)
+        n.defi = n.num in DEFIS_MONDE
+        n._palette = "cite"
+        n.motifs = motifs
+        n.cible = 150 if type_ == "histoire" else 195 if n.defi else 180
+        n.depart(4)
+        for k, txt in enumerate(INTRO_OR.get(n.num, [])):
+            n.astuce(txt, 4 + k * 14, max=0)
+        allonger(n)
+        n.porte(4)
+        if timer:
+            n.minuterie(2.4)
+        lv = n.fini()
+        lv["decor"] = "cite"
+        lv["fin"] = FIN_OR[n.num]
+        L.append(lv)
+    L.append(boss_fouisseur())
+    L[-1]["fin"] = FIN_OR[20]
+    return L
+
+
+def boss_fouisseur():
+    """Arène du boss : la machine d'Archibald à droite, trois cheminées sur son toit, des marches pour y monter."""
+    W, h, sol = 44, 17, 14
+    rows = [["#"] * W for _ in range(h)]
+    for y in range(1, sol + 1):
+        for x in range(1, W - 1):
+            rows[y][x] = "."
+    for y in range(9, sol + 1):
+        for x in range(30, 42):
+            rows[y][x] = "8"
+    for x in (32, 35, 38):
+        rows[7][x] = rows[8][x] = "8"
+    for (x, y) in ((21, 13), (24, 11), (27, 10)):
+        rows[y][x] = rows[y][x + 1] = "#"
+    rows[sol][2] = "P"; rows[sol][10] = "D"; rows[sol][7] = "t"
+    return {"name": "Le Fouisseur d'Archibald", "type": "histoire", "ammo": [6, 1], "map": ["".join(r) for r in rows],
+            "triggers": [{"zone": [4, 1, 1, h - 2], "max": 0, "act": [["hint", "Monte sur la machine et lâche une dynamite (BOUM) dans chaque cheminée ! Évite la fumée noire : le feu va jaillir."]]}],
+            "machine": [30, 9, 12, 6], "cheminees": [[32, 7], [35, 7], [38, 7]], "caisse": [7, sol],
+            "boss": "fouisseur", "doorHidden": True, "monde": 5, "palette": "cite", "decor": "cite", "_tnt": 0}
+
+
+# =====================================================================
 #  MONDE 2 — LES NEIGES DE L'HIMALAYA (20 niveaux)
 # =====================================================================
 FIN_HIMALAYA = {
@@ -2994,7 +3747,7 @@ def appliquer(lv, morts):
                 porte = (x, y)
     # plateformes mobiles : un trajet horizontal sert de pont ; un monte-charge relie le bas et le haut
     liens = []
-    for (mx, my, mw, dx, dy, _v) in lv.get("movers", []):
+    for (mx, my, mw, dx, dy, _v, *_s) in lv.get("movers", []):
         if dy == 0:
             for xx in range(mx, mx + mw + dx):
                 if g[my][xx] == ".":
@@ -3049,6 +3802,10 @@ def appliquer(lv, morts):
                 continue
             if k == "wobble":
                 continue
+            if k == "fond":
+                for xx in range(a[1], a[1] + (a[3] if len(a) > 3 else 1)):
+                    g[a[2]][xx] = "."
+                continue
             if k in ("collapse", "set", "spikes", "fall"):
                 x0, y0, w, h = a[1:5]
                 ch = {"collapse": ".", "fall": ".", "spikes": a[5] if len(a) > 5 else "^", "set": a[5] if len(a) > 5 else "."}[k]
@@ -3067,7 +3824,7 @@ O2_CASES = 40   # cases qu'on peut nager sans respirer (le jeu en permet ~70 : b
 FROID_CASES = 70   # cases parcourues loin d'un brasero (le jeu en permet bien plus)
 
 
-def accessible(g, porte, liens=(), depart=None, eau=None, bulles=(), chaud=None):
+def accessible(g, porte, liens=(), depart=None, eau=None, bulles=(), chaud=None, pluie=frozenset()):
     H, W = len(g), len(g[0])
     air_bulles = set(bulles)
 
@@ -3079,13 +3836,13 @@ def accessible(g, porte, liens=(), depart=None, eau=None, bulles=(), chaud=None)
             return False
         if y >= H:
             return True
-        return g[y][x] not in "#J<>()^vcgG=qnziyVK"  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
+        return g[y][x] not in "#J<>()^vcgG=qnziyVK~%*{}8"  # B, x, F, o, _ sont traversables (dynamite / chute / illusion / fantôme / dalle)
 
     def mortel(x, y):
-        return 0 <= y < H and 0 <= x < W and g[y][x] in "^v"
+        return 0 <= y < H and 0 <= x < W and g[y][x] in "^vR"
 
     def porteur(x, y):
-        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG=qnziyVK"   # q (ressort fragile) compte comme un simple sol
+        return 0 <= y < H and 0 <= x < W and g[y][x] in "#BJ<>()cgG=qnziyVK~%*{}8"   # q (ressort fragile) compte comme un simple sol
 
     def debout(x, y):
         if 0 <= y < H and 0 <= x < W and g[y][x] == "|":
@@ -3137,8 +3894,8 @@ def accessible(g, porte, liens=(), depart=None, eau=None, bulles=(), chaud=None)
                 c = chute(x + dx, y)
                 if c:
                     cibles.append(c)
-        ressort = y + 1 < H and g[y + 1][x] in "JV"
-        haut = (6 if ressort else 2) if cibles_sauts else 0
+        ressort = y + 1 < H and g[y + 1][x] in "JV*"
+        haut = (6 if ressort else 1 if x in pluie else 2) if cibles_sauts else 0
         for apex in range(haut, 0, -1):
             if all(libre(x, y - r) for r in range(1, apex + 1)):
                 break
@@ -3216,7 +3973,10 @@ def acces(lv, g, porte, liens, depart=None):
             for x, c in enumerate(row):
                 if c == "P":
                     chaud.add((x, y))
-    return accessible(g, porte, liens, depart, lv.get("eau"), bulles, chaud)
+    pluie = set()
+    for a, b in lv.get("pluies", []):
+        pluie.update(range(a, b + 1))
+    return accessible(g, porte, liens, depart, lv.get("eau"), bulles, chaud, pluie)
 
 
 def verifier(niveaux):
@@ -3297,7 +4057,7 @@ def pieces(lv):
             zx, _, zw, _ = tr["zone"]
             interdit.update(range(zx - 1, zx + zw + 1))
     def sur(x, y):
-        return x not in interdit and rows[y][x] == "." and rows[y + 1][x] in "#" and rows[y - 1][x] == "." \
+        return x not in interdit and rows[y][x] == "." and rows[y + 1][x] in "#~" and rows[y - 1][x] == "." \
             and all(rows[y][x + d] not in "^vx" for d in (-1, 1))
     cands = sorted(c for c in vus if sur(*c) and 3 < c[0] < W - 4)
     voulu = max(3, min(7, W // 12))
@@ -3335,7 +4095,7 @@ def point_de_sauvegarde(lv, plage=(0.35, 0.7), deja=()):
         if lv.get("eau") is not None and y >= lv["eau"]:
             return False   # dans les abysses, le drapeau est toujours planté hors de l'eau
         for dx in (-1, 0, 1):
-            if rows[y][x + dx] in "^vxcoJ<>" or rows[y + 1][x + dx] not in "#":
+            if rows[y][x + dx] in "^vxcoJ<>" or rows[y + 1][x + dx] not in "#~":
                 return False
         return rows[y - 1][x] == "." and rows[y][x] == "."
     cands = sorted((c for c in vus if sur(*c)), key=lambda c: abs(c[0] - W * (plage[0] + plage[1]) / 2))
@@ -3359,9 +4119,10 @@ def _occupees(lv):
         if "zone" in tr:
             zx, _, zw, _ = tr["zone"]
             occ.update(range(zx - 1, zx + zw + 1))
-    for k in ("movers", "crushers", "winds", "vines", "flames", "beams", "secrets", "glacons"):
+    for k in ("movers", "crushers", "winds", "vines", "flames", "beams", "secrets", "glacons", "jets", "moulins", "grele"):
         for e in lv.get(k, []):
-            if k == "winds": occ.update(range(e[0] - 1, e[1] + 2))
+            if k in ("winds", "grele"): occ.update(range(e[0] - 1, e[1] + 2))
+            elif k == "moulins": occ.update(range(e[0] - e[2] - 3, e[0] + e[2] + 4))
             elif k == "movers": occ.update(range(e[0] - 1, e[0] + e[2] + e[3] + 2))
             elif k == "secrets": occ.update(range(e[0] - 1, e[0] + e[2] + 1))
             elif k == "vines": occ.update(range(e[0] - 6, e[0] + 7))
@@ -3597,6 +4358,22 @@ def main():
             lv["_pieges"] = pimenter_mer(lv, 3000 + i)
         drapeaux(lv)
         pieces(lv)
+    nua = monde_nuages()
+    for i, lv in enumerate(nua):
+        lv["act"] = 4
+        adoucir(lv)
+        if not lv.get("boss"):
+            lv["_pieges"] = pimenter_ciel(lv, 4000 + i)
+        drapeaux(lv)
+        pieces(lv)
+    cite = monde_or()
+    for i, lv in enumerate(cite):
+        lv["act"] = 4
+        adoucir(lv)
+        if not lv.get("boss"):
+            lv["_pieges"] = pimenter(lv, 5000 + i)
+        drapeaux(lv)
+        pieces(lv)
     him = monde_himalaya()
     for lv in him:
         lv["act"] = 2
@@ -3622,14 +4399,16 @@ def main():
     for i, lv in enumerate(inca): lv["id"] = f"inca-{i+1}"
     for i, lv in enumerate(him): lv["id"] = f"him-{i+1}"
     for i, lv in enumerate(mer): lv["id"] = f"aby-{i+1}"
+    for i, lv in enumerate(nua): lv["id"] = f"nua-{i+1}"
+    for i, lv in enumerate(cite): lv["id"] = f"or-{i+1}"
     for lv in autres: lv["id"] = f"old-{lv['orig']}"
     ordre_v2 = [lv["id"] for lv in inca] + [lv["id"] for lv in autres]
     ordre_v3 = [lv["id"] for lv in inca] + [lv["id"] for lv in autres[:20]] + ["mer-1", "mer-2", "mer-3"] + [lv["id"] for lv in autres[23:]]
-    niveaux = inca + him + mer + autres[-40:]
+    niveaux = inca + him + mer + nua + cite
     assert len(niveaux) == 100, len(niveaux)
     err = verifier(niveaux)
     print("Pièges refusés par le vérificateur :", REJETS)
-    print("Pièges surprises :", " ".join(f"{lv['id']}:{lv.get('_pieges', 0)}" for lv in inca + him + mer))
+    print("Pièges surprises :", " ".join(f"{lv['id']}:{lv.get('_pieges', 0)}" for lv in inca + him + mer + nua + cite))
     for lv in niveaux:
         lv.pop("_pieges", None)
         lv.pop("_tnt", None)
@@ -3646,6 +4425,8 @@ def main():
     tailles = [len(lv["map"][0]) for lv in niveaux]
     print(f"{len(niveaux)} niveaux écrits, largeur {min(tailles)}–{max(tailles)} cases, {err} erreur(s)")
     print("Himalaya :", ", ".join(f"{i+1} {lv['name']} ({len(lv['map'][0])}×{len(lv['map'])})" for i, lv in enumerate(him)))
+    print("Cité d'or :", ", ".join(f"{lv['name']} ({len(lv['map'][0])}×{len(lv['map'])})" for lv in cite))
+    print("Nuages :", ", ".join(f"{lv['name']} ({len(lv['map'][0])}×{len(lv['map'])})" for lv in nua))
     print("Abysses :", ", ".join(f"{lv['name']} ({len(lv['map'][0])}×{len(lv['map'])})" for lv in mer))
     print("Monde inca :", ", ".join(f"{i+1} {lv['name']} ({len(lv['map'][0])}×{len(lv['map'])}, {len(lv.get('checkpoints', []))} drapeau(x))" for i, lv in enumerate(inca)))
     sys.exit(1 if err else 0)
