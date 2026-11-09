@@ -103,6 +103,15 @@
   .touche.on { background: rgba(226,166,64,.35); border-color: var(--or); transform: scale(.94); }
   .touche.saut { width: 80px; height: 80px; }
   .touche.tnt { color: var(--sang); }
+  /* flèches : deux grandes touches collées ; on glisse le doigt de l'une à l'autre sans le lever,
+     et toute la zone autour (et entre) compte : moitié gauche = ◀, moitié droite = ▶ */
+  .pad.gauche { gap: 4px; touch-action: none; }
+  .pad.gauche::before { content: ""; position: absolute; inset: -26px -30px -12px -12px; }
+  .touche.dir { width: 88px; height: 70px; border-radius: 24px; pointer-events: none; }
+  .touche.dir .fleche { border-top-width: 14px; border-bottom-width: 14px; }
+  .touche.dir .fleche.g { border-right-width: 20px; }
+  .touche.dir .fleche.d { border-left-width: 20px; }
+  @media (max-height: 340px) { .touche.dir { width: 76px; height: 60px; } }
   .fleche { width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; }
   .fleche.g { border-right: 16px solid currentColor; margin-right: 4px; }
   .fleche.d { border-left: 16px solid currentColor; margin-left: 4px; }
@@ -280,8 +289,8 @@
 <button id="btn-amulette" class="pilule jade" type="button" hidden>✦ Activer une amulette</button>
 
 <div class="pad gauche" aria-hidden="true">
-  <div class="touche" data-btn="left"><span class="fleche g"></span></div>
-  <div class="touche" data-btn="right"><span class="fleche d"></span></div>
+  <div class="touche dir" data-dir="left"><span class="fleche g"></span></div>
+  <div class="touche dir" data-dir="right"><span class="fleche d"></span></div>
 </div>
 <div class="pad droite" aria-hidden="true">
   <div class="touche tnt" data-btn="tnt">TNT</div>

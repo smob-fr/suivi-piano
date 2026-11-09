@@ -213,6 +213,26 @@
     el.addEventListener("contextmenu", (e) => e.preventDefault());
   });
 
+  // Croix de direction : une seule zone tactile ; la moitié sous le doigt décide, et on peut glisser d'une flèche à l'autre.
+  const padG = document.querySelector(".pad.gauche");
+  if (padG) {
+    const dirs = { left: padG.querySelector('[data-dir="left"]'), right: padG.querySelector('[data-dir="right"]') };
+    btnEls.left = dirs.left; btnEls.right = dirs.right;
+    const choisir = (e) => {
+      const r = padG.getBoundingClientRect();
+      const name = e.clientX < r.left + r.width / 2 ? "left" : "right";
+      const avant = pointerOwner.get(e.pointerId);
+      if (avant === name) return;
+      if (avant) relacher(e.pointerId);
+      pointerOwner.set(e.pointerId, name); setInput(name, true); dirs[name].classList.add("on");
+    };
+    padG.addEventListener("pointerdown", (e) => { e.preventDefault(); unlockAudio(); try { padG.setPointerCapture(e.pointerId); } catch (_) {} choisir(e); });
+    padG.addEventListener("pointermove", (e) => { if (pointerOwner.has(e.pointerId) && ["left", "right"].includes(pointerOwner.get(e.pointerId))) choisir(e); });
+    const fin = (e) => relacher(e.pointerId);
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach((ev) => padG.addEventListener(ev, fin));
+    padG.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
   /* ================= Son ================= */
   let audio = null, muted = false;
   try { muted = localStorage.getItem("temple-muet") === "1"; } catch (_) {}
