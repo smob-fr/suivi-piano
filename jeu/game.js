@@ -18,7 +18,7 @@
     gravity: 0.35, maxFall: 6.5,
     run: 1.8, accel: 0.35,
     jump: -5.2, jumpCut: -2, spring: -7.8,
-    coyote: 8, buffer: 10,   // tolérances : saut accepté un peu après le bord, ou un peu avant d'atterrir
+    coyote: 8, buffer: 14,   // tolérances : saut accepté un peu après le bord, ou un peu avant d'atterrir
   };
 
   const PALETTES = {
@@ -153,8 +153,9 @@
     KeyX: "fire", KeyJ: "fire",
     KeyC: "tnt", KeyK: "tnt", ArrowDown: "tnt", KeyS: "tnt",
   };
-  function setInput(name, down) {
-    if (down && !input[name] && name in pressed) pressed[name] = true;
+  function setInput(name, down, nouveau) {
+    // un nouveau doigt sur le bouton = un nouvel appui, même si un relâchement précédent s'est perdu
+    if (down && (nouveau || !input[name]) && name in pressed) pressed[name] = true;
     input[name] = down;
     // saut immédiat dès l'appui (sans attendre l'image suivante)
     if (name === "jump" && down && R && game.mode === "play" && !game.paused) {
@@ -177,6 +178,7 @@
   function releaseAll() {
     for (const k in input) input[k] = false;
     pointerOwner.clear();
+    doigts.clear();
     document.querySelectorAll(".touche.on").forEach((b) => b.classList.remove("on"));
   }
 
@@ -197,9 +199,34 @@
     if (e.touches && e.touches.length === 0 && pointerOwner.size) { for (const id of [...pointerOwner.keys()]) relacher(id); }
   }, true));
   document.addEventListener("visibilitychange", () => { if (document.hidden) releaseAll(); });
+  // Boutons d'action sur écran tactile : on écoute directement les doigts (touchstart / touchend).
+  // Chaque doigt est suivi par son identifiant ; le bouton reste enfoncé tant qu'un doigt est dessus.
+  const doigts = new Map();
+  const tactile = "ontouchstart" in window;
+  function lacherDoigt(id) {
+    const name = doigts.get(id);
+    if (!name) return;
+    doigts.delete(id);
+    if (![...doigts.values()].includes(name) && ![...pointerOwner.values()].includes(name)) { setInput(name, false); btnEls[name] && btnEls[name].classList.remove("on"); }
+  }
+  ["touchend", "touchcancel"].forEach((ev) => window.addEventListener(ev, (e) => {
+    for (const t of e.changedTouches) lacherDoigt(t.identifier);
+    if (e.touches && e.touches.length === 0) for (const id of [...doigts.keys()]) lacherDoigt(id);
+  }, true));
   document.querySelectorAll("[data-btn]").forEach((el) => {
     const name = el.dataset.btn;
     btnEls[name] = el;
+    if (tactile) {
+      el.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        unlockAudio();
+        for (const t of e.changedTouches) doigts.set(t.identifier, name);
+        setInput(name, true, true);
+        el.classList.add("on");
+      }, { passive: false });
+      el.addEventListener("contextmenu", (e) => e.preventDefault());
+      return;
+    }
     const down = (e) => {
       e.preventDefault();
       unlockAudio();

@@ -87,9 +87,9 @@
   .pad { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); display: none; gap: 8px; z-index: 4; }
   body.tactile.en-jeu .pad { display: flex; }
   .pad.gauche { left: calc(env(safe-area-inset-left, 0px) + 10px); }
-  .pad.droite { right: calc(env(safe-area-inset-right, 0px) + 10px); grid-template-columns: 56px 56px; justify-items: center; }
+  .pad.droite { right: calc(env(safe-area-inset-right, 0px) + 10px); grid-template-columns: 76px 76px; justify-items: center; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
   body.tactile.en-jeu .pad.droite { display: grid; }
-  .pad.droite .saut { grid-column: 1 / -1; justify-self: end; }
+  .pad.droite .saut { grid-column: 1 / -1; justify-self: stretch; }
   .touche {
     width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(241,230,204,.28);
     background: rgba(6,8,6,.28); display: grid; place-items: center;
@@ -99,9 +99,10 @@
   }
   /* zone de toucher plus large que le bouton dessiné : un appui un peu à côté compte quand même */
   .touche::after { content: ""; position: absolute; inset: -10px; border-radius: 50%; }
-  .touche.saut::after { inset: -22px; }
+  /* SAUT : un grand rectangle, et sa zone de toucher va jusqu'aux bords de l'écran */
+  .touche.saut::after { inset: -6px -40px -40px -26px; border-radius: 18px; }
   .touche.on { background: rgba(226,166,64,.35); border-color: var(--or); transform: scale(.94); }
-  .touche.saut { width: 80px; height: 80px; }
+  .touche.saut { width: auto; height: 84px; border-radius: 18px; font-size: 14px; }
   .touche.tnt { color: var(--sang); }
   /* flèches : deux grandes touches collées ; on glisse le doigt de l'une à l'autre sans le lever,
      et toute la zone autour (et entre) compte : moitié gauche = ◀, moitié droite = ▶ */
@@ -111,7 +112,7 @@
   .touche.dir .fleche { border-top-width: 14px; border-bottom-width: 14px; }
   .touche.dir .fleche.g { border-right-width: 20px; }
   .touche.dir .fleche.d { border-left-width: 20px; }
-  @media (max-height: 340px) { .touche.dir { width: 76px; height: 60px; } }
+  @media (max-height: 340px) { .touche.dir { width: 76px; height: 60px; } .touche.saut { height: 72px; } .pad.droite { grid-template-columns: 70px 70px; } }
   .fleche { width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; }
   .fleche.g { border-right: 16px solid currentColor; margin-right: 4px; }
   .fleche.d { border-left: 16px solid currentColor; margin-left: 4px; }
