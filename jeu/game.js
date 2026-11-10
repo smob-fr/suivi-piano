@@ -143,6 +143,7 @@
   }
 
   /* ================= Entrées ================= */
+  const SAUT_MIN = 7;   // images de saut garanties, même si le doigt est déjà relevé
   const input = { left: false, right: false, jump: false, fire: false, tnt: false };
   const pressed = { jump: false, fire: false, tnt: false };
   const keyMap = {
@@ -158,7 +159,7 @@
     // saut immédiat dès l'appui (sans attendre l'image suivante)
     if (name === "jump" && down && R && game.mode === "play" && !game.paused) {
       const p = R.player;
-      if (p && p.alive && !p.climb && (p.grounded || p.coyote > 0)) { p.vy = PHYS.jump; p.coyote = 0; p.buffer = 0; pressed.jump = false; p.grounded = false; sfx.jump(); }
+      if (p && p.alive && !p.climb && (p.grounded || p.coyote > 0)) { p.vy = PHYS.jump; p.coyote = 0; p.buffer = 0; pressed.jump = false; p.grounded = false; p.sautMin = SAUT_MIN; sfx.jump(); }
     }
   }
   window.addEventListener("keydown", (e) => {
@@ -856,9 +857,11 @@
     p.swim = false;
     p.coyote = p.grounded ? PHYS.coyote : p.coyote - 1;
     if (pressed.jump) p.buffer = PHYS.buffer; else p.buffer--;
-    if (p.buffer > 0 && p.coyote > 0) { p.vy = PHYS.jump * (neigeProfonde ? 0.82 : 1); p.buffer = 0; p.coyote = 0; sfx.jump(); if (p.onMover && Math.abs(p.onMover.mx) > 0.6) p.elan = p.onMover.mx; }
+    if (p.buffer > 0 && p.coyote > 0) { p.vy = PHYS.jump * (neigeProfonde ? 0.82 : 1); p.buffer = 0; p.coyote = 0; p.sautMin = SAUT_MIN; sfx.jump(); if (p.onMover && Math.abs(p.onMover.mx) > 0.6) p.elan = p.onMover.mx; }
     if (p.elan) { if (p.grounded && p.vy >= 0) p.elan = 0; else { if (!rectHitsSolid(p.x + p.elan, p.y, p.w, p.h)) p.x += p.elan; p.elan *= 0.985; if (Math.abs(p.elan) < 0.05) p.elan = 0; } }
-    if (!input.jump && p.vy < PHYS.jumpCut && !p.spring) p.vy = PHYS.jumpCut;
+    // un appui très bref sur l'écran donne quand même un vrai saut (sinon : un petit bond, selon le moment exact du doigt)
+    if (p.sautMin > 0) p.sautMin--;
+    else if (!input.jump && p.vy < PHYS.jumpCut && !p.spring) p.vy = PHYS.jumpCut;
     if (p.vy >= 0) p.spring = false;
     p.vy = Math.min(p.vy + PHYS.gravity * (inWater ? 0.55 : 1), inWater ? 2.2 : PHYS.maxFall);
     if (R.pluies && R.pluies.length && R.pluies.some((z) => dansColonnes(z, p))) p.vy = Math.min(p.vy + 0.13, PHYS.maxFall);
@@ -1552,7 +1555,7 @@
       if (c.boum > 0 && --c.boum === 0) {
         R.dynamites = R.dynamites.filter((d) => !(d.dans && Math.abs(d.x + 3 - (c.x + 8)) < 12));
         c.bouchee = true; b.hits++; for (const q of b.chem) q.t = 0;   // nouveau rythme : chaque cheminée refume avant de cracher R.shake = 14; sfx.boom(); burst(c.x + 8, c.y - 6, "#3a3a3a", 30, 2.5); burst(c.x + 8, c.y, C.hat, 20, 2);
-        if (b.hits >= 3) { b.etat = "cale"; b.k = 160; R.grelons = []; R.hint = { text: "Pfffff… La machine cale ! Archibald sort, tout noir de suie.", t: 0, dur: 260 }; }
+        if (b.hits >= 3) { b.etat = "cale"; b.k = 0; R.grelons = []; R.dynamites = []; R.hint = { text: "BOUM ! BOUM ! BOUM ! La machine s'emballe…", t: 0, dur: 140 }; }
         else { b.etat = "sonne"; b.k = 140; R.hint = { text: b.hits === 1 ? "BOUM ! Une cheminée bouchée ! Encore deux…" : "BOUM ! Plus qu'une cheminée !", t: 0, dur: 160 }; }
       }
     }
@@ -1563,10 +1566,7 @@
     switch (b.etat) {
       case "attend": if (--b.k <= 0) b.etat = "combat"; return;
       case "sonne": if (--b.k <= 0) b.etat = "combat"; if (R.t % 6 === 0) R.particles.push({ x: b.x + Math.random() * b.w, y: b.y, vx: 0, vy: -0.5, s: 4, life: 40, color: "rgba(60,60,60,0.6)", g: -0.01 }); return;
-      case "cale":
-        if (b.k > 0 && --b.k === 0) doAction(["showdoor"]);
-        if (R.t % 10 === 0) R.particles.push({ x: b.x + Math.random() * b.w, y: b.y, vx: 0, vy: -0.4, s: 5, life: 50, color: "rgba(60,60,60,0.5)", g: -0.01 });
-        return;
+      case "cale": finFouisseur(b, p); return;
     }
     // la foreuse : elle lance des pierres en fusion vers Max
     if (b.t % Math.max(90, 150 - 25 * b.hits) === 0 && p.alive) {
@@ -1575,7 +1575,97 @@
     }
     b.foret = (b.foret || 0) + 0.3 + 0.1 * b.hits;
   }
-  function drawFouisseur() {
+  // ----- la machine explose, s'effondre… et l'Œil de Jade sort des débris -----
+  function finFouisseur(b, p) {
+    const f = b.fin = (b.fin || 0) + 1;
+    if (f < 100) {
+      R.shake = Math.max(R.shake, 3 + f / 25);
+      if (f % 11 === 0) { const ex = b.x + Math.random() * b.w, ey = b.y + Math.random() * b.h * 0.8; burst(ex, ey, C.hat, 16, 2.4); burst(ex, ey, "#ff7a2a", 10, 1.8); burst(ex, ey, "rgba(70,70,70,0.8)", 8, 1.2); sfx.boom(); }
+      // les cheminées sautent l'une après l'autre
+      b.chem.forEach((c, i) => { if (f === 30 + i * 22) { c.vole = { x: c.x, y: c.y, vx: (i - 1) * 1.2 + (Math.random() - 0.5), vy: -5 - Math.random(), a: 0, va: (Math.random() - 0.5) * 0.3 }; burst(c.x + 8, c.y, C.hat, 24, 3); sfx.boom(); } });
+    }
+    for (const c of b.chem) if (c.vole) { const v = c.vole; v.vy += 0.2; v.x += v.vx; v.y += v.vy; v.a += v.va; }
+    if (f === 100) {
+      // la carcasse s'affaisse : il n'en reste qu'un tas de ferraille de deux cases
+      R.shake = 14; sfx.boom(); burst(b.x + b.w / 2, b.y + b.h - T, "rgba(80,70,60,0.8)", 40, 3);
+      const bas = Math.round((b.y + b.h) / T);
+      for (let y = 0; y < bas - 2; y++) for (let x = Math.floor(b.x / T); x < Math.ceil((b.x + b.w) / T); x++) if (R.tiles[y][x] === "8") R.tiles[y][x] = ".";
+    }
+    if (f >= 100) b.affaisse = Math.min(1, (f - 100) / 45);
+    if (f % 9 === 0) R.particles.push({ x: b.x + Math.random() * b.w, y: b.y + (b.affaisse || 0) * (b.h - 2 * T), vx: 0, vy: -0.5, s: 5, life: 60, color: "rgba(60,60,60,0.5)", g: -0.01 });
+    if (f === 150) R.hint = { text: "Pfffff… Le Fouisseur est en morceaux. Mais… qu'est-ce qui brille sous la ferraille ?", t: 0, dur: 200 };
+    if (f === 175) {
+      const sol = b.y + b.h;
+      b.oeil = { x: b.x - 2 * T, y: sol - 2 * T, cible: sol - 50, pris: false, t: 0 };   // il jaillit devant l'épave, à portée de saut
+      burst(b.oeil.x, b.oeil.y, C.jade, 30, 2.5); sfx.door();
+    }
+    const o = b.oeil;
+    if (o) {
+      o.t++;
+      if (!o.pris) {
+        o.y += (o.cible - o.y) * 0.03;
+        if (o.t % 6 === 0) R.particles.push({ x: o.x + (Math.random() - 0.5) * 18, y: o.y + (Math.random() - 0.5) * 18, vx: 0, vy: -0.3, s: 2, life: 30, color: Math.random() < 0.5 ? C.jade : "#fff6c0", g: 0 });
+        if (o.t === 90) R.hint = { text: "L'Œil de Jade ! Saute pour l'attraper !", t: 0, dur: 260 };
+        if (o.t > 60 && p.alive && Math.abs(p.x + p.w / 2 - o.x) < 13 && p.y < o.y + 10 && p.y + p.h > o.y - 10) {
+          o.pris = true; o.t = 0; burst(o.x, o.y, C.jade, 40, 3); burst(o.x, o.y, C.gold, 20, 2); sfx.pick(); setTimeout(() => sfx.door(), 150);
+          R.hint = { text: "Max brandit l'Œil de Jade ! Archibald, tout noir de suie : « Ensemble, alors ? »", t: 0, dur: 300 };
+        }
+      } else if (o.t === 90) doAction(["showdoor"]);
+    }
+  }
+  function drawOeilDeJade(cx, cy, k) {
+    const t = R.t;
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k);
+    // halo et rayons
+    const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 30); g.addColorStop(0, "rgba(120,255,190,0.55)"); g.addColorStop(1, "rgba(120,255,190,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(255,246,192,0.35)"; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + t / 60; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 10, Math.sin(a) * 10); ctx.lineTo(Math.cos(a) * (20 + 4 * Math.sin(t / 10 + i)), Math.sin(a) * (20 + 4 * Math.sin(t / 10 + i))); ctx.stroke(); }
+    // monture d'or en forme d'œil
+    ctx.fillStyle = C.gold; ctx.beginPath(); ctx.moveTo(-11, 0); ctx.quadraticCurveTo(0, -11, 11, 0); ctx.quadraticCurveTo(0, 11, -11, 0); ctx.fill();
+    ctx.fillStyle = C.jadeDark; ctx.beginPath(); ctx.moveTo(-8, 0); ctx.quadraticCurveTo(0, -8, 8, 0); ctx.quadraticCurveTo(0, 8, -8, 0); ctx.fill();
+    // la pierre de jade, à facettes
+    ctx.fillStyle = C.jade; ctx.beginPath(); ctx.arc(0, 0, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#9ff0c6"; ctx.beginPath(); ctx.moveTo(-3, -1); ctx.lineTo(0, -4); ctx.lineTo(1, -1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.fillRect(-2, -3, 1.5, 1.5);
+    ctx.restore();
+  }
+  function drawFouisseur(partie) {
+    const b = R.boss, fin = b.fin || 0;
+    if (partie !== "dessus") {
+    ctx.save();
+    if (fin) {
+      // la machine tremble, puis s'affaisse dans le sol en penchant
+      const af = b.affaisse || 0, drop = af * (b.h - 2 * T);
+      ctx.beginPath(); ctx.rect(b.x - 80, -200, b.w + 160, b.y + b.h + 200); ctx.clip();
+      ctx.translate(b.x + b.w / 2, b.y + b.h); ctx.rotate(af * 0.07); ctx.translate(-(b.x + b.w / 2), -(b.y + b.h) + drop);
+      if (fin < 100) ctx.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 2);
+    }
+    drawFouisseurCorps();
+    ctx.restore();
+    if (partie === "corps") return;
+    }
+    // cheminées arrachées
+    for (const c of b.chem) if (c.vole) {
+      const v = c.vole; ctx.save(); ctx.translate(v.x + 8, v.y + T); ctx.rotate(v.a);
+      ctx.fillStyle = "#2a2a2a"; ctx.fillRect(-7, -T, 14, 2 * T); ctx.fillStyle = "#e2a640"; ctx.fillRect(-9, -T, 18, 3);
+      ctx.restore();
+    }
+    if (fin > 160) {
+      // Archibald sort de la ferraille, couvert de suie, et tousse
+      const ax = b.x - 6 * T, ay = b.y + b.h - 16, tou = Math.floor(R.t / 30) % 3 === 0;
+      ctx.fillStyle = "#3a3a3a"; ctx.fillRect(ax, ay + 4, 10, 12); ctx.fillStyle = "#4a4040"; ctx.fillRect(ax + 1, ay - 2, 8, 7);
+      ctx.fillStyle = "#2a2020"; ctx.fillRect(ax - 1, ay - 4, 12, 2); ctx.fillRect(ax + 2, ay - 8, 6, 4);
+      ctx.fillStyle = "#fff"; ctx.fillRect(ax + 2, ay + (tou ? 0 : 1), 2, tou ? 1 : 2); ctx.fillRect(ax + 6, ay + (tou ? 0 : 1), 2, tou ? 1 : 2);
+      if (tou && R.t % 30 === 0) R.particles.push({ x: ax + 9, y: ay + 3, vx: 0.4, vy: -0.3, s: 4, life: 40, color: "rgba(60,60,60,0.6)", g: -0.01 });
+    }
+    const o = b.oeil;
+    if (o) {
+      if (o.pris) { const p = R.player; drawOeilDeJade(p.x + p.w / 2, p.y - 12 + Math.sin(R.t / 8) * 1.5, 0.8); }
+      else drawOeilDeJade(o.x, o.y + Math.sin(o.t / 15) * 3, Math.min(1, o.t / 30));
+    }
+  }
+  function drawFouisseurCorps() {
     const b = R.boss, x = b.x, y = b.y, w = b.w, h = b.h, cale = b.etat === "cale";
     // corps de la machine (les tuiles 8 sont dessinées ici)
     ctx.fillStyle = "#5a3a2a"; ctx.fillRect(x, y, w, h);
@@ -1595,6 +1685,7 @@
     ctx.fillStyle = "#2a2a2a"; ctx.fillRect(x - 2, y + h - 10, w + 4, 10); ctx.fillStyle = "#4a4a4a"; for (let k = 0; k < w; k += 6) ctx.fillRect(x + ((k + (cale ? 0 : R.t)) % w), y + h - 8, 3, 6);
     // cheminées
     for (const c of b.chem) {
+      if (c.vole) continue;
       ctx.fillStyle = c.bouchee ? "#2a2a2a" : "#7a4a2a"; ctx.fillRect(c.x + 1, c.y, 14, b.y - c.y);
       ctx.fillStyle = "#e2a640"; ctx.fillRect(c.x - 1, c.y, 18, 3);
       if (c.warn && R.t % 4 === 0) R.particles.push({ x: c.x + 8 + (Math.random() - 0.5) * 6, y: c.y - 2, vx: (Math.random() - 0.5) * 0.4, vy: -1, s: 5, life: 40, color: "rgba(40,40,40,0.7)", g: -0.01 });
@@ -1603,12 +1694,6 @@
         ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(c.x - 4, c.y); ctx.quadraticCurveTo(c.x + 8 + Math.sin(R.t / 2) * 4, c.y - 4 * T, c.x + 20, c.y); ctx.fill();
       }
       if (c.boum > 0) { ctx.fillStyle = C.hat; ctx.fillRect(c.x + 6, c.y - 3 + Math.sin(R.t) * 1, 4, 3); }
-    }
-    if (cale && b.k <= 0) {
-      // Archibald sort, couvert de suie
-      const ax = x + w - 34, ay = y - 18;
-      ctx.fillStyle = "#3a3a3a"; ctx.fillRect(ax, ay + 4, 10, 12); ctx.fillStyle = "#4a4040"; ctx.fillRect(ax + 1, ay - 2, 8, 7);
-      ctx.fillStyle = "#fff"; ctx.fillRect(ax + 2, ay + 1, 2, 2); ctx.fillRect(ax + 6, ay + 1, 2, 2);
     }
   }
 
@@ -3000,11 +3085,9 @@
     let sx = 0, sy = 0;
     if (R.shake > 0 && !reducedMotion) { sx = (Math.random() - 0.5) * R.shake; sy = (Math.random() - 0.5) * R.shake; }
     ctx.setTransform(k, 0, 0, k, Math.round((sx - cam.x) * k), Math.round((sy - cam.y) * k));
-    ctx.fillStyle = P.bg;
-    ctx.fillRect(0, 0, W, H);
-    drawBackground();
+    dessinerFond(k, sx, sy);
     drawTiles(false);
-    drawDecor();
+    drawDecor(decorEnCache ? "vivant" : undefined);
     drawDoor();
     for (const c of R.cps) drawCheckpoint(c);
     if (R.def.traces) { ctx.fillStyle = "rgba(90,110,130,0.55)"; for (const [x, y] of R.def.traces) if (inView(x, y)) { const px = x * T, py = (y + 1) * T - 1; ctx.fillRect(px + 3, py, 2, 1); ctx.fillRect(px + 6, py - 1, 2, 1); ctx.fillRect(px + 10, py, 2, 1); ctx.fillRect(px + 13, py - 1, 2, 1); } }
@@ -3024,12 +3107,13 @@
     drawFlames();
     drawVines();
     if (R.mirror) drawMirror();
+    if (R.boss && R.boss.kind === "fouisseur") drawFouisseur("corps");
     drawPlayer();
     if (R.eau != null) drawAbyssesDessus();
     if (R.player && R.player.ski && R.player.alive) { const p = R.player; ctx.fillStyle = "#c0392b"; ctx.fillRect(p.x - 4, p.y + p.h, 18, 2); ctx.fillRect(p.x + 13, p.y + p.h - 2, 2, 2); }
     drawBeams();
     drawSecrets();
-    if (R.boss) { if (R.boss.kind === "yeti") drawYeti(); else if (R.boss.kind === "pieuvre") drawPieuvre(); else if (R.boss.kind === "oiseau") drawOiseauTonnerre(); else if (R.boss.kind === "fouisseur") drawFouisseur(); else drawBoss(); }
+    if (R.boss) { if (R.boss.kind === "yeti") drawYeti(); else if (R.boss.kind === "pieuvre") drawPieuvre(); else if (R.boss.kind === "oiseau") drawOiseauTonnerre(); else if (R.boss.kind === "fouisseur") drawFouisseur("dessus"); else drawBoss(); }
     drawWinds();
     if (R.def.monde >= 4) drawCiel();
     if (R.def.monde === 5) drawOr();
@@ -3137,14 +3221,19 @@
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
     ctx.translate(cam.x * 0.35, cam.y * 0.2);
-    ctx.fillStyle = P.bg2; ctx.globalAlpha = 0.55;
+    ctx.globalAlpha = 0.55;
     const bw = 28, bh = 14;
-    const sx0 = Math.floor((cam.x * 0.65) / bw) - 1, sx1 = Math.ceil((cam.x * 0.65 + view.w) / bw) + 1;
-    const sy0 = Math.floor((cam.y * 0.8) / bh) - 1, sy1 = Math.ceil((cam.y * 0.8 + view.h) / bh) + 1;
-    for (let j = sy0; j <= sy1; j++) for (let i = sx0; i <= sx1; i++) {
-      const off = j % 2 ? bw / 2 : 0;
-      ctx.fillRect(i * bw + off + 1, j * bh + 1, bw - 2, bh - 2);
+    // un motif de briques préparé une fois (au lieu de dessiner chaque brique à chaque image)
+    if (!motifBriques || motifBriques.couleur !== P.bg2) {
+      const q = 4, c = document.createElement("canvas"); c.width = bw * q; c.height = 2 * bh * q;
+      const g = c.getContext("2d"); g.scale(q, q); g.fillStyle = P.bg2;
+      g.fillRect(1, 1, bw - 2, bh - 2); g.fillRect(bw / 2 + 1, bh + 1, bw - 2, bh - 2); g.fillRect(-bw / 2 + 1, bh + 1, bw - 2, bh - 2);
+      motifBriques = ctx.createPattern(c, "repeat"); motifBriques.couleur = P.bg2;
+      if (motifBriques.setTransform) motifBriques.setTransform(new DOMMatrix().scale(1 / q));
+      else motifBriques = P.bg2;
     }
+    ctx.fillStyle = motifBriques;
+    ctx.fillRect(Math.floor((cam.x * 0.65) / bw - 1) * bw, Math.floor((cam.y * 0.8) / (2 * bh) - 1) * 2 * bh, view.w + 3 * bw, view.h + 6 * bh);
     ctx.restore();
     ctx.fillStyle = P.bg2;
     const x0 = Math.max(0, Math.floor(cam.x / 56) - 1), x1 = Math.ceil((cam.x + view.w) / 56) + 1;
@@ -3271,9 +3360,11 @@
     ctx.stroke();
   }
 
-  function drawDecor() {
+  const DECOR_FIXE = new Set(["web", "tuft", "bones", "pebbles"]);
+  function drawDecor(quoi, xa, xb) {
     for (const d of R.decor) {
-      if (!inView(d.x, d.y)) continue;
+      if (quoi === "fixe" ? !DECOR_FIXE.has(d.k) || d.x < xa || d.x >= xb : quoi === "vivant" ? DECOR_FIXE.has(d.k) : false) continue;
+      if (quoi !== "fixe" && !inView(d.x, d.y)) continue;
       const px = d.x * T, py = d.y * T;
       switch (d.k) {
         case "algue": {
@@ -3452,169 +3543,235 @@
     const x0 = Math.max(0, Math.floor(cam.x / T) - 1), x1 = Math.min(COLS - 1, Math.ceil((cam.x + view.w) / T) + 1);
     const y0 = Math.max(0, Math.floor(cam.y / T) - 1), y1 = Math.min(ROWS - 1, Math.ceil((cam.y + view.h) / T) + 1);
     const p = R.player;
+    // les cases immobiles (pierre, nuages…) sont dessinées une fois dans des morceaux mis en cache
+    const cache = !onlyFake && dessinerCache(x0, x1);
+    if (!onlyFake) decorEnCache = cache;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const c = R.tiles[y][x];
       if (c === ".") continue;
       if (onlyFake !== (c === "F")) continue;
+      const k = x + "," + y, bouge = R.shakeTiles.get(k) || R.wobble.has(k);
+      if (cache && !bouge && tuileFixe(c, k)) continue;
       let ox = 0, oy = 0;
-      if (R.shakeTiles.get(x + "," + y) || R.wobble.has(x + "," + y)) { ox = (Math.random() - 0.5) * 2; oy = (Math.random() - 0.5) * 1.5; }
-      const px = x * T + ox, py = y * T + oy;
-      if (c === "|") {
-        const haut = tileAt(x, y - 1) !== "|", sway = Math.sin(R.t / 45 + x) * 0.8;
-        ctx.strokeStyle = "#9a7444"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(px + 8, py); ctx.lineTo(px + 8 + sway, py + T); ctx.stroke();
-        ctx.fillStyle = "#6e5030";
-        for (let k = 3; k < T; k += 6) ctx.fillRect(px + 7 + sway * k / T, py + k, 3, 2);
-        if (haut) { ctx.fillStyle = C.wood; ctx.fillRect(px + 3, py - 2, 11, 3); ctx.fillStyle = C.metal; ctx.fillRect(px + 7, py - 4, 3, 3); }
-        continue;
+      if (bouge) { ox = (Math.random() - 0.5) * 2; oy = (Math.random() - 0.5) * 1.5; }
+      dessinerTuile(c, x, y, x * T + ox, y * T + oy, p);
+    }
+  }
+  // ----- cache des cases immobiles : chaque morceau de 16 colonnes est dessiné une fois, puis recopié -----
+  const FIXES = "#xgBG<>()_-zKH~";
+  const tuileFixe = (c, k) => FIXES.includes(c) && !R.fonte.has(k);
+  const CH = 16;
+  let cacheR = null, morceaux = new Map(), decorEnCache = false;
+  function dessinerCache(x0, x1) {
+    const k = ctx.getTransform().a;
+    if (cacheR !== R || morceaux.k !== k) { morceaux = new Map(); morceaux.k = k; cacheR = R; }
+    if (k * CH * T > 4096 || k * ROWS * T > 4096) return false;
+    const bougent = R.shakeTiles.size || R.wobble.size || R.fonte.size;
+    const vus = new Set();
+    for (let cx = Math.floor(x0 / CH); cx <= Math.floor(x1 / CH); cx++) {
+      vus.add(cx);
+      const a = cx * CH, b = Math.min(COLS, a + CH), a1 = Math.max(0, a - 1), b1 = Math.min(COLS, b + 1);
+      let cle = "";
+      for (let y = 0; y < ROWS; y++) {
+        const row = R.tiles[y];
+        if (!bougent) { cle += row.slice(a1, b1).join(""); continue; }
+        for (let x = a1; x < b1; x++) { const c = row[x], kk = x + "," + y; cle += FIXES.includes(c) && (R.shakeTiles.has(kk) || R.wobble.has(kk) || R.fonte.has(kk)) ? "?" : c; }
       }
-      if (c === "Q") continue;   // algues : dessinées par-dessus Max
-      if (R.def.monde === 4 && drawTuileCiel(c, px, py, x, y)) continue;
-      if (R.def.monde === 5 && (c === "8" || drawTuileOr(c, px, py, x, y))) continue;
-      if (c === "K") {
-        ctx.fillStyle = "#2f3a42"; ctx.fillRect(px + 1, py + 6, 14, 10); ctx.fillStyle = "#47545e"; ctx.fillRect(px + 4, py + 1, 8, 6);
-        ctx.fillStyle = "#c0392b"; ctx.fillRect(px + 6, py, 4, 2); ctx.fillStyle = "#ffd36b"; ctx.fillRect(px + 3, py + 9, 2, 2); ctx.fillRect(px + 11, py + 9, 2, 2);
-        continue;
+      let m = morceaux.get(cx);
+      if (!m || m.cle !== cle) {
+        if (!m) { m = { c: document.createElement("canvas") }; morceaux.set(cx, m); }
+        m.c.width = Math.ceil((b - a) * T * k); m.c.height = Math.ceil(ROWS * T * k);
+        const g = m.c.getContext("2d"), vrai = ctx;
+        g.imageSmoothingEnabled = false; g.setTransform(k, 0, 0, k, -a * T * k, 0);
+        ctx = g;
+        try {
+          for (let y = 0; y < ROWS; y++) for (let x = a; x < b; x++) {
+            const c = R.tiles[y][x], kk = x + "," + y;
+            if (tuileFixe(c, kk) && !R.shakeTiles.get(kk) && !R.wobble.has(kk)) dessinerTuile(c, x, y, x * T, y * T, R.player);
+          }
+          drawDecor("fixe", a, b);
+        } finally { ctx = vrai; }
+        m.cle = cle;
       }
-      if (c === "H") {
-        ctx.fillStyle = "#59636b"; ctx.fillRect(px + 2, py, 12, T); ctx.fillStyle = "#7d8891";
-        for (let k = 0; k < T; k += 4) ctx.fillRect(px + 2, py + k, 12, 1);
-        ctx.fillStyle = "#f2c94c"; ctx.fillRect(px + 2, py, 2, T); ctx.fillRect(px + 12, py, 2, T);
-        continue;
+      ctx.drawImage(m.c, a * T, 0, m.c.width / k, m.c.height / k);
+    }
+    for (const cx of [...morceaux.keys()]) if (!vus.has(cx) && !vus.has(cx - 1) && !vus.has(cx + 1)) morceaux.delete(cx);
+    return true;
+  }
+  // le fond (lointain, flou) est dessiné en basse définition puis agrandi : 4 à 9 fois moins de pixels sur téléphone
+  let fondC = null, motifBriques = null;
+  function dessinerFond(k, sx, sy) {
+    const kb = Math.min(k, scale * 1.25);
+    if (kb >= k - 0.01) { ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H); drawBackground(); return; }
+    if (!fondC) fondC = document.createElement("canvas");
+    const w = Math.ceil(canvas.width * kb / k), h = Math.ceil(canvas.height * kb / k);
+    if (fondC.width !== w || fondC.height !== h) { fondC.width = w; fondC.height = h; }
+    const g = fondC.getContext("2d"), vrai = ctx;
+    ctx = g;
+    try {
+      g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = C.void; g.fillRect(0, 0, w, h);
+      g.setTransform(kb, 0, 0, kb, Math.round((sx - cam.x) * kb), Math.round((sy - cam.y) * kb));
+      g.fillStyle = P.bg; g.fillRect(0, 0, W, H);
+      drawBackground();
+    } finally { ctx = vrai; }
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true; ctx.drawImage(fondC, 0, 0, w * k / kb, h * k / kb); ctx.restore();
+  }
+  function dessinerTuile(c, x, y, px, py, p) {
+    if (c === "|") {
+      const haut = tileAt(x, y - 1) !== "|", sway = Math.sin(R.t / 45 + x) * 0.8;
+      ctx.strokeStyle = "#9a7444"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(px + 8, py); ctx.lineTo(px + 8 + sway, py + T); ctx.stroke();
+      ctx.fillStyle = "#6e5030";
+      for (let k = 3; k < T; k += 6) ctx.fillRect(px + 7 + sway * k / T, py + k, 3, 2);
+      if (haut) { ctx.fillStyle = C.wood; ctx.fillRect(px + 3, py - 2, 11, 3); ctx.fillStyle = C.metal; ctx.fillRect(px + 7, py - 4, 3, 3); }
+      return;
+    }
+    if (c === "Q") return;   // algues : dessinées par-dessus Max
+    if (R.def.monde === 4 && drawTuileCiel(c, px, py, x, y)) return;
+    if (R.def.monde === 5 && (c === "8" || drawTuileOr(c, px, py, x, y))) return;
+    if (c === "K") {
+      ctx.fillStyle = "#2f3a42"; ctx.fillRect(px + 1, py + 6, 14, 10); ctx.fillStyle = "#47545e"; ctx.fillRect(px + 4, py + 1, 8, 6);
+      ctx.fillStyle = "#c0392b"; ctx.fillRect(px + 6, py, 4, 2); ctx.fillStyle = "#ffd36b"; ctx.fillRect(px + 3, py + 9, 2, 2); ctx.fillRect(px + 11, py + 9, 2, 2);
+      return;
+    }
+    if (c === "H") {
+      ctx.fillStyle = "#59636b"; ctx.fillRect(px + 2, py, 12, T); ctx.fillStyle = "#7d8891";
+      for (let k = 0; k < T; k += 4) ctx.fillRect(px + 2, py + k, 12, 1);
+      ctx.fillStyle = "#f2c94c"; ctx.fillRect(px + 2, py, 2, T); ctx.fillRect(px + 12, py, 2, T);
+      return;
+    }
+    if (c === "#" || c === "x") drawStone(px, py, x, y);
+    else if (c === "g") {
+      drawStone(px, py, x, y);
+      ctx.fillStyle = "rgba(150,220,255,0.55)"; ctx.fillRect(px, py, T, 2);
+      ctx.fillStyle = "rgba(220,245,255,0.7)"; ctx.fillRect(px + ((x * 5) % 10), py + 1, 4, 1);
+      ctx.fillStyle = "rgba(150,220,255,0.25)"; ctx.fillRect(px + 3, py + 2, 2, 3 + (x % 3));
+    } else if (c === "G") {
+      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(px, py, T, T);
+      ctx.fillStyle = "#7d828a"; for (let i = 2; i < T; i += 4) ctx.fillRect(px + i, py, 2, T);
+      ctx.fillStyle = "#5d636b"; ctx.fillRect(px, py + 3, T, 2); ctx.fillRect(px, py + 11, T, 2);
+    } else if (c === "_" || c === "-") {
+      const down = c === "-";
+      ctx.fillStyle = P.stoneDark; ctx.fillRect(px + 2, py + T - (down ? 1 : 3), T - 4, down ? 1 : 3);
+      ctx.fillStyle = down ? P.stone : C.gold; ctx.fillRect(px + 3, py + T - (down ? 2 : 4), T - 6, 1);
+    }
+    else if (c === "F") {
+      const inside = p && p.alive && overlap(p, { x: x * T - 4, y: y * T - 4, w: T + 8, h: T + 8 });
+      ctx.globalAlpha = inside ? 0.45 : 1;
+      drawStone(px, py, x, y);
+      ctx.globalAlpha = 1;
+    } else if (c === "B") {
+      ctx.fillStyle = P.crack; ctx.fillRect(px, py, T, T);
+      ctx.strokeStyle = P.crackDark; ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(px + 3, py + 1); ctx.lineTo(px + 8, py + 7); ctx.lineTo(px + 5, py + 11); ctx.lineTo(px + 9, py + 15);
+      ctx.moveTo(px + 8, py + 7); ctx.lineTo(px + 14, py + 5);
+      ctx.stroke();
+    } else if ((c === "^" || c === "v") && P.neige) {
+      // pics de glace
+      const a = R.spikeAnim.get(x + "," + y) ?? 1, hgt = 11 * a;
+      ctx.fillStyle = "#cfeaff";
+      ctx.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const bx = px + 1 + i * 5;
+        if (c === "^") { ctx.moveTo(bx, py + T); ctx.lineTo(bx + 2.5, py + T - hgt); ctx.lineTo(bx + 5, py + T); }
+        else { ctx.moveTo(bx, py); ctx.lineTo(bx + 2.5, py + hgt + (i === 1 ? 2 : 0)); ctx.lineTo(bx + 5, py); }
       }
-      if (c === "#" || c === "x") drawStone(px, py, x, y);
-      else if (c === "g") {
-        drawStone(px, py, x, y);
-        ctx.fillStyle = "rgba(150,220,255,0.55)"; ctx.fillRect(px, py, T, 2);
-        ctx.fillStyle = "rgba(220,245,255,0.7)"; ctx.fillRect(px + ((x * 5) % 10), py + 1, 4, 1);
-        ctx.fillStyle = "rgba(150,220,255,0.25)"; ctx.fillRect(px + 3, py + 2, 2, 3 + (x % 3));
-      } else if (c === "G") {
-        ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(px, py, T, T);
-        ctx.fillStyle = "#7d828a"; for (let i = 2; i < T; i += 4) ctx.fillRect(px + i, py, 2, T);
-        ctx.fillStyle = "#5d636b"; ctx.fillRect(px, py + 3, T, 2); ctx.fillRect(px, py + 11, T, 2);
-      } else if (c === "_" || c === "-") {
-        const down = c === "-";
-        ctx.fillStyle = P.stoneDark; ctx.fillRect(px + 2, py + T - (down ? 1 : 3), T - 4, down ? 1 : 3);
-        ctx.fillStyle = down ? P.stone : C.gold; ctx.fillRect(px + 3, py + T - (down ? 2 : 4), T - 6, 1);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(px + 3, c === "^" ? py + T - hgt + 3 : py + 1, 1, 4);
+    } else if ((c === "^" || c === "v") && R.eau != null && y * T >= R.eau) {
+      // corail urticant (les pics des abysses)
+      const sw = Math.sin(R.t / 20 + x) * 1, up = c === "^";
+      const base = up ? py + T : py, dirY = up ? -1 : 1;
+      ctx.strokeStyle = (x + y) % 2 ? "#f28c6b" : "#e8624a"; ctx.lineWidth = 2; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(px + 4, base); ctx.lineTo(px + 4 + sw, base + dirY * 10); ctx.moveTo(px + 4 + sw * 0.5, base + dirY * 5); ctx.lineTo(px + 1 + sw, base + dirY * 8);
+      ctx.moveTo(px + 11, base); ctx.lineTo(px + 11 + sw, base + dirY * 12); ctx.moveTo(px + 11 + sw * 0.5, base + dirY * 6); ctx.lineTo(px + 14 + sw, base + dirY * 9);
+      ctx.stroke(); ctx.lineCap = "butt";
+      ctx.fillStyle = "#ffd0c0"; ctx.fillRect(px + 3 + sw, base + dirY * 10 - 1, 2, 2); ctx.fillRect(px + 10 + sw, base + dirY * 12 - 1, 2, 2);
+    } else if (c === "^" || c === "v") {
+      const a = R.spikeAnim.get(x + "," + y) ?? 1, hgt = 10 * a;
+      ctx.fillStyle = C.danger;
+      ctx.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const bx = px + 1 + i * 5;
+        if (c === "^") { ctx.moveTo(bx, py + T); ctx.lineTo(bx + 2.5, py + T - hgt); ctx.lineTo(bx + 5, py + T); }
+        else { ctx.moveTo(bx, py); ctx.lineTo(bx + 2.5, py + hgt); ctx.lineTo(bx + 5, py); }
       }
-      else if (c === "F") {
-        const inside = p && p.alive && overlap(p, { x: x * T - 4, y: y * T - 4, w: T + 8, h: T + 8 });
-        ctx.globalAlpha = inside ? 0.45 : 1;
-        drawStone(px, py, x, y);
-        ctx.globalAlpha = 1;
-      } else if (c === "B") {
-        ctx.fillStyle = P.crack; ctx.fillRect(px, py, T, T);
-        ctx.strokeStyle = P.crackDark; ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(px + 3, py + 1); ctx.lineTo(px + 8, py + 7); ctx.lineTo(px + 5, py + 11); ctx.lineTo(px + 9, py + 15);
-        ctx.moveTo(px + 8, py + 7); ctx.lineTo(px + 14, py + 5);
-        ctx.stroke();
-      } else if ((c === "^" || c === "v") && P.neige) {
-        // pics de glace
-        const a = R.spikeAnim.get(x + "," + y) ?? 1, hgt = 11 * a;
-        ctx.fillStyle = "#cfeaff";
-        ctx.beginPath();
-        for (let i = 0; i < 3; i++) {
-          const bx = px + 1 + i * 5;
-          if (c === "^") { ctx.moveTo(bx, py + T); ctx.lineTo(bx + 2.5, py + T - hgt); ctx.lineTo(bx + 5, py + T); }
-          else { ctx.moveTo(bx, py); ctx.lineTo(bx + 2.5, py + hgt + (i === 1 ? 2 : 0)); ctx.lineTo(bx + 5, py); }
-        }
-        ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fillRect(px + 3, c === "^" ? py + T - hgt + 3 : py + 1, 1, 4);
-      } else if ((c === "^" || c === "v") && R.eau != null && y * T >= R.eau) {
-        // corail urticant (les pics des abysses)
-        const sw = Math.sin(R.t / 20 + x) * 1, up = c === "^";
-        const base = up ? py + T : py, dirY = up ? -1 : 1;
-        ctx.strokeStyle = (x + y) % 2 ? "#f28c6b" : "#e8624a"; ctx.lineWidth = 2; ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(px + 4, base); ctx.lineTo(px + 4 + sw, base + dirY * 10); ctx.moveTo(px + 4 + sw * 0.5, base + dirY * 5); ctx.lineTo(px + 1 + sw, base + dirY * 8);
-        ctx.moveTo(px + 11, base); ctx.lineTo(px + 11 + sw, base + dirY * 12); ctx.moveTo(px + 11 + sw * 0.5, base + dirY * 6); ctx.lineTo(px + 14 + sw, base + dirY * 9);
-        ctx.stroke(); ctx.lineCap = "butt";
-        ctx.fillStyle = "#ffd0c0"; ctx.fillRect(px + 3 + sw, base + dirY * 10 - 1, 2, 2); ctx.fillRect(px + 10 + sw, base + dirY * 12 - 1, 2, 2);
-      } else if (c === "^" || c === "v") {
-        const a = R.spikeAnim.get(x + "," + y) ?? 1, hgt = 10 * a;
-        ctx.fillStyle = C.danger;
-        ctx.beginPath();
-        for (let i = 0; i < 3; i++) {
-          const bx = px + 1 + i * 5;
-          if (c === "^") { ctx.moveTo(bx, py + T); ctx.lineTo(bx + 2.5, py + T - hgt); ctx.lineTo(bx + 5, py + T); }
-          else { ctx.moveTo(bx, py); ctx.lineTo(bx + 2.5, py + hgt); ctx.lineTo(bx + 5, py); }
-        }
-        ctx.fill();
-      } else if (c === "<" || c === ">" || c === "(" || c === ")") {
-        drawStone(px, py, x, y);
-        const left = c === "<" || c === "(";
-        if (c === "(" || c === ")") { ctx.fillStyle = "rgba(176,74,216,0.45)"; ctx.fillRect(left ? px : px + 8, py + 3, 8, 9); }
-        ctx.fillStyle = P.stoneDark;
-        ctx.fillRect(left ? px : px + 10, py + 5, 6, 5);
-        ctx.fillStyle = C.danger;
-        ctx.fillRect(left ? px + 8 : px + 5, py + 3, 2, 2);
-        ctx.fillRect(left ? px + 12 : px + 1, py + 3, 2, 2);
-      } else if (c === "c") {
-        const ph = blinkPhase(x), on = ph < BLINK_ON;
-        const warn = on && ph > BLINK_ON - 36;
-        ctx.globalAlpha = on ? (warn && Math.floor(ph / 4) % 2 ? 0.35 : 1) : 0.12;
-        ctx.fillStyle = C.wood; ctx.fillRect(px, py, T, 6);
-        ctx.fillStyle = "#c79a5e"; ctx.fillRect(px, py, T, 1.5);
-        ctx.fillStyle = "#5a3a1c"; ctx.fillRect(px + 4, py + 1, 1, 5); ctx.fillRect(px + 11, py + 1, 1, 5); ctx.fillRect(px, py + 5, T, 1);
-        ctx.globalAlpha = 1;
-      } else if (c === "o") {
-        // plateforme fantôme : à peine un reflet
-        ctx.globalAlpha = 0.1 + 0.06 * Math.sin(R.t / 20 + x);
-        ctx.strokeStyle = C.gold; ctx.lineWidth = 0.8; ctx.setLineDash([2, 2]);
-        ctx.strokeRect(px + 1, py + 1, T - 2, T - 2);
-        ctx.setLineDash([]); ctx.globalAlpha = 1;
-      } else if (c === "z") {
-        // neige profonde : un épais matelas de neige
-        drawStone(px, py, x, y);
-        if (!isSolid(tileAt(x, y - 1))) { ctx.fillStyle = "#f4f8fc"; ctx.fillRect(px, py - 4, T, 8); ctx.fillStyle = "#dfe9f2"; ctx.fillRect(px + (x % 3) * 4, py - 5, 6, 2); ctx.fillStyle = "rgba(160,200,230,0.7)"; ctx.fillRect(px, py + 4, T, 1); }
-      } else if (c === "i") {
-        // glace fine d'un lac gelé : elle se fissure si Max reste dessus
-        const v = R.glaceFine.get(x + "," + y) || 0;
-        ctx.fillStyle = "rgba(170,220,250,0.78)"; ctx.fillRect(px, py, T, 5);
-        ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.fillRect(px + (x * 5) % 9, py + 1, 5, 1);
-        if (v > 30) { ctx.strokeStyle = "rgba(30,60,90,0.9)"; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(px + 3, py); ctx.lineTo(px + 7, py + 3); ctx.lineTo(px + 12, py + 1); if (v > 65) { ctx.moveTo(px + 7, py + 3); ctx.lineTo(px + 6, py + 5); ctx.moveTo(px + 1, py + 4); ctx.lineTo(px + 15, py + 2); } ctx.stroke(); }
-      } else if (c === "y") {
-        // planche de pont de corde
-        ctx.strokeStyle = "#8a6a3a"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, py - 6); ctx.lineTo(px + T, py - 6); ctx.stroke();
-        ctx.fillStyle = "#9a7444"; ctx.fillRect(px + 1, py, T - 2, 4);
-        ctx.fillStyle = "#c79a5e"; ctx.fillRect(px + 1, py, T - 2, 1);
-        ctx.fillStyle = "#6e5030"; ctx.fillRect(px + 1, py - 6, 1, 6); ctx.fillRect(px + T - 2, py - 6, 1, 6);
-      } else if (c === "V") {
-        // bouche de geyser : une source chaude dans la roche
-        drawStone(px, py, x, y);
-        const gz = R.geysers.find((q) => q.x === x && q.y === y);
-        ctx.fillStyle = "#3a2a1a"; ctx.fillRect(px + 4, py, 8, 3);
-        ctx.fillStyle = gz && gz.warn ? (Math.floor(R.t / 4) % 2 ? "#ffd34a" : "#ff8a3a") : "#6e8a9a"; ctx.fillRect(px + 5, py + 1, 6, 1);
-        if (gz && gz.on) { const gr = ctx.createLinearGradient(0, py, 0, py - 6 * T); gr.addColorStop(0, "rgba(240,250,255,0.75)"); gr.addColorStop(1, "rgba(240,250,255,0)"); ctx.fillStyle = gr; ctx.fillRect(px + 2, py - 6 * T, 12, 6 * T); }
-      } else if (c === "g" && P.neige) {
-        // glace vive
-        ctx.fillStyle = "#9fd0ee"; ctx.fillRect(px, py, T, T);
-        ctx.fillStyle = "#d8f0ff"; ctx.fillRect(px, py, T, 3); ctx.fillRect(px + (x * 7) % 10, py + 5, 4, 1);
-        ctx.fillStyle = "rgba(60,110,150,0.4)"; ctx.fillRect(px, py + T - 3, T, 3);
-      } else if (c === "n") {
-        // plateforme de bois qui flotte (et coule)
-        const s = R.sink.get(x + "," + y) || 0, wob = s ? Math.sin(R.t / 3) * 0.8 : 0;
-        ctx.fillStyle = "#7a5230"; ctx.fillRect(px, py + 2 + wob, T, 6);
-        ctx.fillStyle = "#a8774a"; ctx.fillRect(px, py + 2 + wob, T, 1.5);
-        ctx.fillStyle = "#4a3018"; ctx.fillRect(px + 5, py + 3 + wob, 1, 5); ctx.fillRect(px + 11, py + 3 + wob, 1, 5);
-        if (s) { ctx.fillStyle = "rgba(160,220,235,0.5)"; ctx.fillRect(px + (R.t % 12), py + 8, 2, 1); }
-      } else if (c === "J" || c === "q") {
-        const sq = R.springAnim.get(x + "," + y) || 0;
-        const top = py + 4 + (sq > 5 ? 3 : 0);
-        ctx.fillStyle = C.metal; ctx.fillRect(px + 1, py + T - 4, T - 2, 4);
-        ctx.strokeStyle = C.hat; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(px + 4, py + T - 4);
-        const n = 4, hh = (py + T - 4 - top - 2) / n;
-        for (let i = 0; i < n; i++) ctx.lineTo(px + (i % 2 ? 4 : 12), py + T - 4 - (i + 1) * hh);
-        ctx.stroke();
-        ctx.fillStyle = C.wood; ctx.fillRect(px, top, T, 3);
-        ctx.fillStyle = C.danger; ctx.fillRect(px + 6, top - 1, 4, 1);
-        if (c === "q") {   // ressort fragile : bois fendu et ressort rouillé
-          ctx.strokeStyle = "#3a2210"; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(px + 2, top); ctx.lineTo(px + 5, top + 2); ctx.lineTo(px + 8, top); ctx.moveTo(px + 11, top + 1); ctx.lineTo(px + 14, top + 3); ctx.stroke();
-          ctx.fillStyle = "#a0522d"; ctx.fillRect(px + 4, py + T - 7, 2, 2); ctx.fillRect(px + 10, py + T - 10, 2, 2);
-        }
+      ctx.fill();
+    } else if (c === "<" || c === ">" || c === "(" || c === ")") {
+      drawStone(px, py, x, y);
+      const left = c === "<" || c === "(";
+      if (c === "(" || c === ")") { ctx.fillStyle = "rgba(176,74,216,0.45)"; ctx.fillRect(left ? px : px + 8, py + 3, 8, 9); }
+      ctx.fillStyle = P.stoneDark;
+      ctx.fillRect(left ? px : px + 10, py + 5, 6, 5);
+      ctx.fillStyle = C.danger;
+      ctx.fillRect(left ? px + 8 : px + 5, py + 3, 2, 2);
+      ctx.fillRect(left ? px + 12 : px + 1, py + 3, 2, 2);
+    } else if (c === "c") {
+      const ph = blinkPhase(x), on = ph < BLINK_ON;
+      const warn = on && ph > BLINK_ON - 36;
+      ctx.globalAlpha = on ? (warn && Math.floor(ph / 4) % 2 ? 0.35 : 1) : 0.12;
+      ctx.fillStyle = C.wood; ctx.fillRect(px, py, T, 6);
+      ctx.fillStyle = "#c79a5e"; ctx.fillRect(px, py, T, 1.5);
+      ctx.fillStyle = "#5a3a1c"; ctx.fillRect(px + 4, py + 1, 1, 5); ctx.fillRect(px + 11, py + 1, 1, 5); ctx.fillRect(px, py + 5, T, 1);
+      ctx.globalAlpha = 1;
+    } else if (c === "o") {
+      // plateforme fantôme : à peine un reflet
+      ctx.globalAlpha = 0.1 + 0.06 * Math.sin(R.t / 20 + x);
+      ctx.strokeStyle = C.gold; ctx.lineWidth = 0.8; ctx.setLineDash([2, 2]);
+      ctx.strokeRect(px + 1, py + 1, T - 2, T - 2);
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    } else if (c === "z") {
+      // neige profonde : un épais matelas de neige
+      drawStone(px, py, x, y);
+      if (!isSolid(tileAt(x, y - 1))) { ctx.fillStyle = "#f4f8fc"; ctx.fillRect(px, py - 4, T, 8); ctx.fillStyle = "#dfe9f2"; ctx.fillRect(px + (x % 3) * 4, py - 5, 6, 2); ctx.fillStyle = "rgba(160,200,230,0.7)"; ctx.fillRect(px, py + 4, T, 1); }
+    } else if (c === "i") {
+      // glace fine d'un lac gelé : elle se fissure si Max reste dessus
+      const v = R.glaceFine.get(x + "," + y) || 0;
+      ctx.fillStyle = "rgba(170,220,250,0.78)"; ctx.fillRect(px, py, T, 5);
+      ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.fillRect(px + (x * 5) % 9, py + 1, 5, 1);
+      if (v > 30) { ctx.strokeStyle = "rgba(30,60,90,0.9)"; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(px + 3, py); ctx.lineTo(px + 7, py + 3); ctx.lineTo(px + 12, py + 1); if (v > 65) { ctx.moveTo(px + 7, py + 3); ctx.lineTo(px + 6, py + 5); ctx.moveTo(px + 1, py + 4); ctx.lineTo(px + 15, py + 2); } ctx.stroke(); }
+    } else if (c === "y") {
+      // planche de pont de corde
+      ctx.strokeStyle = "#8a6a3a"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, py - 6); ctx.lineTo(px + T, py - 6); ctx.stroke();
+      ctx.fillStyle = "#9a7444"; ctx.fillRect(px + 1, py, T - 2, 4);
+      ctx.fillStyle = "#c79a5e"; ctx.fillRect(px + 1, py, T - 2, 1);
+      ctx.fillStyle = "#6e5030"; ctx.fillRect(px + 1, py - 6, 1, 6); ctx.fillRect(px + T - 2, py - 6, 1, 6);
+    } else if (c === "V") {
+      // bouche de geyser : une source chaude dans la roche
+      drawStone(px, py, x, y);
+      const gz = R.geysers.find((q) => q.x === x && q.y === y);
+      ctx.fillStyle = "#3a2a1a"; ctx.fillRect(px + 4, py, 8, 3);
+      ctx.fillStyle = gz && gz.warn ? (Math.floor(R.t / 4) % 2 ? "#ffd34a" : "#ff8a3a") : "#6e8a9a"; ctx.fillRect(px + 5, py + 1, 6, 1);
+      if (gz && gz.on) { const gr = ctx.createLinearGradient(0, py, 0, py - 6 * T); gr.addColorStop(0, "rgba(240,250,255,0.75)"); gr.addColorStop(1, "rgba(240,250,255,0)"); ctx.fillStyle = gr; ctx.fillRect(px + 2, py - 6 * T, 12, 6 * T); }
+    } else if (c === "g" && P.neige) {
+      // glace vive
+      ctx.fillStyle = "#9fd0ee"; ctx.fillRect(px, py, T, T);
+      ctx.fillStyle = "#d8f0ff"; ctx.fillRect(px, py, T, 3); ctx.fillRect(px + (x * 7) % 10, py + 5, 4, 1);
+      ctx.fillStyle = "rgba(60,110,150,0.4)"; ctx.fillRect(px, py + T - 3, T, 3);
+    } else if (c === "n") {
+      // plateforme de bois qui flotte (et coule)
+      const s = R.sink.get(x + "," + y) || 0, wob = s ? Math.sin(R.t / 3) * 0.8 : 0;
+      ctx.fillStyle = "#7a5230"; ctx.fillRect(px, py + 2 + wob, T, 6);
+      ctx.fillStyle = "#a8774a"; ctx.fillRect(px, py + 2 + wob, T, 1.5);
+      ctx.fillStyle = "#4a3018"; ctx.fillRect(px + 5, py + 3 + wob, 1, 5); ctx.fillRect(px + 11, py + 3 + wob, 1, 5);
+      if (s) { ctx.fillStyle = "rgba(160,220,235,0.5)"; ctx.fillRect(px + (R.t % 12), py + 8, 2, 1); }
+    } else if (c === "J" || c === "q") {
+      const sq = R.springAnim.get(x + "," + y) || 0;
+      const top = py + 4 + (sq > 5 ? 3 : 0);
+      ctx.fillStyle = C.metal; ctx.fillRect(px + 1, py + T - 4, T - 2, 4);
+      ctx.strokeStyle = C.hat; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(px + 4, py + T - 4);
+      const n = 4, hh = (py + T - 4 - top - 2) / n;
+      for (let i = 0; i < n; i++) ctx.lineTo(px + (i % 2 ? 4 : 12), py + T - 4 - (i + 1) * hh);
+      ctx.stroke();
+      ctx.fillStyle = C.wood; ctx.fillRect(px, top, T, 3);
+      ctx.fillStyle = C.danger; ctx.fillRect(px + 6, top - 1, 4, 1);
+      if (c === "q") {   // ressort fragile : bois fendu et ressort rouillé
+        ctx.strokeStyle = "#3a2210"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(px + 2, top); ctx.lineTo(px + 5, top + 2); ctx.lineTo(px + 8, top); ctx.moveTo(px + 11, top + 1); ctx.lineTo(px + 14, top + 3); ctx.stroke();
+        ctx.fillStyle = "#a0522d"; ctx.fillRect(px + 4, py + T - 7, 2, 2); ctx.fillRect(px + 10, py + T - 10, 2, 2);
       }
     }
   }
