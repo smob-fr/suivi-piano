@@ -1429,7 +1429,7 @@
   // R = lave, { } = tapis roulants (vers la gauche / la droite), % = pont qui fond (dans la cité)
   function creerOr(c, x, y) {
     if (c === "N") return { kind: "N", x: x * T + 1, y: y * T + 1, w: 14, h: 15, vx: -0.35, vy: 0, alive: true, t: 0, armure: true };
-    if (c === "I") return { kind: "I", x: x * T + 1, y: y * T + 10, w: 14, h: 6, vx: -1.25, vy: 0, alive: true, t: 0 };
+    if (c === "I") return { kind: "I", x: x * T + 1, y: y * T + 10, w: 14, h: 6, vx: -0.9, vy: 0, alive: true, t: 0 };
     if (c === "U") return { kind: "U", x: x * T + 1, y: y * T, w: 14, h: 16, vx: 0, vy: 0, alive: true, t: 0, bouge: false };
     if (c === "d") return { kind: "d", x: x * T + 2, y: y * T + 2, w: 12, h: 14, vx: -0.5, vy: 0, alive: true, t: 0, repos: 0 };
     return null;
@@ -1439,7 +1439,9 @@
     if (e.choc > 0) e.choc--;
     if (e.kind === "I") {
       // salamandre : elle file, et laisse une traînée de feu derrière elle
-      if (R.t % 7 === 0 && e.grounded) R.braises.push({ x: e.x + (e.vx > 0 ? 0 : e.w - 6), y: e.y, w: 6, h: 6, life: 70 });
+      if (R.t % 8 === 0 && e.grounded) R.braises.push({ x: e.x + (e.vx > 0 ? -4 : e.w - 2), y: e.y + 2, w: 6, h: 4, life: 22 });
+      // la première fois, on explique comment s'en débarrasser
+      if (!progress.salaVue && Math.abs(p.x - e.x) < 150 && Math.abs(p.y - e.y) < 40) { progress.salaVue = true; saveProgress(); R.hint = { text: "Salamandre ! Saute-lui sur la tête pour l'assommer (ou COUP de massue)", t: 0, dur: 220 }; }
       return false;
     }
     if (e.kind === "U") {
@@ -1486,11 +1488,11 @@
     const x0 = Math.floor((p.x + 2) / T), x1 = Math.floor((p.x + p.w - 2) / T), yb = Math.floor((p.y + p.h - 3) / T);
     for (let tx = x0; tx <= x1; tx++) if (tileAt(tx, yb) === "R") return kill("Dans la lave ! Ça brûle les bottes.");
     for (const j of R.jets) if (j.on && p.x + p.w > j.x * T + 3 && p.x < j.x * T + 13 && p.y + p.h > (j.y - j.h + 1) * T && p.y < (j.y + 1) * T) return kill("Le jet de feu ! Quand la grille fume, attends.");
-    for (const b of R.braises) if (overlap(p, b)) return kill("La traînée de feu de la salamandre !");
+    for (const b of R.braises) if (b.life > 14 && overlap(p, b)) return kill("La traînée de feu de la salamandre !");   // les braises qui s'éteignent ne brûlent plus
     return false;
   }
   function drawOr() {
-    for (const b of R.braises) { const a = b.life / 70; ctx.fillStyle = `rgba(255,${120 + 80 * a},40,${a})`; ctx.beginPath(); ctx.moveTo(b.x, b.y + 6); ctx.lineTo(b.x + 3, b.y + 6 - 6 * a - Math.sin(R.t / 3 + b.x) * 1.5); ctx.lineTo(b.x + 6, b.y + 6); ctx.fill(); }
+    for (const b of R.braises) { const a = b.life / 22; ctx.fillStyle = `rgba(255,${120 + 80 * a},40,${a})`; ctx.beginPath(); ctx.moveTo(b.x, b.y + 6); ctx.lineTo(b.x + 3, b.y + 6 - 6 * a - Math.sin(R.t / 3 + b.x) * 1.5); ctx.lineTo(b.x + 6, b.y + 6); ctx.fill(); }
     for (const j of R.jets) {
       const x = j.x * T, y = (j.y + 1) * T;
       ctx.fillStyle = "#3a1e10"; ctx.fillRect(x + 2, y - 3, 12, 3);
@@ -2205,7 +2207,7 @@
       if (e.stun > 0) {
         e.stun--;
         if (e.kind !== "b") { e.vx = 0; e.vy = Math.min((e.vy || 0) + PHYS.gravity, PHYS.maxFall); moveBody(e); if (e.y > H + 20) e.alive = false; }
-        if (e.stun === 0) { e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : e.kind === "k" ? -0.8 : e.kind === "r" ? -0.5 : e.kind === "L" ? -0.7 : e.kind === "C" ? -0.4 : e.kind === "S" ? -0.35 : 0.7); if (e.kind === "L" || e.kind === "C") e.etat = "rode"; if (e.kind === "j") { e.etat = "repos"; e.k = 40; e.vx = 0; } }
+        if (e.stun === 0) { e.vx = e.dirBack || (e.kind === "s" ? -0.9 : e.kind === "m" ? -0.45 : e.kind === "k" ? -0.8 : e.kind === "r" ? -0.5 : e.kind === "I" ? -0.9 : e.kind === "L" ? -0.7 : e.kind === "C" ? -0.4 : e.kind === "S" ? -0.35 : 0.7); if (e.kind === "L" || e.kind === "C") e.etat = "rode"; if (e.kind === "j") { e.etat = "repos"; e.k = 40; e.vx = 0; } }
         continue;
       }
       if (e.kind === "e") { updateMeduse(e); continue; }
@@ -2538,6 +2540,7 @@
     if (e.kind === "h") { e.stun = 200; e.gonfle = 0; sfx.bonk(); burst(e.x + 5, e.y + 5, C.gold, 6, 1); return; }
     if (e.kind === "X") { ouvrirCoffre(e); return; }
     if (e.kind === "S") { burst(e.x + 6, e.y + 6, "#f4f8fc", 16, 1.6); }
+    if (e.kind === "I") R.braises = R.braises.filter((b) => Math.abs(b.x - e.x) > 40);   // assommée, la salamandre ne brûle plus
     if (e.kind === "N" && e.choc > 0) return;
     if (e.kind === "N" && e.armure) { e.armure = false; e.choc = 24; sfx.bonk(); burst(e.x + 7, e.y + 4, "#ff7a2a", 10, 1.4); R.shake = Math.max(R.shake, 3); if (!progress.golemVu) { progress.golemVu = true; saveProgress(); R.hint = { text: "Golem de lave : sa carapace est fendue… encore un coup !", t: 0, dur: 180 }; } return; }
     if (e.kind === "O") { e.stun = 999; e.vx = 0; sfx.bonk(); burst(e.x + 6, e.y + 4, C.gold, 6, 1); return; }
