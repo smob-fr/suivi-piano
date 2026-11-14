@@ -1,20 +1,16 @@
 // Suivi Piano — configuration Firebase (synchronisation entre appareils)
 //
-// À remplir avec la configuration « Web » du projet Firebase
-// (console Firebase > Paramètres du projet > Vos applications > SDK setup and configuration).
+// Configuration « Web » du projet Firebase `suivi-piano`.
 // Ces valeurs ne sont PAS des secrets : la protection des données repose sur la
 // connexion (e-mail + mot de passe) et sur les règles Firestore (voir docs/synchronisation.md).
 //
-// Laisser `null` = synchronisation désactivée, l'appli reste 100 % locale.
+// Mettre `null` = synchronisation désactivée, l'appli reste 100 % locale.
 
-export const firebaseConfig = null;
-
-// Exemple :
-// export const firebaseConfig = {
-//   apiKey: "AIza...",
-//   authDomain: "suivi-piano-xxxx.firebaseapp.com",
-//   projectId: "suivi-piano-xxxx",
-//   storageBucket: "suivi-piano-xxxx.appspot.com",
-//   messagingSenderId: "123456789",
-//   appId: "1:123456789:web:abcdef",
-// };
+export const firebaseConfig = {
+  apiKey: "AIzaSyArMvbS1pBz0GlXJYKvKXRi1Xpcc_mTmsk",
+  authDomain: "suivi-piano.firebaseapp.com",
+  projectId: "suivi-piano",
+  storageBucket: "suivi-piano.firebasestorage.app",
+  messagingSenderId: "984723652660",
+  appId: "1:984723652660:web:5c4b84c532ed9a52c0ca61",
+};
