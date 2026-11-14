@@ -17,6 +17,43 @@ export function downloadFile(name, content, mime = "application/octet-stream") {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+/**
+ * Enregistre des fichiers en laissant choisir l'emplacement (ordinateur, Chrome/Edge) :
+ * un seul fichier → fenêtre « Enregistrer sous » ; plusieurs → choix d'un dossier.
+ * Le dernier dossier utilisé est proposé la fois suivante.
+ * @returns {Promise<"ok"|"annule"|"nonsupporte">}
+ */
+export async function enregistrerFichiersAvecChoix(files, { id = "factures" } = {}) {
+  try {
+    if (files.length === 1 && window.showSaveFilePicker) {
+      const f = files[0];
+      const handle = await window.showSaveFilePicker({
+        id,
+        suggestedName: f.name,
+        types: f.type === "application/pdf" ? [{ description: "PDF", accept: { "application/pdf": [".pdf"] } }] : undefined,
+      });
+      const w = await handle.createWritable();
+      await w.write(f);
+      await w.close();
+      return "ok";
+    }
+    if (window.showDirectoryPicker) {
+      const dir = await window.showDirectoryPicker({ id, mode: "readwrite" });
+      for (const f of files) {
+        const fh = await dir.getFileHandle(f.name, { create: true });
+        const w = await fh.createWritable();
+        await w.write(f);
+        await w.close();
+      }
+      return "ok";
+    }
+  } catch (e) {
+    if (e?.name === "AbortError") return "annule";
+    console.error(e);
+  }
+  return "nonsupporte";
+}
+
 export function pickFile(accept) {
   return new Promise((resolve) => {
     const input = document.createElement("input");
