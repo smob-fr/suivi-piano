@@ -35,8 +35,9 @@ périmètre — voir §7).
 
 - **Application web installable (PWA)** : icône sur l'écran d'accueil Android, plein écran.
 - **Fonctionne hors ligne.**
-- **Données stockées uniquement sur l'appareil** (IndexedDB). Rien n'est envoyé sur un
-  serveur. L'hébergement (GitHub Pages) ne sert que le code de l'application.
+- **Données stockées sur l'appareil** (IndexedDB). L'hébergement (GitHub Pages) ne sert que
+  le code de l'application. _Depuis la v0.14.0 :_ synchronisation optionnelle entre appareils
+  via Firebase, sur un compte personnel (voir `docs/synchronisation.md`).
 - **Sauvegarde/export** à la main de l'utilisateur (format à définir) — indispensable
   puisque les données ne vivent que sur le téléphone.
 - **Saisie la plus simple possible**, en particulier pour l'enregistrement d'une séance.

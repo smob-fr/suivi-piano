@@ -11,6 +11,9 @@ import { templateCSV, parseCSV, csvToEleves } from "../csv.js";
 import { genererHorizon, creneauxSeChevauchent } from "../planning.js";
 import { telechargerRappelICS, activerNotifications, etatNotifications } from "../rappels.js";
 import { render, navigate } from "../router.js";
+import {
+  etatSync, syncConfiguree, connecter, deconnecter, motDePasseOublie, synchroniser,
+} from "../sync.js";
 
 export async function parametresScreen() {
   const jours = await joursDepuisSauvegarde();
@@ -34,13 +37,97 @@ export async function parametresScreen() {
     return "En complément du calendrier : une notification générique, quand le navigateur réveille l'appli (approximatif).";
   }
 
+  /* ---- Synchronisation entre appareils ---- */
+  function sectionSync() {
+    const e = etatSync();
+    if (!syncConfiguree()) {
+      return formSection("Synchronisation entre appareils", [
+        el("p.field__hint",
+          "Non configurée : les données restent uniquement sur cet appareil. " +
+          "Pour retrouver tes données sur ton téléphone et ton ordinateur, il faut brancher " +
+          "l'appli sur un projet Firebase (voir docs/synchronisation.md)."),
+      ]);
+    }
+    if (e.statut === "chargement" || e.statut === "horsligne") {
+      return formSection("Synchronisation entre appareils", [
+        el("p.sync-etat", e.message || "Connexion au service…"),
+      ]);
+    }
+    if (!e.email) {
+      const cred = { email: "", mdp: "" };
+      const go = async (creer) => {
+        if (!cred.email || !cred.mdp) return toast("Renseigne l'e-mail et le mot de passe.", "warn");
+        try {
+          await connecter(cred.email.trim(), cred.mdp, { creer });
+          toast(creer ? "Compte créé, synchronisation en cours…" : "Connecté, synchronisation en cours…", "ok");
+          setTimeout(render, 300);
+        } catch (err) {
+          toast(err.message, "warn");
+        }
+      };
+      return formSection("Synchronisation entre appareils", [
+        el("p.field__hint",
+          "Connecte-toi avec le même compte sur ton téléphone et ton ordinateur : " +
+          "les données sont alors partagées automatiquement. Les données de cet appareil " +
+          "sont fusionnées avec celles déjà en ligne (la modification la plus récente l'emporte). " +
+          "Première fois : « Créer le compte » sur un seul appareil, puis « Se connecter » sur les autres."),
+        fieldText("E-mail", "", (v) => { cred.email = v; }, { type: "email" }),
+        fieldText("Mot de passe", "", (v) => { cred.mdp = v; }, { type: "password" }),
+        el("div.btn-row", [
+          btn("Se connecter", { onClick: () => go(false) }),
+          btn("Créer le compte", { onClick: () => go(true), variant: "ghost" }),
+          btn("Mot de passe oublié", {
+            variant: "ghost",
+            onClick: async () => {
+              if (!cred.email) return toast("Renseigne d'abord ton e-mail.", "warn");
+              try {
+                await motDePasseOublie(cred.email.trim());
+                toast("E-mail de réinitialisation envoyé.", "ok");
+              } catch (err) { toast(err.message, "warn"); }
+            },
+          }),
+        ]),
+      ]);
+    }
+    const derniere = e.derniere ? new Date(e.derniere).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "—";
+    return formSection("Synchronisation entre appareils", [
+      el("p.sync-etat", `Connecté : ${e.email}. Dernière synchronisation : ${derniere}.`),
+      e.erreur ? el("p.sync-etat.sync-etat--warn", e.erreur) : null,
+      el("p.field__hint", "Synchronisation automatique à chaque modification, à l'ouverture de l'appli et toutes les 2 minutes."),
+      el("div.btn-row", [
+        btn("Synchroniser maintenant", {
+          onClick: async () => {
+            await synchroniser();
+            const apres = etatSync();
+            toast(apres.erreur ? apres.erreur : "Synchronisé.", apres.erreur ? "warn" : "ok");
+            render();
+          },
+        }),
+        btn("Se déconnecter", {
+          variant: "ghost",
+          onClick: async () => {
+            if (!(await confirmDialog(
+              "Se déconnecter ? Les données restent sur cet appareil mais ne seront plus synchronisées.",
+              { okLabel: "Se déconnecter" }
+            ))) return;
+            await deconnecter();
+            toast("Déconnecté.");
+            setTimeout(render, 300);
+          },
+        }),
+      ]),
+    ]);
+  }
+
   const body = [
+    sectionSync(),
+
     /* ---- Sauvegarde complète ---- */
     formSection("Sauvegarde complète (JSON)", [
       el("p.field__hint",
         lastBackup
           ? `Dernière sauvegarde : ${fmtDateFR(lastBackup.slice(0, 10))} (il y a ${jours === Infinity ? "—" : jours + " j"}).`
-          : "Aucune sauvegarde effectuée. Pense à en faire régulièrement : les données ne vivent que sur cet appareil."
+          : "Aucune sauvegarde effectuée. Pense à en faire régulièrement."
       ),
       el("div.btn-row", [
         btn("Exporter la sauvegarde", { onClick: doExport }),
@@ -118,7 +205,10 @@ export async function parametresScreen() {
 
     /* ---- Zone dangereuse ---- */
     formSection("Données", [
-      el("p.field__hint", "Efface toutes les données de l'application sur cet appareil (élèves, payeurs, séances…)."),
+      el("p.field__hint",
+        syncConfiguree() && etatSync().email
+          ? "Efface toutes les données de l'application (élèves, payeurs, séances…) — sur cet appareil ET sur les autres appareils synchronisés."
+          : "Efface toutes les données de l'application sur cet appareil (élèves, payeurs, séances…)."),
       el("div.btn-row", [btn("Tout effacer", { onClick: wipe, variant: "danger" })]),
     ]),
 

@@ -2,18 +2,22 @@
 //
 // Bases : un seul objectStore par entité, clé primaire `id` (string).
 // `params` est un magasin clé/valeur (keyPath `key`).
+// `_outbox` (interne, jamais exporté) : modifications locales pas encore envoyées
+// à la synchronisation en ligne (voir sync.js). Clé `k` = "<magasin>/<id>".
 //
 // À chaque évolution du schéma : incrémenter DB_VERSION et compléter onupgradeneeded.
 
 import { uid, nowISO } from "./util.js";
 
 const DB_NAME = "suivi-piano";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const SCHEMA_VERSION = 1;
 
 /** Magasins qui contiennent des enregistrements applicatifs (pour l'export/import). */
 export const STORES = ["params", "payeurs", "eleves", "seances", "periodes"];
+
+const OUTBOX = "_outbox";
 
 let _dbPromise = null;
 
@@ -30,6 +34,9 @@ function openDB() {
         if (!db.objectStoreNames.contains(name)) {
           db.createObjectStore(name, { keyPath: "id" });
         }
+      }
+      if (!db.objectStoreNames.contains(OUTBOX)) {
+        db.createObjectStore(OUTBOX, { keyPath: "k" });
       }
       void e;
     };
@@ -53,6 +60,42 @@ function reqToPromise(request) {
   });
 }
 
+function txDone(t) {
+  return new Promise((resolve, reject) => {
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  });
+}
+
+/* ---------- Journal des modifications locales (pour la synchro) ---------- */
+
+export function keyOf(store, record) {
+  return store === "params" ? record.key : record.id;
+}
+
+let _changeListener = null;
+/** sync.js s'y abonne pour planifier un envoi après chaque modification locale. */
+export function onLocalChange(fn) {
+  _changeListener = fn;
+}
+function notifyChange() {
+  if (_changeListener) {
+    try { _changeListener(); } catch (e) { console.error(e); }
+  }
+}
+
+function logChange(t, store, id, deleted, updatedAt) {
+  t.objectStore(OUTBOX).put({
+    k: `${store}/${id}`,
+    store,
+    id,
+    deleted: !!deleted,
+    updatedAt: updatedAt || nowISO(),
+    v: uid(),
+  });
+}
+
 /* ---------- CRUD générique ---------- */
 
 export async function getAll(store) {
@@ -66,36 +109,94 @@ export async function get(store, id) {
 }
 
 export async function put(store, record) {
-  const t = await tx(store, "readwrite");
+  const t = await tx([store, OUTBOX], "readwrite");
   const now = nowISO();
   if (store !== "params") {
     if (!record.id) record.id = uid();
     if (!record.createdAt) record.createdAt = now;
-    record.updatedAt = now;
   }
-  await reqToPromise(t.objectStore(store).put(record));
+  record.updatedAt = now;
+  t.objectStore(store).put(record);
+  logChange(t, store, keyOf(store, record), false, now);
+  await txDone(t);
+  notifyChange();
   return record;
 }
 
 export async function remove(store, id) {
-  const t = await tx(store, "readwrite");
-  await reqToPromise(t.objectStore(store).delete(id));
+  const t = await tx([store, OUTBOX], "readwrite");
+  t.objectStore(store).delete(id);
+  logChange(t, store, id, true);
+  await txDone(t);
+  notifyChange();
 }
 
-export async function bulkPut(store, records) {
-  const t = await tx(store, "readwrite");
+/**
+ * Écrit plusieurs enregistrements tels quels (sans toucher à `updatedAt`,
+ * sauf `{ stamp: true }` qui les date de maintenant).
+ */
+export async function bulkPut(store, records, { stamp = false } = {}) {
+  const t = await tx([store, OUTBOX], "readwrite");
   const os = t.objectStore(store);
-  for (const r of records) os.put(r);
-  return new Promise((resolve, reject) => {
-    t.oncomplete = () => resolve(records.length);
-    t.onerror = () => reject(t.error);
-    t.onabort = () => reject(t.error);
-  });
+  const now = nowISO();
+  for (const r of records) {
+    if (stamp || !r.updatedAt) r.updatedAt = now;
+    os.put(r);
+    logChange(t, store, keyOf(store, r), false, r.updatedAt);
+  }
+  await txDone(t);
+  notifyChange();
+  return records.length;
 }
 
 export async function clearStore(store) {
-  const t = await tx(store, "readwrite");
-  await reqToPromise(t.objectStore(store).clear());
+  const t = await tx([store, OUTBOX], "readwrite");
+  const keys = await reqToPromise(t.objectStore(store).getAllKeys());
+  for (const id of keys) logChange(t, store, id, true);
+  t.objectStore(store).clear();
+  await txDone(t);
+  notifyChange();
+}
+
+/* ---------- Accès réservés à la synchronisation (sync.js) ---------- */
+
+export async function outboxAll() {
+  const t = await tx(OUTBOX);
+  return reqToPromise(t.objectStore(OUTBOX).getAll());
+}
+
+/** Retire des entrées du journal, seulement si elles n'ont pas changé entre-temps. */
+export async function outboxAck(entries) {
+  const t = await tx(OUTBOX, "readwrite");
+  const os = t.objectStore(OUTBOX);
+  for (const e of entries) {
+    const cur = await reqToPromise(os.get(e.k));
+    if (cur && cur.v === e.v) os.delete(e.k);
+  }
+  await txDone(t);
+}
+
+/** Ajoute au journal tout le contenu local (premier branchement d'un appareil). */
+export async function outboxMarkAll() {
+  for (const store of STORES) {
+    const t = await tx([store, OUTBOX], "readwrite");
+    const all = await reqToPromise(t.objectStore(store).getAll());
+    for (const r of all) logChange(t, store, keyOf(store, r), false, r.updatedAt || "");
+    await txDone(t);
+  }
+  notifyChange();
+}
+
+/**
+ * Applique un changement venu du serveur, sans le journaliser.
+ * `record` null = suppression. Retire l'entrée du journal correspondante.
+ */
+export async function applyRemote(store, id, record) {
+  const t = await tx([store, OUTBOX], "readwrite");
+  if (record) t.objectStore(store).put(record);
+  else t.objectStore(store).delete(id);
+  t.objectStore(OUTBOX).delete(`${store}/${id}`);
+  await txDone(t);
 }
 
 /* ---------- Paramètres ---------- */
@@ -142,7 +243,8 @@ export async function importAll(payload) {
   for (const store of STORES) {
     if (!Array.isArray(payload.data[store])) continue;
     await clearStore(store);
-    await bulkPut(store, payload.data[store]);
+    // Datés de maintenant : une restauration doit l'emporter sur les autres appareils.
+    await bulkPut(store, payload.data[store], { stamp: true });
     records += payload.data[store].length;
     stores += 1;
   }
