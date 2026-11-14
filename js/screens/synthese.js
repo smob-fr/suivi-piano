@@ -4,7 +4,7 @@ import { el, fmtEUR, fmtDuree, fmtDateFR, personneNom, sortBy, toast } from "../
 import { screen, btn, emptyState } from "../ui.js";
 import { seances as seancesDB, eleves as elevesDB, payeurs as payeursDB, bulkPut, getParam } from "../db.js";
 import { libelleEleve, libellePayeur, payeurRef, adresseLignes } from "../model.js";
-import { downloadFile } from "../backup.js";
+import { downloadFile, enregistrerFichiersAvecChoix } from "../backup.js";
 import { genererFacturePdf, construireFactureFile } from "../facturePdf.js";
 import { today } from "../planning.js";
 import { render } from "../router.js";
@@ -256,21 +256,49 @@ export async function syntheseScreen() {
     };
   }
 
-  async function genererFacture(g, index = 0) {
-    try {
-      await genererFacturePdf(payloadFacture(g, index));
-    } catch (e) {
-      console.error(e);
-      toast("Génération PDF impossible.", "warn");
+  /**
+   * Sur ordinateur (Chrome/Edge) : demande où enregistrer (fichier ou dossier).
+   * Ailleurs : téléchargement classique, un PDF après l'autre.
+   */
+  async function enregistrerFactures(liste) {
+    if (!liste.length) return;
+    const avecChoix = !!(window.showDirectoryPicker || (liste.length === 1 && window.showSaveFilePicker));
+    if (avecChoix) {
+      let files;
+      try {
+        files = await Promise.all(liste.map(({ g, i }) => construireFactureFile(payloadFacture(g, i))));
+      } catch (e) {
+        console.error(e);
+        return toast("Génération PDF impossible.", "warn");
+      }
+      const r = await enregistrerFichiersAvecChoix(files, { id: "factures" });
+      if (r === "ok") return toast(`${files.length} facture(s) enregistrée(s).`, "ok");
+      if (r === "annule") return;
+      // Non supporté / erreur : repli sur le téléchargement.
+      for (const f of files) {
+        downloadFile(f.name, f, "application/pdf");
+        await new Promise((res) => setTimeout(res, 450));
+      }
+      return toast(`${files.length} facture(s) téléchargée(s).`, "ok");
     }
+    for (const { g, i } of liste) {
+      try {
+        await genererFacturePdf(payloadFacture(g, i));
+      } catch (e) {
+        console.error(e);
+        return toast("Génération PDF impossible.", "warn");
+      }
+      await new Promise((res) => setTimeout(res, 450));
+    }
+    toast(`${liste.length} facture(s) générée(s).`, "ok");
   }
 
-  async function genererToutesFactures(groupes) {
-    for (let i = 0; i < groupes.length; i += 1) {
-      await genererFacture(groupes[i], i);
-      await new Promise((r) => setTimeout(r, 450));
-    }
-    toast(`${groupes.length} facture(s) générée(s).`, "ok");
+  function genererFacture(g, index = 0) {
+    return enregistrerFactures([{ g, i: index }]);
+  }
+
+  function genererToutesFactures(groupes) {
+    return enregistrerFactures(groupes.map((g, i) => ({ g, i })));
   }
 
   async function envoyerFacturesMail(groupes) {
