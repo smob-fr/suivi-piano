@@ -1,9 +1,9 @@
 // Suivi Piano — service worker
 //
 // Stratégie « réseau d'abord » : en ligne, l'appli récupère toujours la dernière
-// version ; le cache ne sert que de repli hors ligne.
+// version (sans cache HTTP) ; le cache ne sert que de repli hors ligne.
 // Incrémente VERSION à chaque mise en ligne.
-const VERSION = "v0.14.1";
+const VERSION = "v0.14.2";
 const CACHE = `suivi-piano-${VERSION}`;
 
 const ASSETS = [
@@ -66,8 +66,15 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // `no-cache` : le navigateur revalide toujours auprès de GitHub Pages (réponse 304
+  // légère si rien n'a changé) au lieu de resservir son cache HTTP de 10 min.
+  // Une requête de navigation ne peut pas être recopiée avec des options : on passe l'URL.
+  const reseau = request.mode === "navigate"
+    ? fetch(request.url, { cache: "no-cache", credentials: "same-origin" })
+    : fetch(request, { cache: "no-cache" });
+
   event.respondWith(
-    fetch(request)
+    reseau
       .then((response) => {
         if (response && response.status === 200 && response.type === "basic") {
           const copy = response.clone();

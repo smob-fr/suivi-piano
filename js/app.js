@@ -19,7 +19,7 @@ import { parametresScreen } from "./screens/parametres.js";
 import { fusionFoyersScreen } from "./screens/fusionFoyers.js";
 import { placeholderScreen } from "./screens/placeholder.js";
 
-window.SUIVI_BUILD = "v0.14.1 · 2026-11-14";
+window.SUIVI_BUILD = "v0.14.2 · 2026-11-14";
 
 /* ---------- Structure de la page ---------- */
 const app = document.getElementById("app");
@@ -96,7 +96,17 @@ highlightNav(currentPath());
 
 /* ---------- Service worker ---------- */
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  // Vérifie s'il existe une nouvelle version à chaque ouverture et à chaque retour
+  // sur l'appli ; si oui, elle s'installe et la page se recharge (controllerchange).
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+    .then((reg) => {
+      const verifier = () => reg.update().catch(() => {});
+      verifier();
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") verifier();
+      });
+    })
+    .catch(() => {});
   let recharge = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (recharge) return;
