@@ -1,6 +1,6 @@
 // Suivi Piano — dates, jours fériés, périodes sans cours, génération des séances
 
-import { uid, nowISO } from "./util.js";
+import { nowISO } from "./util.js";
 import { JOURS } from "./util.js";
 import { getAll, put, remove, bulkPut } from "./db.js";
 import { payeurRef } from "./model.js";
@@ -178,11 +178,19 @@ export async function chercherConflitCreneaux(creneaux, selfId) {
 
 /* ---------- Génération des séances prévues ---------- */
 
+/**
+ * Identifiant déterministe d'une séance automatique : deux appareils synchronisés
+ * qui génèrent le même créneau produisent la même séance (pas de doublon).
+ */
+function idSeanceAuto(key, date) {
+  return ("auto_" + key + "_" + date).replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
 function seanceAuto(eleve, creneau, date, key) {
   const now = nowISO();
   const ref = payeurRef(eleve);
   return {
-    id: uid(),
+    id: idSeanceAuto(key, date),
     date,
     heure: creneau.heure,
     dureeMin: creneau.dureeMin,
@@ -224,10 +232,25 @@ export async function genererHorizon() {
 
   const autoIndex = new Map();
   const autoPrevuesFutures = [];
+  const doublons = [];
   for (const s of seancesAll) {
     if (s.source !== "auto") continue;
-    autoIndex.set(`${s.creneauKey}|${s.date}`, s);
-    if (s.statut === "prevue" && s.date >= debut) autoPrevuesFutures.push(s);
+    const kd = `${s.creneauKey}|${s.date}`;
+    const deja = autoIndex.get(kd);
+    if (deja) {
+      // Même créneau généré deux fois (ex. sur deux appareils avant la synchro) :
+      // on garde la séance déjà traitée (non « prévue ») ou celle à l'id déterministe.
+      const garderS = deja.statut === "prevue" && (s.statut !== "prevue" || s.id === idSeanceAuto(s.creneauKey, s.date));
+      const [garde, jete] = garderS ? [s, deja] : [deja, s];
+      if (jete.statut === "prevue") doublons.push(jete);
+      autoIndex.set(kd, garde);
+      continue;
+    }
+    autoIndex.set(kd, s);
+  }
+  const jetes = new Set(doublons.map((s) => s.id));
+  for (const s of autoIndex.values()) {
+    if (s.statut === "prevue" && s.date >= debut && !jetes.has(s.id)) autoPrevuesFutures.push(s);
   }
 
   const voulus = new Set();
@@ -268,6 +291,7 @@ export async function genererHorizon() {
   if (aCreer.length) await bulkPut("seances", aCreer);
   for (const s of aMettreAJour) await put("seances", s);
   for (const s of aSupprimer) await remove("seances", s.id);
+  for (const s of doublons) await remove("seances", s.id);
 
-  return { crees: aCreer.length, majs: aMettreAJour.length, supprimes: aSupprimer.length };
+  return { crees: aCreer.length, majs: aMettreAJour.length, supprimes: aSupprimer.length + doublons.length };
 }

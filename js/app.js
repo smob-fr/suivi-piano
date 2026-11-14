@@ -4,6 +4,7 @@ import { el, toast } from "./util.js";
 import { initRouter, route, setNotFound, render, navigate, currentPath } from "./router.js";
 import { verifierRappelSauvegarde } from "./backup.js";
 import { genererHorizon } from "./planning.js";
+import { initSync, surEtatSync, surDonneesDistantes } from "./sync.js";
 
 import { accueilScreen } from "./screens/accueil.js";
 import { agendaScreen } from "./screens/agenda.js";
@@ -18,14 +19,21 @@ import { parametresScreen } from "./screens/parametres.js";
 import { fusionFoyersScreen } from "./screens/fusionFoyers.js";
 import { placeholderScreen } from "./screens/placeholder.js";
 
-window.SUIVI_BUILD = "v0.13.1 · 2026-11-02";
+window.SUIVI_BUILD = "v0.14.0 · 2026-11-14";
 
 /* ---------- Structure de la page ---------- */
 const app = document.getElementById("app");
 app.replaceChildren();
 
+const syncBadge = el("button.app-header__sync", {
+  title: "Synchronisation",
+  hidden: true,
+  onclick: () => navigate("/parametres"),
+});
+
 const header = el("header.app-header", [
   el("h1.app-header__title", "Suivi Piano"),
+  syncBadge,
   el("button.app-header__gear", {
     title: "Paramètres",
     onclick: () => navigate("/parametres"),
@@ -96,6 +104,37 @@ if ("serviceWorker" in navigator) {
     location.reload();
   });
 }
+
+/* ---------- Synchronisation entre appareils ---------- */
+let derniereCleSync = null;
+surEtatSync((e) => {
+  syncBadge.hidden = !e.configuree;
+  let txt = "☁";
+  let cls = "";
+  let titre = "Synchronisation";
+  if (e.statut === "synchro") { txt = "⟳"; titre = "Synchronisation en cours…"; }
+  else if (e.statut === "deconnecte") { cls = "warn"; titre = "Non connecté — touche pour te connecter"; }
+  else if (e.statut === "horsligne" || e.erreur) { cls = "warn"; titre = e.erreur || e.message; }
+  else if (e.statut === "connecte") { cls = "ok"; titre = `Synchronisé (${e.email})`; }
+  syncBadge.textContent = txt;
+  syncBadge.title = titre;
+  syncBadge.className = "app-header__sync" + (cls ? ` app-header__sync--${cls}` : "");
+  // L'écran Paramètres affiche le formulaire de connexion ou l'état : on le
+  // rafraîchit quand on passe de l'un à l'autre.
+  const cle = `${!!e.email}|${e.statut === "chargement" || e.statut === "horsligne"}`;
+  if (cle !== derniereCleSync && currentPath() === "/parametres") render();
+  derniereCleSync = cle;
+});
+
+// Données reçues d'un autre appareil : on régénère le planning et on rafraîchit
+// l'écran, sauf sur un formulaire en cours de saisie.
+const ROUTES_FORMULAIRE = /^\/(eleves|payeurs|seances)\/[^/]+$|^\/parametres$|^\/fusion$/;
+surDonneesDistantes(async () => {
+  try { await genererHorizon(); } catch (e) { console.error(e); }
+  if (!ROUTES_FORMULAIRE.test(currentPath()) && !document.querySelector(".modal-overlay")) render();
+});
+
+initSync().catch((e) => console.error("synchro", e));
 
 /* ---------- Génération des séances + rappel de sauvegarde ---------- */
 setTimeout(async () => {

@@ -3,7 +3,8 @@
 Application web installable (PWA) pour le suivi des cours de piano :
 élèves, planning, cours effectués, tarifs et paiements.
 
-- **Données** : stockées uniquement sur l'appareil (IndexedDB). Rien n'est envoyé sur un serveur.
+- **Données** : stockées sur l'appareil (IndexedDB). Optionnellement synchronisées entre
+  appareils via Firebase (compte personnel) — voir `docs/synchronisation.md`.
 - **Hébergement** : GitHub Pages sert uniquement le code de l'application (aucune donnée personnelle).
 - **Hors ligne** : géré par le service worker (`sw.js`).
 
@@ -22,7 +23,8 @@ Les autres écrans (Accueil, Agenda, Séances, Synthèse) sont des espaces rése
 
 Site statique, sans étape de build. Modules ES natifs sous `js/` :
 
-- `db.js` — IndexedDB + export/import
+- `db.js` — IndexedDB + export/import + journal des modifications
+- `sync.js` — synchronisation Firebase (optionnelle, `firebaseConfig.js`)
 - `model.js` — fabriques et règles métier
 - `csv.js` — analyse et import CSV
 - `router.js` — routeur `#/`
