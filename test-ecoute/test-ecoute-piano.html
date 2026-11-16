@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Test écoute piano</title>
+<style>
+  :root {
+    --bg: #f2f4f7;
+    --surface: #ffffff;
+    --line: #d9dde4;
+    --fg: #161a22;
+    --muted: #5d6676;
+    --accent: #4256d0;
+    --accent-fg: #ffffff;
+    --ok: #17874f;
+    --bad: #c8392f;
+    --warn: #b7791f;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151b;
+      --surface: #1b1f27;
+      --line: #2e3440;
+      --fg: #eceff4;
+      --muted: #9aa3b2;
+      --accent: #7e8dff;
+      --accent-fg: #10131a;
+      --ok: #3ecf8e;
+      --bad: #ff6b60;
+      --warn: #e8b24a;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-block: 20px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 560px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font-size: 1.15rem; margin: 0; letter-spacing: .01em; }
+  .sub { color: var(--muted); font-size: .9rem; margin: 2px 0 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  button, select {
+    font: inherit; color: var(--fg); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-height: 44px;
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+  button:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  .note { text-align: center; padding-block: 8px 4px; }
+  .note-name { font-size: 4.2rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; min-height: 1em; }
+  .note-name.dim { color: var(--muted); }
+  .note-name.locked { color: var(--ok); }
+  .note-meta { color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 6px; min-height: 1.4em; }
+
+  .meter { position: relative; height: 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; margin-top: 14px; }
+  .meter::after { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; background: var(--muted); opacity: .6; }
+  .needle { position: absolute; top: 1px; bottom: 1px; width: 6px; margin-left: -3px; border-radius: 3px; background: var(--muted); left: 50%; transition: left .08s linear; }
+  .needle.good { background: var(--ok); }
+  .meter-labels { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); margin-top: 4px; }
+
+  .level { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-top: 14px; }
+  .level > div { height: 100%; width: 0; background: var(--accent); transition: width .06s linear; }
+
+  .target { text-align: center; }
+  .target-name { font-size: 2.6rem; font-weight: 700; line-height: 1.1; }
+  .target-msg { min-height: 1.5em; font-weight: 600; margin-top: 4px; }
+  .target-msg.ok { color: var(--ok); }
+  .target-msg.bad { color: var(--bad); }
+  .score { display: flex; justify-content: center; gap: 18px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
+  .score b { color: var(--fg); }
+
+  .hist { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; font-variant-numeric: tabular-nums; }
+  .hist li { display: grid; grid-template-columns: 5.2em 1fr auto; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: .92rem; }
+  .hist li:first-child { border-top: 0; }
+  .hist .n { font-weight: 700; }
+  .hist .t { color: var(--muted); text-align: right; }
+  .hist .ok { color: var(--ok); }
+  .hist .bad { color: var(--bad); }
+  .empty { color: var(--muted); margin: 0; font-size: .92rem; }
+  .err { color: var(--bad); margin: 10px 0 0; font-size: .92rem; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+  .tips { color: var(--muted); font-size: .88rem; margin: 0; padding-left: 1.1em; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Test écoute piano</h1>
+    <p class="sub">Joue une note sur le piano : l'appli affiche la note entendue.</p>
+  </header>
+
+  <section class="card">
+    <div class="row">
+      <button id="start" class="primary" type="button">Activer le micro</button>
+      <button id="stop" type="button" hidden>Arrêter</button>
+    </div>
+    <p id="error" class="err" hidden></p>
+    <div class="note">
+      <div id="noteName" class="note-name dim">—</div>
+      <div id="noteMeta" class="note-meta">Micro éteint</div>
+    </div>
+    <div class="meter" aria-hidden="true"><div id="needle" class="needle"></div></div>
+    <div class="meter-labels" aria-hidden="true"><span>−50 cents (trop grave)</span><span>+50 (trop aigu)</span></div>
+    <div class="level" aria-hidden="true"><div id="level"></div></div>
+  </section>
+
+  <section class="card">
+    <h2>Mode test</h2>
+    <div class="row" style="margin-bottom:12px">
+      <label for="range" class="sub" style="margin:0">Zone du clavier</label>
+      <select id="range">
+        <option value="60,71">Do4 à Si4</option>
+        <option value="60,72" selected>Do4 à Do5</option>
+        <option value="48,83">Do3 à Si5</option>
+        <option value="36,95">Do2 à Si6</option>
+      </select>
+      <button id="toggleTest" type="button">Lancer le test</button>
+    </div>
+    <div id="testBox" class="target" hidden>
+      <div class="sub">Note à jouer</div>
+      <div id="targetName" class="target-name">—</div>
+      <div id="targetMsg" class="target-msg"></div>
+      <div class="score">
+        <span>Réussies <b id="scoreOk">0</b></span>
+        <span>Ratées <b id="scoreBad">0</b></span>
+        <span>Taux <b id="scorePct">—</b></span>
+      </div>
+      <div class="row" style="justify-content:center;margin-top:12px">
+        <button id="skip" type="button">Autre note</button>
+        <button id="resetScore" type="button">Remettre à zéro</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Notes détectées</h2>
+    <p id="histEmpty" class="empty">Rien pour l'instant.</p>
+    <ul id="hist" class="hist"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Pour un test fiable</h2>
+    <ul class="tips">
+      <li>Place le téléphone ou l'ordinateur près du piano, sans autre bruit.</li>
+      <li>Joue une note à la fois, laisse-la sonner une demi-seconde.</li>
+      <li>La colonne de droite donne le délai entre l'attaque et la détection.</li>
+      <li>Les cents indiquent la justesse : 0 est parfait, ±50 est entre deux notes.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+// ---- PITCH START ----
+const NOTE_FR = ['Do', 'Do#', 'Ré', 'Ré#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+
+// Détection de hauteur par l'algorithme YIN (de Cheveigné & Kawahara, 2002).
+function detectPitch(buf, sr) {
+  const W = 2048;
+  const minTau = Math.floor(sr / 2100);
+  const maxTau = Math.min(Math.floor(sr / 55), buf.length - W - 1);
+  let e = 0;
+  for (let i = 0; i < buf.length; i++) e += buf[i] * buf[i];
+  const rms = Math.sqrt(e / buf.length);
+  if (rms < 0.008) return { rms, freq: null, clarity: 0 };
+
+  const d = new Float32Array(maxTau + 1);
+  for (let tau = 1; tau <= maxTau; tau++) {
+    let s = 0;
+    for (let j = 0; j < W; j++) {
+      const diff = buf[j] - buf[j + tau];
+      s += diff * diff;
+    }
+    d[tau] = s;
+  }
+  const c = new Float32Array(maxTau + 1);
+  c[0] = 1;
+  let run = 0;
+  for (let tau = 1; tau <= maxTau; tau++) {
+    run += d[tau];
+    c[tau] = run === 0 ? 1 : (d[tau] * tau) / run;
+  }
+
+  const TH = 0.12;
+  let tau = -1;
+  for (let t = minTau; t < maxTau; t++) {
+    if (c[t] < TH) {
+      while (t + 1 < maxTau && c[t + 1] < c[t]) t++;
+      tau = t;
+      break;
+    }
+  }
+  if (tau === -1) {
+    let m = minTau;
+    for (let t = minTau; t <= maxTau; t++) if (c[t] < c[m]) m = t;
+    if (c[m] > 0.25) return { rms, freq: null, clarity: 0 };
+    tau = m;
+  }
+  let better = tau;
+  if (tau > 1 && tau < maxTau) {
+    const a = c[tau - 1], b = c[tau], g = c[tau + 1];
+    const den = a - 2 * b + g;
+    if (den !== 0) better = tau + (a - g) / (2 * den);
+  }
+  return { rms, freq: sr / better, clarity: 1 - c[tau] };
+}
+
+function freqToNote(f) {
+  const m = 69 + 12 * Math.log2(f / 440);
+  const r = Math.round(m);
+  return {
+    midi: r,
+    cents: Math.round((m - r) * 100),
+    name: NOTE_FR[((r % 12) + 12) % 12],
+    octave: Math.floor(r / 12) - 1
+  };
+}
+function noteLabel(midi) {
+  return NOTE_FR[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+}
+// ---- PITCH END ----
+
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    start: $('start'), stop: $('stop'), error: $('error'),
+    noteName: $('noteName'), noteMeta: $('noteMeta'), needle: $('needle'), level: $('level'),
+    range: $('range'), toggleTest: $('toggleTest'), testBox: $('testBox'),
+    targetName: $('targetName'), targetMsg: $('targetMsg'),
+    scoreOk: $('scoreOk'), scoreBad: $('scoreBad'), scorePct: $('scorePct'),
+    skip: $('skip'), resetScore: $('resetScore'),
+    hist: $('hist'), histEmpty: $('histEmpty')
+  };
+
+  const MIN_MIDI = 36, MAX_MIDI = 96;
+  const STABLE_FRAMES = 4;      // 4 analyses de suite (environ 200 ms) sur la même note
+  const TICK_MS = 50;
+
+  let ctx = null, analyser = null, stream = null, timer = null;
+  let buf = null;
+  let cand = { midi: null, n: 0 };
+  let emitted = false, silentFrames = 0, prevRms = 0, onsetAt = 0;
+  let testOn = false, target = null, ok = 0, bad = 0;
+
+  function showError(msg) { el.error.textContent = msg; el.error.hidden = !msg; }
+
+  async function start() {
+    showError('');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError("Ce navigateur n'autorise pas le micro ici. Ouvre la page avec Chrome ou Safari, depuis un fichier local ou une adresse https.");
+      return;
+    }
+    try {
+      // Pour de la musique, on coupe les traitements de la voix qui abîment le signal.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+    } catch (err) {
+      showError("Micro refusé ou introuvable. Autorise l'accès au micro dans le navigateur, puis recommence.");
+      return;
+    }
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const src = ctx.createMediaStreamSource(stream);
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0;
+    src.connect(analyser);
+    buf = new Float32Array(analyser.fftSize);
+    cand = { midi: null, n: 0 }; emitted = false; silentFrames = 0; prevRms = 0;
+    timer = setInterval(tick, TICK_MS);
+    el.start.hidden = true; el.stop.hidden = false;
+    el.noteName.textContent = '—'; el.noteName.className = 'note-name dim';
+    el.noteMeta.textContent = 'À l’écoute… joue une note';
+  }
+
+  function stop() {
+    clearInterval(timer); timer = null;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    if (ctx) ctx.close();
+    ctx = analyser = stream = null;
+    el.start.hidden = false; el.stop.hidden = true;
+    el.noteName.textContent = '—'; el.noteName.className = 'note-name dim';
+    el.noteMeta.textContent = 'Micro éteint';
+    el.level.style.width = '0'; el.needle.style.left = '50%';
+  }
+
+  function tick() {
+    analyser.getFloatTimeDomainData(buf);
+    const res = detectPitch(buf, ctx.sampleRate);
+    el.level.style.width = Math.min(100, res.rms * 800) + '%';
+
+    // Nouvelle attaque : le niveau remonte nettement, on repart de zéro.
+    if (res.rms > 0.02 && res.rms > prevRms * 1.7) {
+      emitted = false; cand = { midi: null, n: 0 }; onsetAt = performance.now();
+    }
+    prevRms = res.rms;
+
+    const valid = res.freq && res.clarity >= 0.8 && res.freq > 60 && res.freq < 2100;
+    if (!valid) {
+      silentFrames++;
+      if (silentFrames >= 4) {
+        cand = { midi: null, n: 0 }; emitted = false;
+        el.noteName.textContent = '—'; el.noteName.className = 'note-name dim';
+        el.noteMeta.textContent = 'À l’écoute… joue une note';
+        el.needle.style.left = '50%'; el.needle.className = 'needle';
+      }
+      return;
+    }
+    silentFrames = 0;
+
+    const note = freqToNote(res.freq);
+    if (note.midi < MIN_MIDI || note.midi > MAX_MIDI) return;
+
+    if (cand.midi === note.midi) cand.n++; else cand = { midi: note.midi, n: 1 };
+
+    const locked = cand.n >= STABLE_FRAMES;
+    el.noteName.textContent = noteLabel(note.midi);
+    el.noteName.className = 'note-name' + (locked ? ' locked' : ' dim');
+    el.noteMeta.textContent = res.freq.toFixed(1) + ' Hz · ' + (note.cents > 0 ? '+' : '') + note.cents + ' cents';
+    el.needle.style.left = (50 + Math.max(-50, Math.min(50, note.cents))) + '%';
+    el.needle.className = 'needle' + (Math.abs(note.cents) <= 15 ? ' good' : '');
+
+    if (locked && !emitted) {
+      emitted = true;
+      const delay = onsetAt ? Math.round(performance.now() - onsetAt) : null;
+      onNote(note, res.freq, delay);
+    }
+  }
+
+  // ---- Journal et mode test ----
+  function onNote(note, freq, delay) {
+    let verdict = null;
+    if (testOn && target !== null) {
+      if (note.midi === target) { ok++; verdict = 'ok'; setTargetMsg('Bravo, c’est la bonne note', 'ok'); nextTarget(); }
+      else { bad++; verdict = 'bad'; setTargetMsg('Entendu ' + noteLabel(note.midi) + ', attendu ' + noteLabel(target), 'bad'); }
+      updateScore();
+    }
+    addRow(note, freq, delay, verdict);
+  }
+
+  function addRow(note, freq, delay, verdict) {
+    el.histEmpty.hidden = true;
+    const li = document.createElement('li');
+    const n = document.createElement('span'); n.className = 'n' + (verdict ? ' ' + verdict : '');
+    n.textContent = (verdict === 'ok' ? '✓ ' : verdict === 'bad' ? '✗ ' : '') + noteLabel(note.midi);
+    const m = document.createElement('span');
+    m.textContent = freq.toFixed(1) + ' Hz, ' + (note.cents > 0 ? '+' : '') + note.cents + ' cents';
+    const t = document.createElement('span'); t.className = 't';
+    t.textContent = delay !== null ? delay + ' ms' : '';
+    li.append(n, m, t);
+    el.hist.prepend(li);
+    while (el.hist.children.length > 15) el.hist.removeChild(el.hist.lastChild);
+  }
+
+  function naturalsInRange() {
+    const [lo, hi] = el.range.value.split(',').map(Number);
+    const out = [];
+    for (let m = lo; m <= hi; m++) if (![1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12)) out.push(m);
+    return out;
+  }
+  function nextTarget() {
+    const pool = naturalsInRange().filter((m) => m !== target);
+    target = pool[Math.floor(Math.random() * pool.length)];
+    el.targetName.textContent = noteLabel(target);
+  }
+  function setTargetMsg(text, cls) { el.targetMsg.textContent = text; el.targetMsg.className = 'target-msg ' + (cls || ''); }
+  function updateScore() {
+    el.scoreOk.textContent = ok; el.scoreBad.textContent = bad;
+    el.scorePct.textContent = ok + bad ? Math.round((100 * ok) / (ok + bad)) + ' %' : '—';
+  }
+
+  el.start.addEventListener('click', start);
+  el.stop.addEventListener('click', stop);
+  el.toggleTest.addEventListener('click', () => {
+    testOn = !testOn;
+    el.testBox.hidden = !testOn;
+    el.toggleTest.textContent = testOn ? 'Arrêter le test' : 'Lancer le test';
+    if (testOn) { target = null; nextTarget(); setTargetMsg(''); }
+  });
+  el.skip.addEventListener('click', () => { nextTarget(); setTargetMsg(''); });
+  el.resetScore.addEventListener('click', () => { ok = 0; bad = 0; updateScore(); setTargetMsg(''); });
+  el.range.addEventListener('change', () => { if (testOn) { target = null; nextTarget(); setTargetMsg(''); } });
+})();
+</script>
+</body>
+</html>
