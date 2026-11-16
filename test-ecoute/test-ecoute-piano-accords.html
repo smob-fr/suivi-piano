@@ -92,6 +92,7 @@
   .hist .t { color: var(--muted); text-align: right; white-space: nowrap; }
   .hist .d { grid-column: 1 / -1; color: var(--muted); font-size: .85rem; }
   .empty { color: var(--muted); margin: 0; font-size: .92rem; }
+  textarea { width: 100%; margin-top: 10px; font: .8rem/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
   .tips { color: var(--muted); font-size: .88rem; margin: 0; padding-left: 1.1em; }
   [hidden] { display: none !important; }
 </style>
@@ -154,6 +155,19 @@
     <h2>Dernières détections</h2>
     <p id="histEmpty" class="empty">Rien pour l'instant.</p>
     <ul id="hist" class="hist"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Enregistrement des essais</h2>
+    <p class="sub">Chaque essai garde le son analysé et le détail de la détection, pour comprendre les erreurs.</p>
+    <p id="recInfo" class="sub"><b>Aucun essai enregistré.</b></p>
+    <div class="row" style="margin-top:10px">
+      <button id="downloadData" type="button" class="primary">Télécharger les données</button>
+      <button id="copyReport" type="button">Copier le résumé</button>
+      <button id="clearData" type="button">Effacer</button>
+    </div>
+    <p id="recMsg" class="sub" style="margin-top:10px" role="status"></p>
+    <textarea id="recText" readonly hidden rows="8" aria-label="Résumé à copier"></textarea>
   </section>
 
   <section class="card">
@@ -256,6 +270,15 @@ function detectChord(samples, sr, params) {
   const sorted = Float32Array.from(mag.subarray(kLo, kHi + 1)).sort();
   const floor = sorted[sorted.length >> 1] || 1e-9;
 
+  // Les pics les plus forts du spectre : ils permettent de comprendre une erreur après coup.
+  const peaks = [];
+  for (let k = Math.max(2, Math.ceil(60 / df)); k < mag.length - 1; k++) {
+    if (mag[k] > mag[k - 1] && mag[k] >= mag[k + 1] && mag[k] > 8 * floor) {
+      peaks.push({ f: Math.round(k * df * 10) / 10, a: Math.round(mag[k] / floor) });
+    }
+  }
+  peaks.sort((x, y) => y.a - x.a);
+
   const notes = [];
   let first = 0;
   const trace = [];
@@ -308,7 +331,29 @@ function detectChord(samples, sr, params) {
     }
   }
   notes.sort((a, b) => a - b);
-  return { notes, floor, trace };
+  return { notes, floor, trace, peaks: peaks.slice(0, 14) };
+}
+
+// Son enregistré : entiers 16 bits en base 64, avec le facteur pour retrouver l'amplitude.
+function packAudio(buf) {
+  let peak = 0;
+  for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
+  const scale = peak > 0 ? peak / 32767 : 1;
+  const i16 = new Int16Array(buf.length);
+  for (let i = 0; i < buf.length; i++) i16[i] = Math.round(buf[i] / scale);
+  const bytes = new Uint8Array(i16.buffer);
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  return { scale, b64: btoa(s) };
+}
+function unpackAudio(p) {
+  const s = atob(p.b64);
+  const bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+  const i16 = new Int16Array(bytes.buffer);
+  const out = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) out[i] = i16[i] * p.scale;
+  return out;
 }
 
 // Nom d'un accord de trois notes (majeur ou mineur), sinon chaîne vide.
@@ -331,7 +376,9 @@ function chordName(midis) {
     kb: $('kb'), level: $('level'), mode: $('mode'), toggleTest: $('toggleTest'), testBox: $('testBox'),
     targetName: $('targetName'), targetMsg: $('targetMsg'),
     scoreOk: $('scoreOk'), scoreBad: $('scoreBad'), scorePct: $('scorePct'),
-    skip: $('skip'), resetScore: $('resetScore'), hist: $('hist'), histEmpty: $('histEmpty')
+    skip: $('skip'), resetScore: $('resetScore'), hist: $('hist'), histEmpty: $('histEmpty'),
+    recInfo: $('recInfo'), recMsg: $('recMsg'), recText: $('recText'),
+    downloadData: $('downloadData'), copyReport: $('copyReport'), clearData: $('clearData')
   };
 
   const TICK_MS = 80;
@@ -342,6 +389,9 @@ function chordName(midis) {
   let ctx = null, analyser = null, stream = null, timer = null, buf = null;
   let prevS = 0, quiet = 0, onsetAt = 0, emitted = false, lastKey = '', same = 0;
   let testOn = false, target = null, ok = 0, bad = 0;
+  let lastSnap = null;        // dernière analyse de l'essai en cours (son + détails)
+  const attempts = [];
+  let attemptNo = 0;
 
   // ---- Clavier ----
   const keyEls = {}, wantEls = {};
@@ -438,14 +488,21 @@ function chordName(midis) {
     el.level.style.width = Math.min(100, rmsS * 800) + '%';
 
     if (rmsS > 0.02 && rmsS > prevS * 1.7) {          // nouvelle attaque
-      onsetAt = performance.now(); emitted = false; lastKey = ''; same = 0;
+      onsetAt = performance.now(); emitted = false; lastKey = ''; same = 0; lastSnap = null;
       el.notes.className = 'notes dim'; el.chord.textContent = 'Analyse…';
     }
     prevS = rmsS;
 
     if (rmsS < 0.006) {
       quiet++;
-      if (quiet >= 5) { quiet = 0; if (emitted || lastKey) { emitted = false; lastKey = ''; same = 0; } onsetAt = 0; clearDisplay('À l’écoute… joue une note ou un accord'); }
+      if (quiet >= 5) {
+        quiet = 0;
+        // Un son a été analysé mais n'a jamais donné de résultat stable : on le garde comme échec.
+        if (!emitted && lastSnap) onResult(lastSnap.out.notes, null, lastSnap, true);
+        lastSnap = null;
+        if (emitted || lastKey) { emitted = false; lastKey = ''; same = 0; }
+        onsetAt = 0; clearDisplay('À l’écoute… joue une note ou un accord');
+      }
       return;
     }
     quiet = 0;
@@ -454,6 +511,7 @@ function chordName(midis) {
     if (since < WAIT_MS) return;
 
     const out = detectChord(buf, ctx.sampleRate);
+    lastSnap = { audio: buf.slice(), sr: ctx.sampleRate, out, rms: rmsS };
     const key = out.notes.join(',');
     paintKeys(out.notes);
     if (!out.notes.length) { el.notes.textContent = '—'; el.notes.className = 'notes dim'; return; }
@@ -465,34 +523,106 @@ function chordName(midis) {
     if (same >= 2) {
       emitted = true;
       el.notes.className = 'notes locked';
-      onResult(out.notes, onsetAt ? Math.round(performance.now() - onsetAt) : null);
+      const snap = lastSnap; lastSnap = null;
+      onResult(out.notes, onsetAt ? Math.round(performance.now() - onsetAt) : null, snap, false);
     }
   }
 
   // ---- Journal et mode test ----
-  function onResult(list, delay) {
+  function onResult(list, delay, snap, unstable) {
     let verdict = null, detail = '';
-    if (testOn && target) {
-      const missing = target.filter((m) => !list.includes(m));
-      const extra = list.filter((m) => !target.includes(m));
-      if (!missing.length && !extra.length) {
+    const cible = testOn && target ? target.slice() : null;
+    const exercice = testOn ? el.mode.value : null;
+    if (cible) {
+      const missing = cible.filter((m) => !list.includes(m));
+      const extra = list.filter((m) => !cible.includes(m));
+      if (!missing.length && !extra.length && !unstable) {
         ok++; verdict = 'ok'; setMsg('Bravo, c’est la bonne combinaison', 'ok'); nextTarget();
       } else {
         bad++; verdict = 'bad';
-        detail = (missing.length ? 'Manque : ' + labels(missing) + '. ' : '') + (extra.length ? 'En trop : ' + labels(extra) + '.' : '');
+        detail = (unstable ? 'Résultat instable. ' : '') + (missing.length ? 'Manque : ' + labels(missing) + '. ' : '') + (extra.length ? 'En trop : ' + labels(extra) + '.' : '');
         setMsg(detail, 'bad');
       }
       updateScore();
     }
-    addRow(list, delay, verdict, detail);
+    addRow(list, delay, verdict, detail, unstable);
+    record({ list, delay, snap, unstable, verdict, cible, exercice });
   }
 
-  function addRow(list, delay, verdict, detail) {
+  // ---- Enregistrement des essais ----
+  const round = (x, d) => Math.round(x * Math.pow(10, d)) / Math.pow(10, d);
+  function record(r) {
+    if (!r.snap) return;
+    attempts.push({
+      n: ++attemptNo,
+      heure: new Date().toISOString(),
+      frequenceEchantillonnage: r.snap.sr,
+      exercice: r.exercice,
+      cible: r.cible,
+      cibleNoms: r.cible ? labels(r.cible) : null,
+      detecte: r.list.slice(),
+      detecteNoms: r.list.length ? labels(r.list) : null,
+      resultat: r.verdict,
+      sansResultatStable: !!r.unstable,
+      delaiMs: r.delay,
+      niveau: round(r.snap.rms, 4),
+      bruitMedian: round(r.snap.out.floor, 4),
+      candidats: r.snap.out.trace.map((t) => ({ note: noteLabel(t.note), score: round(t.S, 2), relatif: round(t.rel, 2), surBruit: round(t.abs, 1) })),
+      pics: r.snap.out.peaks,
+      audio: packAudio(r.snap.audio)
+    });
+    if (attempts.length > 60) attempts.shift();
+    updateRec();
+  }
+  function updateRec() {
+    const n = attempts.length;
+    el.recInfo.innerHTML = n ? '<b>' + n + ' essai' + (n > 1 ? 's' : '') + ' enregistré' + (n > 1 ? 's' : '') + '</b> (les 60 derniers sont conservés).' : '<b>Aucun essai enregistré.</b>';
+  }
+  function recMsg(text) { el.recMsg.textContent = text; }
+  function stamp() { const d = new Date(), p = (x) => String(x).padStart(2, '0'); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()); }
+
+  function downloadData() {
+    if (!attempts.length) { recMsg('Rien à télécharger : joue d’abord quelques notes.'); return; }
+    const data = { version: 1, page: 'test-ecoute-piano-accords', navigateur: navigator.userAgent, parametres: PARAMS, essais: attempts };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'test-ecoute-' + stamp() + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    recMsg('Fichier téléchargé. Joins-le à la conversation.');
+  }
+
+  function buildReport() {
+    const L2 = ['Test écoute accords, ' + attempts.length + ' essais', navigator.userAgent, ''];
+    const parExo = {};
+    attempts.forEach((a) => { if (a.resultat) { const s = parExo[a.exercice] || (parExo[a.exercice] = { ok: 0, bad: 0 }); s[a.resultat]++; } });
+    Object.keys(parExo).forEach((k) => L2.push('Exercice ' + k + ' : ' + parExo[k].ok + ' réussis, ' + parExo[k].bad + ' ratés'));
+    L2.push('');
+    attempts.forEach((a) => {
+      L2.push('#' + a.n + ' ' + (a.exercice || 'libre') + ' | cible: ' + (a.cibleNoms || '-') + ' | entendu: ' + (a.detecteNoms || 'aucune note') +
+        ' | ' + (a.resultat || '-') + (a.sansResultatStable ? ' (instable)' : '') + ' | ' + (a.delaiMs === null ? '-' : a.delaiMs + ' ms') + ' | niveau ' + a.niveau);
+      if (a.resultat !== 'ok') L2.push('   pics: ' + a.pics.map((p) => p.f + 'Hz x' + p.a).join(', '));
+    });
+    return L2.join('\n');
+  }
+  async function copyReport() {
+    if (!attempts.length) { recMsg('Rien à copier : joue d’abord quelques notes.'); return; }
+    const text = buildReport();
+    try {
+      await navigator.clipboard.writeText(text);
+      recMsg('Résumé copié. Colle-le dans la conversation.');
+    } catch (err) {
+      el.recText.hidden = false; el.recText.value = text; el.recText.focus(); el.recText.select();
+      recMsg('Copie automatique impossible : le texte est sélectionné ci-dessous, copie-le à la main.');
+    }
+  }
+
+  function addRow(list, delay, verdict, detail, unstable) {
     el.histEmpty.hidden = true;
     const li = document.createElement('li');
     const n = document.createElement('span'); n.className = 'n' + (verdict ? ' ' + verdict : '');
     const name = chordName(list);
-    n.textContent = (verdict === 'ok' ? '✓ ' : verdict === 'bad' ? '✗ ' : '') + labels(list) + (name ? ' (' + name + ')' : '');
+    n.textContent = (verdict === 'ok' ? '✓ ' : verdict === 'bad' ? '✗ ' : '') + (list.length ? labels(list) : 'aucune note') + (name ? ' (' + name + ')' : '') + (unstable ? ' (instable)' : '');
     const t = document.createElement('span'); t.className = 't'; t.textContent = delay !== null ? delay + ' ms' : '';
     li.append(n, t);
     if (detail) { const d = document.createElement('span'); d.className = 'd'; d.textContent = detail; li.append(d); }
@@ -523,6 +653,11 @@ function chordName(midis) {
     el.scorePct.textContent = ok + bad ? Math.round((100 * ok) / (ok + bad)) + ' %' : '—';
   }
 
+  el.downloadData.addEventListener('click', downloadData);
+  el.copyReport.addEventListener('click', copyReport);
+  el.clearData.addEventListener('click', () => {
+    attempts.length = 0; el.recText.hidden = true; el.recText.value = ''; updateRec(); recMsg('Enregistrement effacé.');
+  });
   el.start.addEventListener('click', start);
   el.stop.addEventListener('click', stop);
   el.toggleTest.addEventListener('click', () => {
