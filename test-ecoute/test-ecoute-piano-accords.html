@@ -174,7 +174,8 @@
     <h2>Pour un test fiable</h2>
     <ul class="tips">
       <li>Joue les notes d'un accord ensemble, puis laisse sonner une demi-seconde.</li>
-      <li>Le résultat arrive environ 0,4 s après l'attaque : l'analyse attend d'avoir entendu la note entière.</li>
+      <li>Le résultat arrive environ 0,4 s après l'attaque, pour avoir entendu la note entière. Une note plus courte est analysée quand elle s'arrête.</li>
+      <li>Pour un accord, appuie sur toutes les touches en même temps : une note jouée seule sera notée comme manquante.</li>
       <li>Attends que le son s'éteigne avant l'accord suivant.</li>
       <li>Les notes très graves (sous Do3) sont les plus difficiles à séparer quand elles sont jouées ensemble.</li>
     </ul>
@@ -189,7 +190,7 @@ const L = 16384, NFFT = 32768, FMAX = 4500;
 const HMAX = 8;
 const MODEL = [0, 1, 0.75, 0.55, 0.4, 0.3, 0.22, 0.16, 0.12];   // amplitude relative des harmoniques d'un piano
 const WEIGHT = [0, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];       // poids de chaque harmonique dans le score d'une note
-const PARAMS = { relMin: 0.22, absMin: 30, maxNotes: 6, tolCents: 35, fundMid: 0.4, fundLow: 0.15, ampRank: 1, subtract: 1.15 };
+const PARAMS = { relMin: 0.1, relMinHarm: 0.22, absMin: 30, maxNotes: 6, tolCents: 35, fundMid: 0.4, fundLow: 0.15, ampRank: 1, subtract: 1.15, fund1Abs: 60, fund1Rel: 0.03, zeroFrom: 99 };
 
 function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 function noteLabel(m) { return NOTE_FR[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1); }
@@ -269,6 +270,8 @@ function detectChord(samples, sr, params) {
   const kLo = Math.floor(100 / df), kHi = Math.min(mag.length - 1, Math.floor(4000 / df));
   const sorted = Float32Array.from(mag.subarray(kLo, kHi + 1)).sort();
   const floor = sorted[sorted.length >> 1] || 1e-9;
+  let maxMag = 0;
+  for (let k = Math.ceil(60 / df); k < mag.length; k++) if (mag[k] > maxMag) maxMag = mag[k];
 
   // Les pics les plus forts du spectre : ils permettent de comprendre une erreur après coup.
   const peaks = [];
@@ -282,11 +285,17 @@ function detectChord(samples, sr, params) {
   const notes = [];
   let first = 0;
   const trace = [];
-  for (let iter = 0; iter < P.maxNotes; iter++) {
+  const rejected = new Set();
+  let guard = 0;
+  while (notes.length < P.maxNotes && guard++ < 24) {
     let best = -1, bestS = 0;
     for (let m = MIN_MIDI; m <= MAX_MIDI; m++) {
-      if (notes.includes(m)) continue;
+      if (notes.includes(m) || rejected.has(m)) continue;
       const f = mtof(m);
+      // La fondamentale doit sortir nettement du bruit dans le son d'origine. Sans cela,
+      // un simple souffle ou une résonance grave est pris pour une note de basse.
+      const p1o = peakAt(mag, df, f, P.tolCents);
+      if (p1o < P.fund1Abs * floor || p1o < P.fund1Rel * maxMag) continue;
       let S = 0;
       const p = [0, 0, 0, 0, 0];
       for (let h = 1; h <= HMAX; h++) {
@@ -304,9 +313,20 @@ function detectChord(samples, sr, params) {
       if (S > bestS) { bestS = S; best = m; }
     }
     if (best < 0) break;
-    if (iter === 0) first = bestS;
+    if (first === 0) first = bestS;
     trace.push({ note: best, S: bestS, rel: bestS / first, abs: bestS / floor });
-    if (bestS < P.relMin * first || bestS < P.absMin * floor) break;
+    // Une note qui tombe exactement sur un harmonique d'une note déjà trouvée (octave, octave + quinte...)
+    // est souvent un écho de cette note : on lui demande plus de preuves qu'aux autres.
+    const fb = mtof(best);
+    const isHarm = notes.some((b) => {
+      const r = fb / mtof(b), h = Math.round(r);
+      return h >= 2 && h <= 8 && Math.abs(1200 * Math.log2(r / h)) < 40;
+    });
+    const needRel = isHarm ? P.relMinHarm : P.relMin;
+    if (bestS < needRel * first || bestS < P.absMin * floor) {
+      if (isHarm && bestS >= P.absMin * floor) { rejected.add(best); continue; }
+      break;
+    }
 
     const f = mtof(best);
     const ratios = [];
@@ -327,7 +347,10 @@ function detectChord(samples, sr, params) {
       const fh = f * h;
       if (fh > FMAX) break;
       const k0 = Math.max(1, Math.floor(fh / r2 / df)), k1 = Math.min(res.length - 1, Math.ceil((fh * r2) / df));
-      for (let k = k0; k <= k1; k++) res[k] = Math.max(0, res[k] - P.subtract * MODEL[h] * amp);
+      // Au-delà de l'octave, les harmoniques d'un son réel varient trop pour être modélisées :
+      // on les efface (zeroFrom). Pour les deux premières, on retire seulement la part prévue.
+      if (h >= P.zeroFrom) { for (let k = k0; k <= k1; k++) res[k] = 0; }
+      else for (let k = k0; k <= k1; k++) res[k] = Math.max(0, res[k] - P.subtract * MODEL[h] * amp);
     }
   }
   notes.sort((a, b) => a - b);
@@ -382,7 +405,8 @@ function chordName(midis) {
   };
 
   const TICK_MS = 80;
-  const WAIT_MS = 350;        // délai après l'attaque avant d'analyser (la fenêtre doit contenir toute la note)
+  const EARLY_MS = 160;       // première analyse après l'attaque (sert aux notes courtes)
+  const EMIT_MS = 350;        // résultat définitif : la fenêtre contient alors toute la note
   const KB_LO = 36, KB_HI = 84;
   const WHITE = [0, 2, 4, 5, 7, 9, 11];
 
@@ -390,6 +414,7 @@ function chordName(midis) {
   let prevS = 0, quiet = 0, onsetAt = 0, emitted = false, lastKey = '', same = 0;
   let testOn = false, target = null, ok = 0, bad = 0;
   let lastSnap = null;        // dernière analyse de l'essai en cours (son + détails)
+  const votes = new Map();    // résultats obtenus pendant l'essai en cours, avec leur nombre
   const attempts = [];
   let attemptNo = 0;
 
@@ -488,18 +513,27 @@ function chordName(midis) {
     el.level.style.width = Math.min(100, rmsS * 800) + '%';
 
     if (rmsS > 0.02 && rmsS > prevS * 1.7) {          // nouvelle attaque
-      onsetAt = performance.now(); emitted = false; lastKey = ''; same = 0; lastSnap = null;
+      onsetAt = performance.now(); emitted = false; lastKey = ''; same = 0; lastSnap = null; votes.clear();
       el.notes.className = 'notes dim'; el.chord.textContent = 'Analyse…';
     }
     prevS = rmsS;
 
     if (rmsS < 0.006) {
       quiet++;
+      // Le son vient de s'arrêter sans avoir été analysé (note très courte) : analyse de rattrapage,
+      // la fenêtre contient encore la note.
+      if (quiet === 1 && !emitted && !lastSnap && onsetAt && performance.now() - onsetAt < 700) analyse(rmsS);
       if (quiet >= 5) {
         quiet = 0;
-        // Un son a été analysé mais n'a jamais donné de résultat stable : on le garde comme échec.
-        if (!emitted && lastSnap) onResult(lastSnap.out.notes, null, lastSnap, true);
-        lastSnap = null;
+        if (!emitted) {
+          // Note courte : le son s'est arrêté avant la fin de l'analyse. On garde le résultat
+          // le plus fréquent (le plus récent en cas d'égalité).
+          let best = null;
+          votes.forEach((v) => { if (!best || v.n >= best.n) best = v; });
+          if (best) onResult(best.notes, onsetAt ? Math.round(best.at - onsetAt) : null, best.snap, 'courte');
+          else if (lastSnap) onResult([], null, lastSnap, 'sans note');
+        }
+        votes.clear(); lastSnap = null;
         if (emitted || lastKey) { emitted = false; lastKey = ''; same = 0; }
         onsetAt = 0; clearDisplay('À l’écoute… joue une note ou un accord');
       }
@@ -508,11 +542,9 @@ function chordName(midis) {
     quiet = 0;
     if (emitted) return;
     const since = onsetAt ? performance.now() - onsetAt : Infinity;
-    if (since < WAIT_MS) return;
+    if (since < EARLY_MS) return;
 
-    const out = detectChord(buf, ctx.sampleRate);
-    lastSnap = { audio: buf.slice(), sr: ctx.sampleRate, out, rms: rmsS };
-    const key = out.notes.join(',');
+    const { out, key } = analyse(rmsS);
     paintKeys(out.notes);
     if (!out.notes.length) { el.notes.textContent = '—'; el.notes.className = 'notes dim'; return; }
     el.notes.textContent = labels(out.notes);
@@ -520,16 +552,31 @@ function chordName(midis) {
     el.chord.textContent = chordName(out.notes);
 
     if (key === lastKey) same++; else { lastKey = key; same = 1; }
-    if (same >= 2) {
+    // Résultat définitif : même réponse deux fois de suite, une fois la note entendue en entier.
+    if (same >= 2 && since >= EMIT_MS) {
       emitted = true;
       el.notes.className = 'notes locked';
       const snap = lastSnap; lastSnap = null;
-      onResult(out.notes, onsetAt ? Math.round(performance.now() - onsetAt) : null, snap, false);
+      onResult(out.notes, onsetAt ? Math.round(performance.now() - onsetAt) : null, snap, null);
     }
   }
 
+  function analyse(rmsS) {
+    const out = detectChord(buf, ctx.sampleRate);
+    lastSnap = { audio: buf.slice(), sr: ctx.sampleRate, out, rms: rmsS };
+    const key = out.notes.join(',');
+    if (out.notes.length) {
+      const v = votes.get(key) || { n: 0, notes: out.notes };
+      v.n++; v.snap = lastSnap; v.at = performance.now(); votes.set(key, v);
+    }
+    return { out, key };
+  }
+
   // ---- Journal et mode test ----
-  function onResult(list, delay, snap, unstable) {
+  // etiquette : null (résultat normal), 'courte' (le son s'est arrêté avant la fin de l'analyse)
+  // ou 'sans note' (un son a été entendu mais aucune note reconnue).
+  function onResult(list, delay, snap, etiquette) {
+    const unstable = etiquette === 'sans note';
     let verdict = null, detail = '';
     const cible = testOn && target ? target.slice() : null;
     const exercice = testOn ? el.mode.value : null;
@@ -540,13 +587,14 @@ function chordName(midis) {
         ok++; verdict = 'ok'; setMsg('Bravo, c’est la bonne combinaison', 'ok'); nextTarget();
       } else {
         bad++; verdict = 'bad';
-        detail = (unstable ? 'Résultat instable. ' : '') + (missing.length ? 'Manque : ' + labels(missing) + '. ' : '') + (extra.length ? 'En trop : ' + labels(extra) + '.' : '');
+        detail = (etiquette === 'sans note' ? 'Aucune note reconnue. ' : etiquette === 'courte' ? 'Note courte. ' : '') +
+          (missing.length ? 'Manque : ' + labels(missing) + '. ' : '') + (extra.length ? 'En trop : ' + labels(extra) + '.' : '');
         setMsg(detail, 'bad');
       }
       updateScore();
     }
-    addRow(list, delay, verdict, detail, unstable);
-    record({ list, delay, snap, unstable, verdict, cible, exercice });
+    addRow(list, delay, verdict, detail, etiquette);
+    record({ list, delay, snap, etiquette, verdict, cible, exercice });
   }
 
   // ---- Enregistrement des essais ----
@@ -563,7 +611,7 @@ function chordName(midis) {
       detecte: r.list.slice(),
       detecteNoms: r.list.length ? labels(r.list) : null,
       resultat: r.verdict,
-      sansResultatStable: !!r.unstable,
+      etiquette: r.etiquette || null,
       delaiMs: r.delay,
       niveau: round(r.snap.rms, 4),
       bruitMedian: round(r.snap.out.floor, 4),
@@ -600,7 +648,7 @@ function chordName(midis) {
     L2.push('');
     attempts.forEach((a) => {
       L2.push('#' + a.n + ' ' + (a.exercice || 'libre') + ' | cible: ' + (a.cibleNoms || '-') + ' | entendu: ' + (a.detecteNoms || 'aucune note') +
-        ' | ' + (a.resultat || '-') + (a.sansResultatStable ? ' (instable)' : '') + ' | ' + (a.delaiMs === null ? '-' : a.delaiMs + ' ms') + ' | niveau ' + a.niveau);
+        ' | ' + (a.resultat || '-') + (a.etiquette ? ' (' + a.etiquette + ')' : '') + ' | ' + (a.delaiMs === null ? '-' : a.delaiMs + ' ms') + ' | niveau ' + a.niveau);
       if (a.resultat !== 'ok') L2.push('   pics: ' + a.pics.map((p) => p.f + 'Hz x' + p.a).join(', '));
     });
     return L2.join('\n');
@@ -617,12 +665,12 @@ function chordName(midis) {
     }
   }
 
-  function addRow(list, delay, verdict, detail, unstable) {
+  function addRow(list, delay, verdict, detail, etiquette) {
     el.histEmpty.hidden = true;
     const li = document.createElement('li');
     const n = document.createElement('span'); n.className = 'n' + (verdict ? ' ' + verdict : '');
     const name = chordName(list);
-    n.textContent = (verdict === 'ok' ? '✓ ' : verdict === 'bad' ? '✗ ' : '') + (list.length ? labels(list) : 'aucune note') + (name ? ' (' + name + ')' : '') + (unstable ? ' (instable)' : '');
+    n.textContent = (verdict === 'ok' ? '✓ ' : verdict === 'bad' ? '✗ ' : '') + (list.length ? labels(list) : 'aucune note') + (name ? ' (' + name + ')' : '') + (etiquette ? ' (' + etiquette + ')' : '');
     const t = document.createElement('span'); t.className = 't'; t.textContent = delay !== null ? delay + ' ms' : '';
     li.append(n, t);
     if (detail) { const d = document.createElement('span'); d.className = 'd'; d.textContent = detail; li.append(d); }
