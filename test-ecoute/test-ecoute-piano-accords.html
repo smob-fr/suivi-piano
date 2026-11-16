@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Test écoute accords</title>
+<style>
+  :root {
+    --bg: #f2f4f7;
+    --surface: #ffffff;
+    --line: #d9dde4;
+    --fg: #161a22;
+    --muted: #5d6676;
+    --accent: #4256d0;
+    --accent-fg: #ffffff;
+    --ok: #17874f;
+    --bad: #c8392f;
+    --key-w: #ffffff;
+    --key-b: #1d2230;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151b;
+      --surface: #1b1f27;
+      --line: #2e3440;
+      --fg: #eceff4;
+      --muted: #9aa3b2;
+      --accent: #7e8dff;
+      --accent-fg: #10131a;
+      --ok: #3ecf8e;
+      --bad: #ff6b60;
+      --key-w: #e9ecf2;
+      --key-b: #0b0d12;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-block: 20px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 600px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font-size: 1.15rem; margin: 0; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; }
+  .sub { color: var(--muted); font-size: .9rem; margin: 2px 0 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  button, select {
+    font: inherit; color: var(--fg); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-height: 44px;
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+  button:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .err { color: var(--bad); margin: 10px 0 0; font-size: .92rem; }
+
+  .big { text-align: center; padding-top: 14px; }
+  .notes { font-size: 2.2rem; font-weight: 700; line-height: 1.15; min-height: 1.15em; overflow-wrap: anywhere; }
+  .notes.dim { color: var(--muted); }
+  .notes.locked { color: var(--ok); }
+  .chord { color: var(--muted); min-height: 1.5em; margin-top: 2px; }
+  .level { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .level > div { height: 100%; width: 0; background: var(--accent); transition: width .06s linear; }
+
+  .kb-wrap { overflow-x: auto; margin-top: 14px; }
+  svg.kb { width: 100%; min-width: 360px; height: auto; display: block; }
+  .kw { fill: var(--key-w); stroke: var(--line); stroke-width: 1; }
+  .kbk { fill: var(--key-b); }
+  .kw.on, .kbk.on { fill: var(--accent); }
+  .want { fill: none; stroke: var(--ok); stroke-width: 2.5; }
+  .kb-legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: .8rem; margin-top: 6px; }
+  .kb-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+
+  .target { text-align: center; }
+  .target-name { font-size: 1.9rem; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+  .target-msg { min-height: 1.5em; font-weight: 600; margin-top: 4px; }
+  .target-msg.ok { color: var(--ok); }
+  .target-msg.bad { color: var(--bad); }
+  .score { display: flex; justify-content: center; gap: 18px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; flex-wrap: wrap; }
+  .score b { color: var(--fg); }
+
+  .hist { list-style: none; margin: 0; padding: 0; font-variant-numeric: tabular-nums; }
+  .hist li { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: .92rem; }
+  .hist li:first-child { border-top: 0; }
+  .hist .n { font-weight: 700; overflow-wrap: anywhere; }
+  .hist .n.ok { color: var(--ok); }
+  .hist .n.bad { color: var(--bad); }
+  .hist .t { color: var(--muted); text-align: right; white-space: nowrap; }
+  .hist .d { grid-column: 1 / -1; color: var(--muted); font-size: .85rem; }
+  .empty { color: var(--muted); margin: 0; font-size: .92rem; }
+  .tips { color: var(--muted); font-size: .88rem; margin: 0; padding-left: 1.1em; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Test écoute accords</h1>
+    <p class="sub">Joue une ou plusieurs notes en même temps : l'appli affiche toutes les notes entendues.</p>
+  </header>
+
+  <section class="card">
+    <div class="row">
+      <button id="start" class="primary" type="button">Activer le micro</button>
+      <button id="stop" type="button" hidden>Arrêter</button>
+    </div>
+    <p id="error" class="err" hidden></p>
+    <div class="big">
+      <div id="notes" class="notes dim">—</div>
+      <div id="chord" class="chord">Micro éteint</div>
+    </div>
+    <div class="kb-wrap"><svg id="kb" class="kb" role="img" aria-label="Clavier de piano de Do2 à Do6"></svg></div>
+    <div class="kb-legend">
+      <span><i style="background:var(--accent)"></i>note entendue</span>
+      <span><i style="border:2px solid var(--ok)"></i>note demandée</span>
+    </div>
+    <div class="level" aria-hidden="true"><div id="level"></div></div>
+  </section>
+
+  <section class="card">
+    <h2>Mode test</h2>
+    <div class="row" style="margin-bottom:12px">
+      <label for="mode" class="sub" style="margin:0">Exercice</label>
+      <select id="mode">
+        <option value="rh">Une note, main droite</option>
+        <option value="lh">Une note, main gauche</option>
+        <option value="two">Deux notes, une par main</option>
+        <option value="chord">Accord de 3 notes, main droite</option>
+        <option value="full">Note main gauche + accord main droite</option>
+      </select>
+      <button id="toggleTest" type="button">Lancer le test</button>
+    </div>
+    <div id="testBox" class="target" hidden>
+      <div class="sub">À jouer</div>
+      <div id="targetName" class="target-name">—</div>
+      <div id="targetMsg" class="target-msg"></div>
+      <div class="score">
+        <span>Réussis <b id="scoreOk">0</b></span>
+        <span>Ratés <b id="scoreBad">0</b></span>
+        <span>Taux <b id="scorePct">—</b></span>
+      </div>
+      <div class="row" style="justify-content:center;margin-top:12px">
+        <button id="skip" type="button">Autre proposition</button>
+        <button id="resetScore" type="button">Remettre à zéro</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Dernières détections</h2>
+    <p id="histEmpty" class="empty">Rien pour l'instant.</p>
+    <ul id="hist" class="hist"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Pour un test fiable</h2>
+    <ul class="tips">
+      <li>Joue les notes d'un accord ensemble, puis laisse sonner une demi-seconde.</li>
+      <li>Le résultat arrive environ 0,4 s après l'attaque : l'analyse attend d'avoir entendu la note entière.</li>
+      <li>Attends que le son s'éteigne avant l'accord suivant.</li>
+      <li>Les notes très graves (sous Do3) sont les plus difficiles à séparer quand elles sont jouées ensemble.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+// ---- CHORD START ----
+const NOTE_FR = ['Do', 'Do#', 'Ré', 'Ré#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+const MIN_MIDI = 36, MAX_MIDI = 96;
+const L = 16384, NFFT = 32768, FMAX = 4500;
+const HMAX = 8;
+const MODEL = [0, 1, 0.75, 0.55, 0.4, 0.3, 0.22, 0.16, 0.12];   // amplitude relative des harmoniques d'un piano
+const WEIGHT = [0, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];       // poids de chaque harmonique dans le score d'une note
+const PARAMS = { relMin: 0.22, absMin: 30, maxNotes: 6, tolCents: 35, fundMid: 0.4, fundLow: 0.15, ampRank: 1, subtract: 1.15 };
+
+function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+function noteLabel(m) { return NOTE_FR[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1); }
+
+let _hann = null, _re = null, _im = null, _rev = null, _cos = null, _sin = null;
+function initFFT() {
+  _hann = new Float64Array(L);
+  for (let i = 0; i < L; i++) _hann[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (L - 1));
+  _re = new Float64Array(NFFT); _im = new Float64Array(NFFT);
+  const bits = Math.log2(NFFT);
+  _rev = new Uint32Array(NFFT);
+  for (let i = 0; i < NFFT; i++) {
+    let r = 0;
+    for (let b = 0; b < bits; b++) if ((i >> b) & 1) r |= 1 << (bits - 1 - b);
+    _rev[i] = r;
+  }
+  _cos = new Float64Array(NFFT / 2); _sin = new Float64Array(NFFT / 2);
+  for (let k = 0; k < NFFT / 2; k++) {
+    _cos[k] = Math.cos((-2 * Math.PI * k) / NFFT);
+    _sin[k] = Math.sin((-2 * Math.PI * k) / NFFT);
+  }
+}
+function fftInPlace() {
+  const n = NFFT;
+  for (let i = 0; i < n; i++) {
+    const j = _rev[i];
+    if (j > i) {
+      let t = _re[i]; _re[i] = _re[j]; _re[j] = t;
+      t = _im[i]; _im[i] = _im[j]; _im[j] = t;
+    }
+  }
+  for (let size = 2; size <= n; size <<= 1) {
+    const half = size >> 1, step = n / size;
+    for (let start = 0; start < n; start += size) {
+      for (let k = 0; k < half; k++) {
+        const c = _cos[k * step], s = _sin[k * step];
+        const a = start + k, b = a + half;
+        const tr = _re[b] * c - _im[b] * s;
+        const ti = _re[b] * s + _im[b] * c;
+        _re[b] = _re[a] - tr; _im[b] = _im[a] - ti;
+        _re[a] += tr; _im[a] += ti;
+      }
+    }
+  }
+}
+
+// Spectre d'amplitude des L derniers échantillons (fenêtre de Hann, complétée de zéros).
+function spectrum(samples, sr) {
+  if (!_hann) initFFT();
+  const start = samples.length - L;
+  for (let i = 0; i < L; i++) { _re[i] = samples[start + i] * _hann[i]; _im[i] = 0; }
+  for (let i = L; i < NFFT; i++) { _re[i] = 0; _im[i] = 0; }
+  fftInPlace();
+  const df = sr / NFFT;
+  const kmax = Math.min(NFFT / 2 - 1, Math.floor((FMAX * 1.05) / df));
+  const mag = new Float32Array(kmax + 1);
+  for (let k = 0; k <= kmax; k++) mag[k] = Math.sqrt(_re[k] * _re[k] + _im[k] * _im[k]);
+  return { mag, df };
+}
+
+function peakAt(mag, df, f, tol) {
+  const r = Math.pow(2, tol / 1200);
+  const k0 = Math.max(1, Math.floor(f / r / df));
+  const k1 = Math.min(mag.length - 1, Math.ceil((f * r) / df));
+  let m = 0;
+  for (let k = k0; k <= k1; k++) if (mag[k] > m) m = mag[k];
+  return m;
+}
+
+// Détection de plusieurs notes : on cherche la note qui explique le mieux le spectre
+// (fondamentale + harmoniques), on retire sa contribution, puis on recommence.
+function detectChord(samples, sr, params) {
+  const P = Object.assign({}, PARAMS, params || {});
+  const { mag, df } = spectrum(samples, sr);
+  const res = Float32Array.from(mag);
+
+  const kLo = Math.floor(100 / df), kHi = Math.min(mag.length - 1, Math.floor(4000 / df));
+  const sorted = Float32Array.from(mag.subarray(kLo, kHi + 1)).sort();
+  const floor = sorted[sorted.length >> 1] || 1e-9;
+
+  const notes = [];
+  let first = 0;
+  const trace = [];
+  for (let iter = 0; iter < P.maxNotes; iter++) {
+    let best = -1, bestS = 0;
+    for (let m = MIN_MIDI; m <= MAX_MIDI; m++) {
+      if (notes.includes(m)) continue;
+      const f = mtof(m);
+      let S = 0;
+      const p = [0, 0, 0, 0, 0];
+      for (let h = 1; h <= HMAX; h++) {
+        const fh = f * h;
+        if (fh > FMAX) break;
+        const pk = peakAt(res, df, fh, P.tolCents);
+        S += WEIGHT[h] * pk;
+        if (h <= 4) p[h] = pk;
+      }
+      // Une vraie note a une fondamentale audible. Sans elle, ce sont les harmoniques
+      // d'une autre note, une octave plus haut, qui se font passer pour cette note.
+      const pmax = Math.max(p[1], p[2], p[3], p[4]);
+      const need = m >= 45 ? P.fundMid : P.fundLow;
+      S *= pmax > 0 ? Math.min(1, p[1] / (need * pmax)) : 0;
+      if (S > bestS) { bestS = S; best = m; }
+    }
+    if (best < 0) break;
+    if (iter === 0) first = bestS;
+    trace.push({ note: best, S: bestS, rel: bestS / first, abs: bestS / floor });
+    if (bestS < P.relMin * first || bestS < P.absMin * floor) break;
+
+    const f = mtof(best);
+    const ratios = [];
+    let strong = 0;
+    for (let h = 1; h <= 4; h++) {
+      const p = peakAt(res, df, f * h, P.tolCents);
+      ratios.push(p / MODEL[h]);
+      if (p > 5 * floor) strong++;
+    }
+    if (strong < 2) break;
+    ratios.sort((a, b) => a - b);
+    const amp = ratios[P.ampRank];
+    notes.push(best);
+    // On retire la part de cette note dans chaque harmonique, sans tout effacer :
+    // une autre note jouée sur la même fréquence (octave, quinte) reste visible.
+    const r2 = Math.pow(2, (P.tolCents + 10) / 1200);
+    for (let h = 1; h <= HMAX; h++) {
+      const fh = f * h;
+      if (fh > FMAX) break;
+      const k0 = Math.max(1, Math.floor(fh / r2 / df)), k1 = Math.min(res.length - 1, Math.ceil((fh * r2) / df));
+      for (let k = k0; k <= k1; k++) res[k] = Math.max(0, res[k] - P.subtract * MODEL[h] * amp);
+    }
+  }
+  notes.sort((a, b) => a - b);
+  return { notes, floor, trace };
+}
+
+// Nom d'un accord de trois notes (majeur ou mineur), sinon chaîne vide.
+function chordName(midis) {
+  const pcs = [...new Set(midis.map((m) => ((m % 12) + 12) % 12))];
+  if (pcs.length !== 3) return '';
+  for (const root of pcs) {
+    const iv = pcs.map((p) => (p - root + 12) % 12).sort((a, b) => a - b).join(',');
+    if (iv === '0,4,7') return NOTE_FR[root] + ' majeur';
+    if (iv === '0,3,7') return NOTE_FR[root] + ' mineur';
+  }
+  return '';
+}
+// ---- CHORD END ----
+
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    start: $('start'), stop: $('stop'), error: $('error'), notes: $('notes'), chord: $('chord'),
+    kb: $('kb'), level: $('level'), mode: $('mode'), toggleTest: $('toggleTest'), testBox: $('testBox'),
+    targetName: $('targetName'), targetMsg: $('targetMsg'),
+    scoreOk: $('scoreOk'), scoreBad: $('scoreBad'), scorePct: $('scorePct'),
+    skip: $('skip'), resetScore: $('resetScore'), hist: $('hist'), histEmpty: $('histEmpty')
+  };
+
+  const TICK_MS = 80;
+  const WAIT_MS = 350;        // délai après l'attaque avant d'analyser (la fenêtre doit contenir toute la note)
+  const KB_LO = 36, KB_HI = 84;
+  const WHITE = [0, 2, 4, 5, 7, 9, 11];
+
+  let ctx = null, analyser = null, stream = null, timer = null, buf = null;
+  let prevS = 0, quiet = 0, onsetAt = 0, emitted = false, lastKey = '', same = 0;
+  let testOn = false, target = null, ok = 0, bad = 0;
+
+  // ---- Clavier ----
+  const keyEls = {}, wantEls = {};
+  (function buildKeyboard() {
+    const NS = 'http://www.w3.org/2000/svg', KW = 14, KH = 92, BW = 9, BH = 56;
+    let whites = 0;
+    for (let m = KB_LO; m <= KB_HI; m++) if (WHITE.includes(m % 12)) whites++;
+    el.kb.setAttribute('viewBox', '0 0 ' + whites * KW + ' ' + KH);
+    let wi = 0; const blacks = [];
+    for (let m = KB_LO; m <= KB_HI; m++) {
+      if (WHITE.includes(m % 12)) {
+        const r = document.createElementNS(NS, 'rect');
+        r.setAttribute('x', wi * KW); r.setAttribute('y', 0); r.setAttribute('width', KW); r.setAttribute('height', KH);
+        r.setAttribute('class', 'kw'); el.kb.appendChild(r); keyEls[m] = r;
+        const c = document.createElementNS(NS, 'circle');
+        c.setAttribute('cx', wi * KW + KW / 2); c.setAttribute('cy', KH - 9); c.setAttribute('r', 4.2);
+        c.setAttribute('class', 'want'); c.setAttribute('visibility', 'hidden'); wantEls[m] = c;
+        wi++;
+      } else { blacks.push([m, wi]); }
+    }
+    blacks.forEach(([m, w]) => {
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', w * KW - BW / 2); r.setAttribute('y', 0); r.setAttribute('width', BW); r.setAttribute('height', BH);
+      r.setAttribute('class', 'kbk'); r.setAttribute('rx', 1.5); el.kb.appendChild(r); keyEls[m] = r;
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', w * KW); c.setAttribute('cy', BH - 8); c.setAttribute('r', 3.4);
+      c.setAttribute('class', 'want'); c.setAttribute('visibility', 'hidden'); wantEls[m] = c;
+    });
+    Object.keys(wantEls).forEach((m) => el.kb.appendChild(wantEls[m]));
+  })();
+  function paintKeys(list) {
+    const on = new Set(list);
+    Object.keys(keyEls).forEach((m) => {
+      const base = keyEls[m].getAttribute('class').split(' ')[0];
+      keyEls[m].setAttribute('class', base + (on.has(Number(m)) ? ' on' : ''));
+    });
+  }
+  function paintTarget(list) {
+    const want = new Set(list || []);
+    Object.keys(wantEls).forEach((m) => wantEls[m].setAttribute('visibility', want.has(Number(m)) ? 'visible' : 'hidden'));
+  }
+
+  function showError(msg) { el.error.textContent = msg; el.error.hidden = !msg; }
+  const labels = (list) => list.map(noteLabel).join(' · ');
+
+  function clearDisplay(text) {
+    el.notes.textContent = '—'; el.notes.className = 'notes dim';
+    el.chord.textContent = text; paintKeys([]);
+  }
+
+  async function start() {
+    showError('');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError("Ce navigateur n'autorise pas le micro ici. Ouvre la page depuis un ordinateur (Chrome), ou depuis une adresse https.");
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+    } catch (err) {
+      showError("Micro refusé ou introuvable. Autorise l'accès au micro dans le navigateur, puis recommence.");
+      return;
+    }
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const src = ctx.createMediaStreamSource(stream);
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = L;
+    analyser.smoothingTimeConstant = 0;
+    src.connect(analyser);
+    buf = new Float32Array(analyser.fftSize);
+    prevS = 0; quiet = 0; onsetAt = 0; emitted = false; lastKey = ''; same = 0;
+    timer = setInterval(tick, TICK_MS);
+    el.start.hidden = true; el.stop.hidden = false;
+    clearDisplay('À l’écoute… joue une note ou un accord');
+  }
+
+  function stop() {
+    clearInterval(timer); timer = null;
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    if (ctx) ctx.close();
+    ctx = analyser = stream = null;
+    el.start.hidden = false; el.stop.hidden = true;
+    el.level.style.width = '0';
+    clearDisplay('Micro éteint');
+  }
+
+  function tick() {
+    analyser.getFloatTimeDomainData(buf);
+    let e = 0;
+    for (let i = buf.length - 2048; i < buf.length; i++) e += buf[i] * buf[i];
+    const rmsS = Math.sqrt(e / 2048);
+    el.level.style.width = Math.min(100, rmsS * 800) + '%';
+
+    if (rmsS > 0.02 && rmsS > prevS * 1.7) {          // nouvelle attaque
+      onsetAt = performance.now(); emitted = false; lastKey = ''; same = 0;
+      el.notes.className = 'notes dim'; el.chord.textContent = 'Analyse…';
+    }
+    prevS = rmsS;
+
+    if (rmsS < 0.006) {
+      quiet++;
+      if (quiet >= 5) { quiet = 0; if (emitted || lastKey) { emitted = false; lastKey = ''; same = 0; } onsetAt = 0; clearDisplay('À l’écoute… joue une note ou un accord'); }
+      return;
+    }
+    quiet = 0;
+    if (emitted) return;
+    const since = onsetAt ? performance.now() - onsetAt : Infinity;
+    if (since < WAIT_MS) return;
+
+    const out = detectChord(buf, ctx.sampleRate);
+    const key = out.notes.join(',');
+    paintKeys(out.notes);
+    if (!out.notes.length) { el.notes.textContent = '—'; el.notes.className = 'notes dim'; return; }
+    el.notes.textContent = labels(out.notes);
+    el.notes.className = 'notes dim';
+    el.chord.textContent = chordName(out.notes);
+
+    if (key === lastKey) same++; else { lastKey = key; same = 1; }
+    if (same >= 2) {
+      emitted = true;
+      el.notes.className = 'notes locked';
+      onResult(out.notes, onsetAt ? Math.round(performance.now() - onsetAt) : null);
+    }
+  }
+
+  // ---- Journal et mode test ----
+  function onResult(list, delay) {
+    let verdict = null, detail = '';
+    if (testOn && target) {
+      const missing = target.filter((m) => !list.includes(m));
+      const extra = list.filter((m) => !target.includes(m));
+      if (!missing.length && !extra.length) {
+        ok++; verdict = 'ok'; setMsg('Bravo, c’est la bonne combinaison', 'ok'); nextTarget();
+      } else {
+        bad++; verdict = 'bad';
+        detail = (missing.length ? 'Manque : ' + labels(missing) + '. ' : '') + (extra.length ? 'En trop : ' + labels(extra) + '.' : '');
+        setMsg(detail, 'bad');
+      }
+      updateScore();
+    }
+    addRow(list, delay, verdict, detail);
+  }
+
+  function addRow(list, delay, verdict, detail) {
+    el.histEmpty.hidden = true;
+    const li = document.createElement('li');
+    const n = document.createElement('span'); n.className = 'n' + (verdict ? ' ' + verdict : '');
+    const name = chordName(list);
+    n.textContent = (verdict === 'ok' ? '✓ ' : verdict === 'bad' ? '✗ ' : '') + labels(list) + (name ? ' (' + name + ')' : '');
+    const t = document.createElement('span'); t.className = 't'; t.textContent = delay !== null ? delay + ' ms' : '';
+    li.append(n, t);
+    if (detail) { const d = document.createElement('span'); d.className = 'd'; d.textContent = detail; li.append(d); }
+    el.hist.prepend(li);
+    while (el.hist.children.length > 15) el.hist.removeChild(el.hist.lastChild);
+  }
+
+  const naturals = (lo, hi) => { const o = []; for (let m = lo; m <= hi; m++) if (WHITE.includes(m % 12)) o.push(m); return o; };
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  function triad() { const root = pick(naturals(60, 71)); return [root, root + (Math.random() < 0.5 ? 4 : 3), root + 7]; }
+  function makeTarget() {
+    switch (el.mode.value) {
+      case 'rh': return [pick(naturals(60, 83))];
+      case 'lh': return [pick(naturals(36, 59))];
+      case 'two': return [pick(naturals(36, 59)), pick(naturals(60, 83))];
+      case 'chord': return triad();
+      default: return [pick(naturals(36, 59))].concat(triad());
+    }
+  }
+  function nextTarget() {
+    target = makeTarget().sort((a, b) => a - b);
+    el.targetName.textContent = labels(target);
+    paintTarget(target);
+  }
+  function setMsg(text, cls) { el.targetMsg.textContent = text; el.targetMsg.className = 'target-msg ' + (cls || ''); }
+  function updateScore() {
+    el.scoreOk.textContent = ok; el.scoreBad.textContent = bad;
+    el.scorePct.textContent = ok + bad ? Math.round((100 * ok) / (ok + bad)) + ' %' : '—';
+  }
+
+  el.start.addEventListener('click', start);
+  el.stop.addEventListener('click', stop);
+  el.toggleTest.addEventListener('click', () => {
+    testOn = !testOn;
+    el.testBox.hidden = !testOn;
+    el.toggleTest.textContent = testOn ? 'Arrêter le test' : 'Lancer le test';
+    if (testOn) { nextTarget(); setMsg(''); } else { target = null; paintTarget([]); }
+  });
+  el.skip.addEventListener('click', () => { nextTarget(); setMsg(''); });
+  el.resetScore.addEventListener('click', () => { ok = 0; bad = 0; updateScore(); setMsg(''); });
+  el.mode.addEventListener('change', () => { if (testOn) { nextTarget(); setMsg(''); } });
+})();
+</script>
+</body>
+</html>
