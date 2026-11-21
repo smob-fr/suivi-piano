@@ -211,6 +211,11 @@ export async function eleveFormScreen({ id }) {
       { danger: true, okLabel: "Supprimer" }
     );
     if (!ok) return;
+    // Ses séances prévues partent avec la fiche (genererHorizon ne touche pas aux
+    // séances d'un élève absent de l'appareil).
+    for (const s of (await seancesDB.all()).filter((x) => x.eleveId === id && x.statut === "prevue")) {
+      await seancesDB.remove(s.id);
+    }
     await elevesDB.remove(id);
     toast("Fiche supprimée.");
     navigate("/eleves");

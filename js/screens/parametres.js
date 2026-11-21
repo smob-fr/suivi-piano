@@ -98,7 +98,7 @@ export async function parametresScreen() {
       el("div.btn-row", [
         btn("Synchroniser maintenant", {
           onClick: async () => {
-            await synchroniser();
+            await synchroniser({ complete: true });
             const apres = etatSync();
             toast(apres.erreur ? apres.erreur : "Synchronisé.", apres.erreur ? "warn" : "ok");
             render();

@@ -286,7 +286,13 @@ export async function genererHorizon() {
     }
   }
 
-  const aSupprimer = autoPrevuesFutures.filter((s) => !voulus.has(`${s.creneauKey}|${s.date}`));
+  // Une séance dont l'élève est introuvable sur cet appareil (fiche pas encore
+  // synchronisée) n'est pas supprimée : sinon la suppression partirait vers les
+  // autres appareils.
+  const idsEleves = new Set(elevesAll.map((e) => e.id));
+  const aSupprimer = autoPrevuesFutures.filter(
+    (s) => !voulus.has(`${s.creneauKey}|${s.date}`) && idsEleves.has(s.eleveId)
+  );
 
   if (aCreer.length) await bulkPut("seances", aCreer);
   for (const s of aMettreAJour) await put("seances", s);
