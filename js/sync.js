@@ -15,7 +15,7 @@
 import { firebaseConfig } from "./firebaseConfig.js";
 import {
   STORES, onLocalChange, outboxAll, outboxAck, outboxMarkAll, applyRemote, get, getAll,
-  outboxCompte, remplacerMagasinBrut,
+  outboxCompte, remplacerMagasinBrut, outboxMarquer, keyOf,
 } from "./db.js";
 
 const SDK = "https://www.gstatic.com/firebasejs/10.14.1";
@@ -25,6 +25,7 @@ const PERIODE_MS = 2 * 60 * 1000;
 let fb = null;           // modules + instances Firebase une fois chargés
 let user = null;
 let enCours = null;      // promesse de la synchro en cours
+let complete = true;     // prochaine synchro : relecture complète (ouverture, connexion, bouton)
 let relance = false;     // une modif est arrivée pendant la synchro
 let timer = null;
 let etat = { statut: "off", message: "", derniere: null, erreur: null };
@@ -123,7 +124,7 @@ export async function initSync() {
       }
     }
     majEtat({ statut: "connecte", message: "" });
-    synchroniser();
+    synchroniser({ complete: true });
   });
 
   window.addEventListener("online", () => planifier(500));
@@ -184,8 +185,12 @@ export async function deconnecter() {
 
 /* ---------- Synchronisation ---------- */
 
-/** Lance une synchro (ou rejoint celle en cours). */
-export function synchroniser() {
+/**
+ * Lance une synchro (ou rejoint celle en cours).
+ * `{ complete: true }` : relit tout le serveur au lieu des seuls changements récents.
+ */
+export function synchroniser({ complete: c = false } = {}) {
+  if (c) complete = true;
   if (!user || !fb) return Promise.resolve();
   if (enCours) {
     relance = true;
@@ -214,7 +219,9 @@ export function synchroniser() {
 
 async function cycle() {
   majEtat({ statut: "synchro" });
-  const recus = await recuperer();
+  const c = complete;
+  const recus = await recuperer({ complete: c });
+  if (c) complete = false;
   await envoyer();
   if (recus) {
     for (const fn of ecouteursDonnees) {
@@ -223,8 +230,13 @@ async function cycle() {
   }
 }
 
-/** Récupère les changements du serveur depuis le dernier relevé. @returns nb appliqués */
-async function recuperer() {
+/**
+ * Récupère les changements du serveur depuis le dernier relevé.
+ * En mode `complete` (à chaque ouverture de l'appli) : relit tout le serveur, ce qui
+ * rattrape une fiche manquée, et renvoie les fiches locales absentes du serveur.
+ * @returns nb appliqués
+ */
+async function recuperer({ complete: relectureComplete = false } = {}) {
   const { F, db } = fb;
   const memo = lireMemo();
   const depuis = memo.depuis || {};
@@ -233,14 +245,16 @@ async function recuperer() {
 
   for (const store of STORES) {
     const col = F.collection(db, "users", user.uid, store);
-    const q = depuis[store]
+    const q = depuis[store] && !relectureComplete
       // Marge d'une minute : ré-appliquer un changement déjà vu est sans effet.
       ? F.query(col, F.where("syncedAt", ">", F.Timestamp.fromMillis(Math.max(0, depuis[store] - 60000))))
       : col;
     const snap = await F.getDocs(q);
     let max = depuis[store] || 0;
+    const surServeur = new Set();
 
     for (const d of snap.docs) {
+      surServeur.add(d.id);
       const r = d.data();
       const ms = r.syncedAt?.toMillis?.() || 0;
       if (ms > max) max = ms;
@@ -267,6 +281,15 @@ async function recuperer() {
       appliques += 1;
     }
     depuis[store] = max;
+
+    if (relectureComplete) {
+      // Fiches présentes ici mais inconnues du serveur et absentes du journal : à envoyer.
+      const manquantes = (await getAll(store)).filter((r) => {
+        const id = String(keyOf(store, r));
+        return !surServeur.has(id) && !journal.has(`${store}/${id}`);
+      });
+      await outboxMarquer(store, manquantes);
+    }
   }
   ecrireMemo({ ...lireMemo(), depuis });
   return appliques;

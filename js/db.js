@@ -187,6 +187,14 @@ export async function outboxMarkAll() {
   notifyChange();
 }
 
+/** Ajoute des enregistrements locaux au journal (à envoyer au serveur). */
+export async function outboxMarquer(store, records) {
+  if (!records.length) return;
+  const t = await tx([OUTBOX], "readwrite");
+  for (const r of records) logChange(t, store, keyOf(store, r), false, r.updatedAt || "");
+  await txDone(t);
+}
+
 /** Nombre d'entrées du journal, par magasin. */
 export async function outboxCompte() {
   const n = {};
