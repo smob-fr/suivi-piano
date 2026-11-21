@@ -14,7 +14,8 @@
 
 import { firebaseConfig } from "./firebaseConfig.js";
 import {
-  STORES, onLocalChange, outboxAll, outboxAck, outboxMarkAll, applyRemote, get,
+  STORES, onLocalChange, outboxAll, outboxAck, outboxMarkAll, applyRemote, get, getAll,
+  outboxCompte, remplacerMagasinBrut,
 } from "./db.js";
 
 const SDK = "https://www.gstatic.com/firebasejs/10.14.1";
@@ -304,4 +305,77 @@ async function envoyer() {
     await outboxAck(lot);
   }
   majEtat({ message: "" });
+}
+
+/* ---------- Diagnostic et réparation ---------- */
+
+async function lireToutEnLigne(store) {
+  const { F, db } = fb;
+  const snap = await F.getDocs(F.collection(db, "users", user.uid, store));
+  const vivants = [];
+  let supprimes = 0;
+  let illisibles = 0;
+  let max = 0;
+  for (const d of snap.docs) {
+    const r = d.data();
+    const ms = r.syncedAt?.toMillis?.() || 0;
+    if (ms > max) max = ms;
+    if (r.deleted) { supprimes += 1; continue; }
+    try { vivants.push(JSON.parse(r.json)); } catch { illisibles += 1; }
+  }
+  return { vivants, supprimes, illisibles, max };
+}
+
+/**
+ * Compare l'appareil et le serveur, magasin par magasin.
+ * @returns {Promise<Array<{store, local, enLigne, supprimesEnLigne, illisibles, enAttente}>>}
+ */
+export async function diagnostic() {
+  if (!user || !fb) throw new Error("Non connecté.");
+  const attente = await outboxCompte();
+  const out = [];
+  for (const store of STORES) {
+    const local = (await getAll(store)).length;
+    const r = await lireToutEnLigne(store);
+    out.push({
+      store,
+      local,
+      enLigne: r.vivants.length,
+      supprimesEnLigne: r.supprimes,
+      illisibles: r.illisibles,
+      enAttente: attente[store] || 0,
+    });
+  }
+  return out;
+}
+
+/**
+ * Efface les données de cet appareil et recharge exactement celles en ligne.
+ * Les modifications locales pas encore envoyées sont perdues.
+ */
+export async function remplacerParDonneesEnLigne() {
+  if (!user || !fb) throw new Error("Non connecté.");
+  // Attendre une éventuelle synchro en cours pour ne pas se marcher dessus.
+  if (enCours) { try { await enCours; } catch { /* sans effet */ } }
+  majEtat({ statut: "synchro", message: "Chargement des données en ligne…" });
+  try {
+    const lus = {};
+    for (const store of STORES) lus[store] = await lireToutEnLigne(store);
+    const depuis = {};
+    let total = 0;
+    for (const store of STORES) {
+      await remplacerMagasinBrut(store, lus[store].vivants);
+      depuis[store] = lus[store].max;
+      total += lus[store].vivants.length;
+    }
+    ecrireMemo({ ...lireMemo(), branche: true, depuis });
+    majEtat({ statut: "connecte", derniere: new Date().toISOString(), erreur: null, message: "" });
+    for (const fn of ecouteursDonnees) {
+      try { await fn(total); } catch (e) { console.error(e); }
+    }
+    return total;
+  } catch (e) {
+    majEtat({ statut: "connecte", message: "", erreur: e?.message || String(e) });
+    throw e;
+  }
 }

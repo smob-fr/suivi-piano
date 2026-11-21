@@ -187,6 +187,28 @@ export async function outboxMarkAll() {
   notifyChange();
 }
 
+/** Nombre d'entrées du journal, par magasin. */
+export async function outboxCompte() {
+  const n = {};
+  for (const e of await outboxAll()) n[e.store] = (n[e.store] || 0) + 1;
+  return n;
+}
+
+/**
+ * Remplace tout le contenu d'un magasin par `records`, sans journaliser,
+ * et vide le journal de ce magasin (les données en ligne font foi).
+ */
+export async function remplacerMagasinBrut(store, records) {
+  const t = await tx([store, OUTBOX], "readwrite");
+  const os = t.objectStore(store);
+  os.clear();
+  for (const r of records) os.put(r);
+  const ob = t.objectStore(OUTBOX);
+  const entrees = await reqToPromise(ob.getAll());
+  for (const e of entrees) if (e.store === store) ob.delete(e.k);
+  await txDone(t);
+}
+
 /**
  * Applique un changement venu du serveur, sans le journaliser.
  * `record` null = suppression. Retire l'entrée du journal correspondante.

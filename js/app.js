@@ -19,7 +19,7 @@ import { parametresScreen } from "./screens/parametres.js";
 import { fusionFoyersScreen } from "./screens/fusionFoyers.js";
 import { placeholderScreen } from "./screens/placeholder.js";
 
-window.SUIVI_BUILD = "v0.14.2 · 2026-11-14";
+window.SUIVI_BUILD = "v0.14.3 · 2026-11-21";
 
 /* ---------- Structure de la page ---------- */
 const app = document.getElementById("app");
