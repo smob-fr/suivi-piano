@@ -10,7 +10,7 @@ import {
 } from "../ui.js";
 import { eleves as elevesDB, payeurs as payeursDB, seances as seancesDB } from "../db.js";
 import { nouvelEleve, representantVide, libelleEleve, libellePayeur } from "../model.js";
-import { genererHorizon, conflitInterne, chercherConflitCreneaux } from "../planning.js";
+import { genererHorizon, conflitInterne, chercherConflitCreneaux, today } from "../planning.js";
 import { navigate } from "../router.js";
 
 export async function eleveFormScreen({ id }) {
@@ -211,9 +211,10 @@ export async function eleveFormScreen({ id }) {
       { danger: true, okLabel: "Supprimer" }
     );
     if (!ok) return;
-    // Ses séances prévues partent avec la fiche (genererHorizon ne touche pas aux
-    // séances d'un élève absent de l'appareil).
-    for (const s of (await seancesDB.all()).filter((x) => x.eleveId === id && x.statut === "prevue")) {
+    // Ses séances prévues À VENIR partent avec la fiche (genererHorizon ne touche pas
+    // aux séances d'un élève absent de l'appareil). Jamais de séance passée.
+    const auj = today();
+    for (const s of (await seancesDB.all()).filter((x) => x.eleveId === id && x.statut === "prevue" && x.date >= auj)) {
       await seancesDB.remove(s.id);
     }
     await elevesDB.remove(id);
