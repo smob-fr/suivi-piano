@@ -13,6 +13,7 @@ import { telechargerRappelICS, activerNotifications, etatNotifications } from ".
 import { render, navigate } from "../router.js";
 import {
   etatSync, syncConfiguree, connecter, deconnecter, motDePasseOublie, synchroniser,
+  diagnostic, remplacerParDonneesEnLigne,
 } from "../sync.js";
 
 export async function parametresScreen() {
@@ -103,6 +104,7 @@ export async function parametresScreen() {
             render();
           },
         }),
+        btn("Diagnostic", { variant: "ghost", onClick: lancerDiagnostic }),
         btn("Se déconnecter", {
           variant: "ghost",
           onClick: async () => {
@@ -116,7 +118,56 @@ export async function parametresScreen() {
           },
         }),
       ]),
+      diagBox,
+      el("p.field__hint",
+        "Si cet appareil n'affiche pas les mêmes données que les autres : « Remplacer par les données en ligne » " +
+        "efface les données de CET appareil et recharge exactement celles du serveur."),
+      el("div.btn-row", [
+        btn("Remplacer par les données en ligne", { variant: "danger", onClick: remplacer }),
+      ]),
     ]);
+  }
+
+  const NOMS_MAGASINS = { params: "Réglages", payeurs: "Payeurs", eleves: "Élèves", seances: "Séances", periodes: "Périodes" };
+  const diagBox = el("div");
+
+  async function lancerDiagnostic() {
+    diagBox.replaceChildren(el("p.field__hint", "Analyse en cours…"));
+    try {
+      const lignes = await diagnostic();
+      diagBox.replaceChildren(el("div.preview-scroll", el("table.preview", [
+        el("thead", el("tr", [
+          el("th", ""), el("th", "Cet appareil"), el("th", "En ligne"),
+          el("th", "Supprimés en ligne"), el("th", "En attente d'envoi"),
+        ])),
+        el("tbody", lignes.map((l) => el("tr", {
+          class: l.local !== l.enLigne ? "preview__row--warn" : "",
+        }, [
+          el("td", NOMS_MAGASINS[l.store] || l.store),
+          el("td", String(l.local)),
+          el("td", String(l.enLigne) + (l.illisibles ? ` (${l.illisibles} illisible·s)` : "")),
+          el("td", String(l.supprimesEnLigne)),
+          el("td", String(l.enAttente)),
+        ]))),
+      ])));
+    } catch (err) {
+      diagBox.replaceChildren(el("p.sync-etat.sync-etat--warn", `Diagnostic impossible : ${err.message || err}`));
+    }
+  }
+
+  async function remplacer() {
+    if (!(await confirmDialog(
+      "Effacer les données de CET appareil et les remplacer par celles en ligne ? " +
+      "Les modifications faites ici et pas encore envoyées seront perdues. Les autres appareils ne sont pas touchés.",
+      { danger: true, okLabel: "Remplacer" }
+    ))) return;
+    try {
+      const n = await remplacerParDonneesEnLigne();
+      toast(`${n} enregistrement(s) chargé(s) depuis le serveur.`, "ok");
+      render();
+    } catch (err) {
+      toast(`Échec : ${err.message || err}`, "warn");
+    }
   }
 
   const body = [
